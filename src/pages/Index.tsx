@@ -238,6 +238,7 @@ const Index = () => {
           <TabsContent value="personnel">
             <DeliveryPersonnel
               deliveryPersonnel={deliveryPersonnel}
+              orders={orders}
               onUpdateDeliveryPersonnel={setDeliveryPersonnel}
             />
           </TabsContent>

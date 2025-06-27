@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -7,23 +6,28 @@ import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
-import { Search, Plus, User, Trash2, Phone } from 'lucide-react';
-import { DeliveryPerson } from '@/types/delivery';
+import { Search, Plus, User, Trash2, Phone, History } from 'lucide-react';
+import { DeliveryPerson, Order } from '@/types/delivery';
 import { toast } from '@/hooks/use-toast';
+import { DeliveryPersonHistory } from './DeliveryPersonHistory';
 
 interface DeliveryPersonnelProps {
   deliveryPersonnel: DeliveryPerson[];
+  orders: Order[];
   onUpdateDeliveryPersonnel: (personnel: DeliveryPerson[]) => void;
 }
 
 export const DeliveryPersonnel: React.FC<DeliveryPersonnelProps> = ({
   deliveryPersonnel,
+  orders,
   onUpdateDeliveryPersonnel
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [newPersonName, setNewPersonName] = useState('');
   const [newPersonPhone, setNewPersonPhone] = useState('');
+  const [selectedPerson, setSelectedPerson] = useState<DeliveryPerson | null>(null);
+  const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false);
 
   const filteredPersonnel = deliveryPersonnel.filter(person =>
     person.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -100,6 +104,11 @@ export const DeliveryPersonnel: React.FC<DeliveryPersonnelProps> = ({
     });
   };
 
+  const handlePersonClick = (person: DeliveryPerson) => {
+    setSelectedPerson(person);
+    setIsHistoryModalOpen(true);
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col lg:flex-row gap-4 items-start lg:items-center justify-between">
@@ -153,7 +162,6 @@ export const DeliveryPersonnel: React.FC<DeliveryPersonnelProps> = ({
         </Dialog>
       </div>
 
-      {/* Summary Cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <Card>
           <CardContent className="flex items-center justify-between p-6">
@@ -186,7 +194,6 @@ export const DeliveryPersonnel: React.FC<DeliveryPersonnelProps> = ({
         </Card>
       </div>
 
-      {/* Search */}
       <Card>
         <CardContent className="p-4">
           <div className="relative">
@@ -201,23 +208,27 @@ export const DeliveryPersonnel: React.FC<DeliveryPersonnelProps> = ({
         </CardContent>
       </Card>
 
-      {/* Personnel Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {filteredPersonnel.map((person) => (
-          <Card key={person.id} className={!person.isActive ? 'opacity-60' : ''}>
+          <Card 
+            key={person.id} 
+            className={`cursor-pointer transition-all hover:shadow-md ${!person.isActive ? 'opacity-60' : ''}`}
+            onClick={() => handlePersonClick(person)}
+          >
             <CardHeader>
               <div className="flex items-start justify-between">
                 <div className="flex-1">
                   <CardTitle className="text-lg flex items-center gap-2">
                     <User className="h-5 w-5" />
                     {person.name}
+                    <History className="h-4 w-4 text-muted-foreground ml-auto" />
                   </CardTitle>
                   <div className="flex items-center gap-1 text-sm text-muted-foreground mt-1">
                     <Phone className="h-4 w-4" />
                     {person.phone}
                   </div>
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
                   <Switch
                     checked={person.isActive}
                     onCheckedChange={() => togglePersonActive(person.id)}
@@ -225,7 +236,10 @@ export const DeliveryPersonnel: React.FC<DeliveryPersonnelProps> = ({
                   <Button
                     variant="ghost"
                     size="sm"
-                    onClick={() => deletePerson(person.id)}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      deletePerson(person.id);
+                    }}
                     className="text-red-600 hover:text-red-700"
                   >
                     <Trash2 className="h-4 w-4" />
@@ -258,6 +272,13 @@ export const DeliveryPersonnel: React.FC<DeliveryPersonnelProps> = ({
           </Card>
         ))}
       </div>
+
+      <DeliveryPersonHistory
+        isOpen={isHistoryModalOpen}
+        onClose={() => setIsHistoryModalOpen(false)}
+        deliveryPerson={selectedPerson}
+        orders={orders}
+      />
     </div>
   );
 };
