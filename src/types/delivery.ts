@@ -14,6 +14,9 @@ export interface Order {
   specialInstructions?: string;
   extraTime?: number;
   extraTimeReason?: string;
+  assignedDeliveryPersonId?: string;
+  paymentMethod: PaymentMethod;
+  paymentStatus: PaymentStatus;
 }
 
 export interface OrderItem {
@@ -45,8 +48,20 @@ export interface InventoryItem extends Product {
   availableToppings: Topping[];
 }
 
+export interface DeliveryPerson {
+  id: string;
+  name: string;
+  phone: string;
+  isActive: boolean;
+  createdAt: Date;
+  totalDeliveries: number;
+  activeOrders: number;
+}
+
 export type OrderStatus = 'received' | 'kitchen' | 'delivery' | 'delivered' | 'cancelled';
 export type OrderSource = 'ai_agent' | 'call_center' | 'web' | 'app';
+export type PaymentMethod = 'card' | 'cash' | 'nequi' | 'transfer';
+export type PaymentStatus = 'pending' | 'paid' | 'failed';
 
 export interface DeliverySettings {
   acceptingOrders: boolean;

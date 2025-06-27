@@ -6,7 +6,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Order, OrderStatus } from '@/types/delivery';
+import { Order, OrderStatus, PaymentStatus, DeliveryPerson } from '@/types/delivery';
 import { toast } from '@/hooks/use-toast';
 
 interface OrderConfigModalProps {
@@ -14,6 +14,7 @@ interface OrderConfigModalProps {
   onClose: () => void;
   selectedOrderIds: string[];
   orders: Order[];
+  deliveryPersonnel: DeliveryPerson[];
   onUpdateOrders: (orders: Order[]) => void;
   onClearSelection: () => void;
 }
@@ -23,12 +24,15 @@ export const OrderConfigModal: React.FC<OrderConfigModalProps> = ({
   onClose,
   selectedOrderIds,
   orders,
+  deliveryPersonnel,
   onUpdateOrders,
   onClearSelection
 }) => {
   const [extraTime, setExtraTime] = useState<number>(0);
   const [extraTimeReason, setExtraTimeReason] = useState('');
   const [newStatus, setNewStatus] = useState<OrderStatus | ''>('');
+  const [assignedDeliveryPersonId, setAssignedDeliveryPersonId] = useState<string>('');
+  const [newPaymentStatus, setNewPaymentStatus] = useState<PaymentStatus | ''>('');
 
   const handleApplyChanges = () => {
     const updatedOrders = orders.map(order => {
@@ -56,6 +60,16 @@ export const OrderConfigModal: React.FC<OrderConfigModalProps> = ({
             updatedOrder.actualDeliveryTime = new Date();
           }
         }
+
+        // Apply delivery person assignment
+        if (assignedDeliveryPersonId) {
+          updatedOrder.assignedDeliveryPersonId = assignedDeliveryPersonId;
+        }
+
+        // Apply payment status change
+        if (newPaymentStatus) {
+          updatedOrder.paymentStatus = newPaymentStatus;
+        }
         
         return updatedOrder;
       }
@@ -73,15 +87,18 @@ export const OrderConfigModal: React.FC<OrderConfigModalProps> = ({
     setExtraTime(0);
     setExtraTimeReason('');
     setNewStatus('');
+    setAssignedDeliveryPersonId('');
+    setNewPaymentStatus('');
     onClearSelection();
     onClose();
   };
 
   const selectedOrders = orders.filter(order => selectedOrderIds.includes(order.id));
+  const activeDeliveryPersonnel = deliveryPersonnel.filter(person => person.isActive);
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-md">
+      <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>
             Configurar Pedidos Seleccionados ({selectedOrderIds.length})
@@ -146,6 +163,38 @@ export const OrderConfigModal: React.FC<OrderConfigModalProps> = ({
             </Select>
           </div>
 
+          {/* Delivery Person Assignment */}
+          <div className="space-y-3">
+            <Label>Asignar Repartidor</Label>
+            <Select value={assignedDeliveryPersonId} onValueChange={setAssignedDeliveryPersonId}>
+              <SelectTrigger>
+                <SelectValue placeholder="Seleccionar repartidor" />
+              </SelectTrigger>
+              <SelectContent>
+                {activeDeliveryPersonnel.map(person => (
+                  <SelectItem key={person.id} value={person.id}>
+                    {person.name} ({person.activeOrders} activos)
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          {/* Payment Status Change */}
+          <div className="space-y-3">
+            <Label>Estado de Pago</Label>
+            <Select value={newPaymentStatus} onValueChange={(value: PaymentStatus) => setNewPaymentStatus(value)}>
+              <SelectTrigger>
+                <SelectValue placeholder="Seleccionar estado de pago" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="pending">Pendiente</SelectItem>
+                <SelectItem value="paid">Pagado</SelectItem>
+                <SelectItem value="failed">Fallido</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
           {/* Action Buttons */}
           <div className="flex gap-3 pt-4">
             <Button variant="outline" onClick={onClose} className="flex-1">
@@ -154,7 +203,7 @@ export const OrderConfigModal: React.FC<OrderConfigModalProps> = ({
             <Button 
               onClick={handleApplyChanges} 
               className="flex-1"
-              disabled={extraTime === 0 && !newStatus}
+              disabled={extraTime === 0 && !newStatus && !assignedDeliveryPersonId && !newPaymentStatus}
             >
               Aplicar Cambios
             </Button>

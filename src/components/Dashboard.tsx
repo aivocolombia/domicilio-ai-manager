@@ -14,15 +14,21 @@ import {
   Bot,
   Settings,
   Power,
-  PowerOff
+  PowerOff,
+  CreditCard,
+  Banknote,
+  Smartphone,
+  Building2,
+  User
 } from 'lucide-react';
-import { Order, OrderStatus, OrderSource, DeliverySettings } from '@/types/delivery';
+import { Order, OrderStatus, OrderSource, DeliverySettings, DeliveryPerson, PaymentMethod } from '@/types/delivery';
 import { OrderConfigModal } from './OrderConfigModal';
 import { cn } from '@/lib/utils';
 
 interface DashboardProps {
   orders: Order[];
   settings: DeliverySettings;
+  deliveryPersonnel: DeliveryPerson[];
   onUpdateOrders: (orders: Order[]) => void;
   onUpdateSettings: (settings: DeliverySettings) => void;
 }
@@ -30,6 +36,7 @@ interface DashboardProps {
 export const Dashboard: React.FC<DashboardProps> = ({
   orders,
   settings,
+  deliveryPersonnel,
   onUpdateOrders,
   onUpdateSettings
 }) => {
@@ -41,7 +48,8 @@ export const Dashboard: React.FC<DashboardProps> = ({
   const filteredOrders = orders.filter(order => {
     const matchesSearch = order.customerName.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          order.customerPhone.includes(searchTerm) ||
-                         order.id.toLowerCase().includes(searchTerm.toLowerCase());
+                         order.id.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                         order.address.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesStatus = statusFilter === 'all' || order.status === statusFilter;
     return matchesSearch && matchesStatus;
   });
@@ -73,6 +81,41 @@ export const Dashboard: React.FC<DashboardProps> = ({
       case 'call_center': return <Phone className="h-4 w-4 text-blue-600" />;
       default: return <Phone className="h-4 w-4 text-gray-600" />;
     }
+  };
+
+  const getPaymentMethodIcon = (method: PaymentMethod) => {
+    switch (method) {
+      case 'card': return <CreditCard className="h-4 w-4" />;
+      case 'cash': return <Banknote className="h-4 w-4" />;
+      case 'nequi': return <Smartphone className="h-4 w-4" />;
+      case 'transfer': return <Building2 className="h-4 w-4" />;
+      default: return <CreditCard className="h-4 w-4" />;
+    }
+  };
+
+  const getPaymentMethodLabel = (method: PaymentMethod) => {
+    switch (method) {
+      case 'card': return 'Tarjeta';
+      case 'cash': return 'Efectivo';
+      case 'nequi': return 'Nequi';
+      case 'transfer': return 'Transferencia';
+      default: return method;
+    }
+  };
+
+  const getPaymentStatusColor = (status: string) => {
+    switch (status) {
+      case 'paid': return 'bg-green-500';
+      case 'pending': return 'bg-yellow-500';
+      case 'failed': return 'bg-red-500';
+      default: return 'bg-gray-500';
+    }
+  };
+
+  const getDeliveryPersonName = (personId?: string) => {
+    if (!personId) return 'Sin asignar';
+    const person = deliveryPersonnel.find(p => p.id === personId);
+    return person ? person.name : 'No encontrado';
   };
 
   const handleSelectAll = (checked: boolean) => {
@@ -179,7 +222,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
           <div className="flex flex-col md:flex-row gap-4">
             <div className="flex-1">
               <Input
-                placeholder="Buscar por nombre, teléfono o ID..."
+                placeholder="Buscar por nombre, teléfono, ID o dirección..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
               />
@@ -225,8 +268,11 @@ export const Dashboard: React.FC<DashboardProps> = ({
                   <th className="text-left p-2 w-12"></th>
                   <th className="text-left p-2">ID</th>
                   <th className="text-left p-2">Cliente</th>
+                  <th className="text-left p-2">Dirección</th>
                   <th className="text-left p-2">Origen</th>
                   <th className="text-left p-2">Estado</th>
+                  <th className="text-left p-2">Pago</th>
+                  <th className="text-left p-2">Repartidor</th>
                   <th className="text-left p-2">Total</th>
                   <th className="text-left p-2">Entrega</th>
                   <th className="text-left p-2">Creado</th>
@@ -249,6 +295,11 @@ export const Dashboard: React.FC<DashboardProps> = ({
                       </div>
                     </td>
                     <td className="p-2">
+                      <div className="text-sm max-w-32 truncate" title={order.address}>
+                        {order.address}
+                      </div>
+                    </td>
+                    <td className="p-2">
                       <div className="flex items-center gap-2">
                         {getSourceIcon(order.source)}
                         <span className="text-sm">
@@ -265,6 +316,24 @@ export const Dashboard: React.FC<DashboardProps> = ({
                            order.status === 'delivery' ? 'Camino' : 'Entregado'}
                         </div>
                       </Badge>
+                    </td>
+                    <td className="p-2">
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-1">
+                          {getPaymentMethodIcon(order.paymentMethod)}
+                          <span className="text-xs">{getPaymentMethodLabel(order.paymentMethod)}</span>
+                        </div>
+                        <Badge className={cn("text-white text-xs", getPaymentStatusColor(order.paymentStatus))}>
+                          {order.paymentStatus === 'paid' ? 'Pagado' :
+                           order.paymentStatus === 'pending' ? 'Pendiente' : 'Fallido'}
+                        </Badge>
+                      </div>
+                    </td>
+                    <td className="p-2">
+                      <div className="flex items-center gap-1">
+                        <User className="h-4 w-4 text-muted-foreground" />
+                        <span className="text-sm">{getDeliveryPersonName(order.assignedDeliveryPersonId)}</span>
+                      </div>
                     </td>
                     <td className="p-2 font-medium">${order.totalAmount.toLocaleString()}</td>
                     <td className="p-2">
@@ -293,6 +362,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
         onClose={() => setIsConfigModalOpen(false)}
         selectedOrderIds={selectedOrders}
         orders={orders}
+        deliveryPersonnel={deliveryPersonnel}
         onUpdateOrders={onUpdateOrders}
         onClearSelection={() => setSelectedOrders([])}
       />
