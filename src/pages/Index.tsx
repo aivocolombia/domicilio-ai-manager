@@ -35,21 +35,22 @@ const generateMockOrders = (): Order[] => {
       items: [
         {
           id: `item-${i}`,
-          productId: 'pizza-1',
-          productName: 'Pizza Margarita',
+          productId: 'ajiaco-1',
+          productName: 'Ajiaco Santafereño',
           quantity: 1,
-          price: 25000,
+          price: 18000,
           toppings: [
-            { id: 'topping-1', name: 'Queso Extra', price: 3000 }
+            { id: 'topping-1', name: 'Arroz', price: 2000 },
+            { id: 'topping-2', name: 'Aguacate', price: 3000 }
           ]
         }
       ],
       status: statuses[Math.floor(Math.random() * statuses.length)],
-      totalAmount: 25000 + Math.floor(Math.random() * 15000),
+      totalAmount: 18000 + Math.floor(Math.random() * 15000),
       estimatedDeliveryTime,
       createdAt,
       source: sources[Math.floor(Math.random() * sources.length)],
-      specialInstructions: Math.random() > 0.7 ? 'Sin cebolla, extra salsa' : undefined,
+      specialInstructions: Math.random() > 0.7 ? 'Extra crema de leche, sin mazorca' : undefined,
     };
   });
 };
@@ -57,50 +58,45 @@ const generateMockOrders = (): Order[] => {
 const generateMockInventory = (): InventoryItem[] => {
   return [
     {
-      id: 'pizza-1',
-      name: 'Pizza Margarita',
-      description: 'Pizza clásica con tomate, mozzarella y albahaca',
-      price: 25000,
-      category: 'Pizzas',
-      isAvailable: true,
-      estimatedPrepTime: 15,
-      availableToppings: [
-        { id: 'top-1', name: 'Queso Extra', price: 3000 },
-        { id: 'top-2', name: 'Pepperoni', price: 4000 },
-        { id: 'top-3', name: 'Champiñones', price: 3500 },
-        { id: 'top-4', name: 'Aceitunas', price: 0 }
-      ]
-    },
-    {
-      id: 'pizza-2',
-      name: 'Pizza Pepperoni',
-      description: 'Pizza con pepperoni y mozzarella',
-      price: 28000,
-      category: 'Pizzas',
-      isAvailable: false,
-      estimatedPrepTime: 15,
-      availableToppings: [
-        { id: 'top-1', name: 'Queso Extra', price: 3000 },
-        { id: 'top-5', name: 'Jalapeños', price: 2500 }
-      ]
-    },
-    {
-      id: 'burger-1',
-      name: 'Hamburguesa Clásica',
-      description: 'Hamburguesa con carne, lechuga, tomate y queso',
+      id: 'ajiaco-1',
+      name: 'Ajiaco Santafereño',
+      description: 'Sopa típica colombiana con pollo, papas criollas, guascas y mazorca',
       price: 18000,
-      category: 'Hamburguesas',
+      category: 'Platos Principales',
       isAvailable: true,
-      estimatedPrepTime: 10,
+      estimatedPrepTime: 20,
       availableToppings: [
-        { id: 'top-6', name: 'Tocino', price: 3000 },
-        { id: 'top-7', name: 'Aguacate', price: 2500 }
+        { id: 'top-1', name: 'Arroz', price: 2000 },
+        { id: 'top-2', name: 'Carne', price: 5000 },
+        { id: 'top-3', name: 'Chicharrón', price: 4000 },
+        { id: 'top-4', name: 'Plátanos', price: 3000 },
+        { id: 'top-5', name: 'Mazorca', price: 3500 },
+        { id: 'top-6', name: 'Aguacate', price: 3000 },
+        { id: 'top-7', name: 'Crema de Leche', price: 2500 }
       ]
     },
     {
-      id: 'drink-1',
+      id: 'frijoles-1',
+      name: 'Frijoles',
+      description: 'Frijoles rojos tradicionales colombianos con hogao',
+      price: 15000,
+      category: 'Platos Principales',
+      isAvailable: true,
+      estimatedPrepTime: 15,
+      availableToppings: [
+        { id: 'top-1', name: 'Arroz', price: 2000 },
+        { id: 'top-2', name: 'Carne', price: 5000 },
+        { id: 'top-3', name: 'Chicharrón', price: 4000 },
+        { id: 'top-4', name: 'Plátanos', price: 3000 },
+        { id: 'top-5', name: 'Mazorca', price: 3500 },
+        { id: 'top-6', name: 'Aguacate', price: 3000 },
+        { id: 'top-7', name: 'Crema de Leche', price: 2500 }
+      ]
+    },
+    {
+      id: 'coca-cola-1',
       name: 'Coca Cola',
-      description: 'Bebida gaseosa 350ml',
+      description: 'Gaseosa Coca Cola 350ml',
       price: 3500,
       category: 'Bebidas',
       isAvailable: true,
@@ -108,13 +104,33 @@ const generateMockInventory = (): InventoryItem[] => {
       availableToppings: []
     },
     {
-      id: 'drink-2',
-      name: 'Jugo Natural',
-      description: 'Jugo de frutas naturales 400ml',
+      id: 'ginger-1',
+      name: 'Ginger Ale',
+      description: 'Gaseosa Ginger Ale 350ml',
+      price: 4000,
+      category: 'Bebidas',
+      isAvailable: true,
+      estimatedPrepTime: 1,
+      availableToppings: []
+    },
+    {
+      id: 'limonada-panela-1',
+      name: 'Limonada de Panela',
+      description: 'Limonada natural endulzada con panela 400ml',
+      price: 5500,
+      category: 'Bebidas',
+      isAvailable: true,
+      estimatedPrepTime: 5,
+      availableToppings: []
+    },
+    {
+      id: 'limonada-natural-1',
+      name: 'Limonada Natural',
+      description: 'Limonada natural sin endulzar 400ml',
       price: 5000,
       category: 'Bebidas',
-      isAvailable: false,
-      estimatedPrepTime: 3,
+      isAvailable: true,
+      estimatedPrepTime: 5,
       availableToppings: []
     }
   ];

@@ -179,7 +179,6 @@ export const Inventory: React.FC<InventoryProps> = ({
                         <Switch
                           checked={topping.price > 0}
                           onCheckedChange={() => toggleToppingAvailability(item.id, topping.id)}
-                          size="sm"
                         />
                         <span className={`text-sm ${topping.price === 0 ? 'text-muted-foreground line-through' : ''}`}>
                           {topping.name}
