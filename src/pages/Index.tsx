@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Dashboard } from '@/components/Dashboard';
@@ -201,18 +202,35 @@ const Index = () => {
 
   return (
     <div className="min-h-screen bg-background">
+      {/* Brand Header */}
+      <div className="bg-brand-primary text-white shadow-lg">
+        <div className="container mx-auto p-4">
+          <div className="flex items-center gap-4">
+            <img 
+              src="/lovable-uploads/96fc454f-e0fb-40ad-9214-85dcb21960e5.png" 
+              alt="Ajiaco & Frijoles Logo" 
+              className="h-12 w-12 rounded-full bg-brand-secondary p-1"
+            />
+            <div>
+              <h1 className="text-2xl font-bold">Ajiaco & Frijoles</h1>
+              <p className="text-brand-secondary text-sm">Sistema de Gestión de Pedidos</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <div className="container mx-auto p-6">
         <Tabs defaultValue="dashboard" className="space-y-6">
-          <TabsList className="grid w-full grid-cols-3 lg:w-auto lg:grid-cols-3">
-            <TabsTrigger value="dashboard" className="flex items-center gap-2">
+          <TabsList className="grid w-full grid-cols-3 lg:w-auto lg:grid-cols-3 bg-brand-secondary">
+            <TabsTrigger value="dashboard" className="flex items-center gap-2 data-[state=active]:bg-brand-primary data-[state=active]:text-white">
               <LayoutDashboard className="h-4 w-4" />
               Dashboard
             </TabsTrigger>
-            <TabsTrigger value="inventory" className="flex items-center gap-2">
+            <TabsTrigger value="inventory" className="flex items-center gap-2 data-[state=active]:bg-brand-primary data-[state=active]:text-white">
               <Package className="h-4 w-4" />
               Inventario
             </TabsTrigger>
-            <TabsTrigger value="personnel" className="flex items-center gap-2">
+            <TabsTrigger value="personnel" className="flex items-center gap-2 data-[state=active]:bg-brand-primary data-[state=active]:text-white">
               <Users className="h-4 w-4" />
               Repartidores
             </TabsTrigger>
