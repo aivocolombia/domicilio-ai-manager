@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -36,13 +35,25 @@ const CallCenter: React.FC<CallCenterProps> = ({ orders, inventory, onCreateOrde
     specialInstructions: ''
   });
 
+  // Normalize phone number by removing spaces, dashes, and parentheses
+  const normalizePhone = (phone: string) => {
+    return phone.replace(/[\s\-\(\)]/g, '');
+  };
+
   const searchCustomer = () => {
     if (!searchPhone.trim()) return;
     
-    // Find customer by phone in existing orders
-    const customerOrders = orders.filter(order => 
-      order.customerPhone === searchPhone.trim()
-    );
+    const normalizedSearchPhone = normalizePhone(searchPhone.trim());
+    console.log('Searching for normalized phone:', normalizedSearchPhone);
+    
+    // Find customer by normalized phone in existing orders
+    const customerOrders = orders.filter(order => {
+      const normalizedOrderPhone = normalizePhone(order.customerPhone);
+      console.log('Comparing with order phone:', normalizedOrderPhone);
+      return normalizedOrderPhone === normalizedSearchPhone;
+    });
+    
+    console.log('Found orders:', customerOrders.length);
     
     if (customerOrders.length > 0) {
       const customerName = customerOrders[0].customerName;
