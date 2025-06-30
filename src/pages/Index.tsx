@@ -1,11 +1,11 @@
-
 import React, { useState, useEffect } from 'react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Dashboard } from '@/components/Dashboard';
 import { Inventory } from '@/components/Inventory';
 import { DeliveryPersonnel } from '@/components/DeliveryPersonnel';
+import CallCenter from '@/components/CallCenter';
 import { Order, InventoryItem, DeliverySettings, OrderSource, DeliveryPerson, PaymentMethod, PaymentStatus } from '@/types/delivery';
-import { LayoutDashboard, Package, Users } from 'lucide-react';
+import { LayoutDashboard, Package, Users, Phone } from 'lucide-react';
 
 // Mock data generator
 const generateMockOrders = (): Order[] => {
@@ -200,6 +200,17 @@ const Index = () => {
     setDeliveryPersonnel(generateMockDeliveryPersonnel());
   }, []);
 
+  const handleCreateOrder = (orderData: Omit<Order, 'id' | 'createdAt' | 'estimatedDeliveryTime'>) => {
+    const newOrder: Order = {
+      ...orderData,
+      id: `ORD-${Date.now()}`,
+      createdAt: new Date(),
+      estimatedDeliveryTime: new Date(Date.now() + 30 * 60 * 1000) // 30 minutes from now
+    };
+    
+    setOrders(prevOrders => [newOrder, ...prevOrders]);
+  };
+
   return (
     <div className="min-h-screen bg-background">
       {/* Brand Header */}
@@ -221,7 +232,7 @@ const Index = () => {
 
       <div className="container mx-auto p-6">
         <Tabs defaultValue="dashboard" className="space-y-6">
-          <TabsList className="grid w-full grid-cols-3 lg:w-auto lg:grid-cols-3 bg-brand-secondary">
+          <TabsList className="grid w-full grid-cols-4 lg:w-auto lg:grid-cols-4 bg-brand-secondary">
             <TabsTrigger value="dashboard" className="flex items-center gap-2 data-[state=active]:bg-brand-primary data-[state=active]:text-white">
               <LayoutDashboard className="h-4 w-4" />
               Dashboard
@@ -233,6 +244,10 @@ const Index = () => {
             <TabsTrigger value="personnel" className="flex items-center gap-2 data-[state=active]:bg-brand-primary data-[state=active]:text-white">
               <Users className="h-4 w-4" />
               Repartidores
+            </TabsTrigger>
+            <TabsTrigger value="callcenter" className="flex items-center gap-2 data-[state=active]:bg-brand-primary data-[state=active]:text-white">
+              <Phone className="h-4 w-4" />
+              Call Center
             </TabsTrigger>
           </TabsList>
 
@@ -258,6 +273,14 @@ const Index = () => {
               deliveryPersonnel={deliveryPersonnel}
               orders={orders}
               onUpdateDeliveryPersonnel={setDeliveryPersonnel}
+            />
+          </TabsContent>
+
+          <TabsContent value="callcenter">
+            <CallCenter
+              orders={orders}
+              inventory={inventory}
+              onCreateOrder={handleCreateOrder}
             />
           </TabsContent>
         </Tabs>
