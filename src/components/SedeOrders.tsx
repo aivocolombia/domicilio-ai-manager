@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -9,8 +8,9 @@ import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Order, InventoryItem, Sede, PaymentMethod, User as UserType } from '@/types/delivery';
-import { Plus, Minus, Store, Send, MapPin } from 'lucide-react';
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
+import { Order, InventoryItem, Sede, PaymentMethod, User as UserType, DeliveryType } from '@/types/delivery';
+import { Plus, Minus, Store, Send, MapPin, Search, User, Phone } from 'lucide-react';
 
 interface SedeOrdersProps {
   orders: Order[];
@@ -19,6 +19,12 @@ interface SedeOrdersProps {
   currentUser: UserType;
   onCreateOrder: (orderData: Omit<Order, 'id' | 'createdAt' | 'estimatedDeliveryTime'>) => void;
   onTransferOrder: (orderId: string, targetSedeId: string) => void;
+}
+
+interface CustomerData {
+  name: string;
+  phone: string;
+  orderHistory: Order[];
 }
 
 export const SedeOrders: React.FC<SedeOrdersProps> = ({
@@ -41,12 +47,18 @@ export const SedeOrders: React.FC<SedeOrdersProps> = ({
       toppings: Array<{id: string; name: string; price: number}>
     }>,
     paymentMethod: 'cash' as PaymentMethod,
-    specialInstructions: ''
+    specialInstructions: '',
+    deliveryType: 'delivery' as DeliveryType,
+    pickupSede: ''
   });
 
   const [selectedProduct, setSelectedProduct] = useState('');
   const [transferOrderId, setTransferOrderId] = useState('');
   const [targetSede, setTargetSede] = useState('');
+  
+  // Customer search state
+  const [searchPhone, setSearchPhone] = useState('');
+  const [customer, setCustomer] = useState<CustomerData | null>(null);
 
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('es-CO', {
@@ -54,6 +66,45 @@ export const SedeOrders: React.FC<SedeOrdersProps> = ({
       currency: 'COP',
       minimumFractionDigits: 0
     }).format(amount);
+  };
+
+  // Customer search functionality
+  const normalizePhone = (phone: string) => {
+    return phone.replace(/[\s\-\(\)]/g, '');
+  };
+
+  const searchCustomer = () => {
+    if (!searchPhone.trim()) return;
+    
+    const normalizedSearchPhone = normalizePhone(searchPhone.trim());
+    const customerOrders = orders.filter(order => {
+      const normalizedOrderPhone = normalizePhone(order.customerPhone);
+      return normalizedOrderPhone === normalizedSearchPhone;
+    });
+    
+    if (customerOrders.length > 0) {
+      const customerName = customerOrders[0].customerName;
+      setCustomer({
+        name: customerName,
+        phone: searchPhone.trim(),
+        orderHistory: customerOrders.sort((a, b) => 
+          new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+        )
+      });
+      
+      // Auto-fill customer data
+      setNewOrder(prev => ({
+        ...prev,
+        customerName: customerName,
+        customerPhone: searchPhone.trim()
+      }));
+    } else {
+      setCustomer(null);
+      setNewOrder(prev => ({
+        ...prev,
+        customerPhone: searchPhone.trim()
+      }));
+    }
   };
 
   const addProductToOrder = () => {
@@ -104,14 +155,22 @@ export const SedeOrders: React.FC<SedeOrdersProps> = ({
   };
 
   const handleCreateOrder = () => {
-    if (!newOrder.customerName || !newOrder.customerPhone || !newOrder.address || newOrder.items.length === 0) {
+    if (!newOrder.customerName || !newOrder.customerPhone || newOrder.items.length === 0) {
+      return;
+    }
+
+    if (newOrder.deliveryType === 'delivery' && !newOrder.address) {
+      return;
+    }
+
+    if (newOrder.deliveryType === 'pickup' && !newOrder.pickupSede) {
       return;
     }
 
     const orderData = {
       customerName: newOrder.customerName,
       customerPhone: newOrder.customerPhone,
-      address: newOrder.address,
+      address: newOrder.deliveryType === 'pickup' ? `Recogida en ${newOrder.pickupSede}` : newOrder.address,
       items: newOrder.items.map((item, index) => ({
         id: `item-${Date.now()}-${index}`,
         productId: item.productId,
@@ -127,7 +186,9 @@ export const SedeOrders: React.FC<SedeOrdersProps> = ({
       paymentMethod: newOrder.paymentMethod,
       paymentStatus: 'pending' as const,
       originSede: currentUser.sede,
-      assignedSede: currentUser.sede
+      assignedSede: currentUser.sede,
+      deliveryType: newOrder.deliveryType,
+      pickupSede: newOrder.deliveryType === 'pickup' ? newOrder.pickupSede : undefined
     };
 
     onCreateOrder(orderData);
@@ -139,8 +200,12 @@ export const SedeOrders: React.FC<SedeOrdersProps> = ({
       address: '',
       items: [],
       paymentMethod: 'cash',
-      specialInstructions: ''
+      specialInstructions: '',
+      deliveryType: 'delivery',
+      pickupSede: ''
     });
+    setSearchPhone('');
+    setCustomer(null);
   };
 
   const handleTransferOrder = () => {
@@ -156,6 +221,10 @@ export const SedeOrders: React.FC<SedeOrdersProps> = ({
     order.originSede === currentUser.sede
   );
 
+  const availableForTransfer = mySedeOrders.filter(order => 
+    !['delivered', 'cancelled'].includes(order.status)
+  );
+
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'received': return 'bg-blue-100 text-blue-800';
@@ -163,6 +232,7 @@ export const SedeOrders: React.FC<SedeOrdersProps> = ({
       case 'delivery': return 'bg-purple-100 text-purple-800';
       case 'delivered': return 'bg-green-100 text-green-800';
       case 'cancelled': return 'bg-red-100 text-red-800';
+      case 'ready_pickup': return 'bg-orange-100 text-orange-800';
       default: return 'bg-gray-100 text-gray-800';
     }
   };
@@ -174,6 +244,7 @@ export const SedeOrders: React.FC<SedeOrdersProps> = ({
       case 'delivery': return 'En Camino';
       case 'delivered': return 'Entregado';
       case 'cancelled': return 'Cancelado';
+      case 'ready_pickup': return 'Listo para Recoger';
       default: return status;
     }
   };
@@ -196,6 +267,47 @@ export const SedeOrders: React.FC<SedeOrdersProps> = ({
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
+              {/* Customer Search */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-lg">Buscar Cliente</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="flex gap-4">
+                    <div className="flex-1">
+                      <Label htmlFor="phone-search">Número de Teléfono</Label>
+                      <Input
+                        id="phone-search"
+                        type="tel"
+                        placeholder="Ej: 300-123-4567"
+                        value={searchPhone}
+                        onChange={(e) => setSearchPhone(e.target.value)}
+                        onKeyPress={(e) => e.key === 'Enter' && searchCustomer()}
+                      />
+                    </div>
+                    <div className="flex items-end">
+                      <Button onClick={searchCustomer}>
+                        <Search className="h-4 w-4 mr-2" />
+                        Buscar
+                      </Button>
+                    </div>
+                  </div>
+                  
+                  {customer && (
+                    <div className="mt-4 p-4 bg-green-50 rounded-lg">
+                      <div className="flex items-center gap-2 mb-2">
+                        <User className="h-4 w-4 text-green-600" />
+                        <span className="font-medium text-green-800">Cliente encontrado: {customer.name}</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Phone className="h-4 w-4 text-green-600" />
+                        <span className="text-sm text-green-700">{customer.orderHistory.length} pedidos anteriores</span>
+                      </div>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <Label htmlFor="customerName">Nombre del Cliente</Label>
@@ -218,14 +330,61 @@ export const SedeOrders: React.FC<SedeOrdersProps> = ({
               </div>
 
               <div>
-                <Label htmlFor="address">Dirección de Entrega</Label>
-                <Input
-                  id="address"
-                  value={newOrder.address}
-                  onChange={(e) => setNewOrder(prev => ({ ...prev, address: e.target.value }))}
-                  placeholder="Dirección completa"
-                />
+                <Label>Tipo de Entrega</Label>
+                <RadioGroup
+                  value={newOrder.deliveryType}
+                  onValueChange={(value: DeliveryType) => setNewOrder(prev => ({ 
+                    ...prev, 
+                    deliveryType: value, 
+                    address: '', 
+                    pickupSede: '' 
+                  }))}
+                  className="flex gap-6"
+                >
+                  <div className="flex items-center space-x-2">
+                    <RadioGroupItem value="delivery" id="delivery-sede" />
+                    <Label htmlFor="delivery-sede">Domicilio</Label>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <RadioGroupItem value="pickup" id="pickup-sede" />
+                    <Label htmlFor="pickup-sede">Recogida en Tienda</Label>
+                  </div>
+                </RadioGroup>
               </div>
+
+              {newOrder.deliveryType === 'delivery' ? (
+                <div>
+                  <Label htmlFor="address">Dirección de Entrega</Label>
+                  <Input
+                    id="address"
+                    value={newOrder.address}
+                    onChange={(e) => setNewOrder(prev => ({ ...prev, address: e.target.value }))}
+                    placeholder="Dirección completa"
+                  />
+                </div>
+              ) : (
+                <div>
+                  <Label>Sede de Recogida</Label>
+                  <Select 
+                    value={newOrder.pickupSede} 
+                    onValueChange={(value) => setNewOrder(prev => ({ ...prev, pickupSede: value }))}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Seleccionar sede" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {sedes.filter(sede => sede.isActive).map((sede) => (
+                        <SelectItem key={sede.id} value={sede.name}>
+                          <div className="flex items-center gap-2">
+                            <Store className="h-4 w-4" />
+                            {sede.name} - {sede.address}
+                          </div>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
 
               <div>
                 <Label>Agregar Productos</Label>
@@ -327,7 +486,13 @@ export const SedeOrders: React.FC<SedeOrdersProps> = ({
               <Button 
                 onClick={handleCreateOrder}
                 className="w-full"
-                disabled={!newOrder.customerName || !newOrder.customerPhone || !newOrder.address || newOrder.items.length === 0}
+                disabled={
+                  !newOrder.customerName || 
+                  !newOrder.customerPhone || 
+                  (newOrder.deliveryType === 'delivery' && !newOrder.address) ||
+                  (newOrder.deliveryType === 'pickup' && !newOrder.pickupSede) ||
+                  newOrder.items.length === 0
+                }
               >
                 Crear Pedido
               </Button>
@@ -346,6 +511,7 @@ export const SedeOrders: React.FC<SedeOrdersProps> = ({
                   <TableRow>
                     <TableHead>Pedido</TableHead>
                     <TableHead>Cliente</TableHead>
+                    <TableHead>Tipo</TableHead>
                     <TableHead>Estado</TableHead>
                     <TableHead>Total</TableHead>
                     <TableHead>Origen</TableHead>
@@ -363,6 +529,11 @@ export const SedeOrders: React.FC<SedeOrdersProps> = ({
                           <p className="font-medium">{order.customerName}</p>
                           <p className="text-sm text-muted-foreground">{order.customerPhone}</p>
                         </div>
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant={order.deliveryType === 'pickup' ? 'secondary' : 'outline'}>
+                          {order.deliveryType === 'pickup' ? 'Recogida' : 'Domicilio'}
+                        </Badge>
                       </TableCell>
                       <TableCell>
                         <Badge className={getStatusColor(order.status)}>
@@ -397,6 +568,39 @@ export const SedeOrders: React.FC<SedeOrdersProps> = ({
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
+              {/* Lista de pedidos disponibles para transferir */}
+              <div>
+                <Label>Pedidos Disponibles para Transferir</Label>
+                <div className="border rounded-lg p-4 max-h-60 overflow-y-auto">
+                  {availableForTransfer.length > 0 ? (
+                    <div className="space-y-2">
+                      {availableForTransfer.map((order) => (
+                        <div key={order.id} className="flex items-center justify-between p-2 border rounded">
+                          <div className="flex-1">
+                            <p className="font-medium">{order.customerName}</p>
+                            <p className="text-sm text-muted-foreground">
+                              {order.id.slice(0, 8)} - {formatCurrency(order.totalAmount)}
+                            </p>
+                            <p className="text-sm text-muted-foreground">
+                              {order.deliveryType === 'pickup' ? 'Recogida' : 'Domicilio'}
+                            </p>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <Badge className={getStatusColor(order.status)}>
+                              {getStatusText(order.status)}
+                            </Badge>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-center text-muted-foreground py-4">
+                      No hay pedidos disponibles para transferir
+                    </p>
+                  )}
+                </div>
+              </div>
+
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <Label>Seleccionar Pedido</Label>
@@ -405,7 +609,7 @@ export const SedeOrders: React.FC<SedeOrdersProps> = ({
                       <SelectValue placeholder="Pedido a transferir" />
                     </SelectTrigger>
                     <SelectContent>
-                      {mySedeOrders.filter(order => !['delivered', 'cancelled'].includes(order.status)).map((order) => (
+                      {availableForTransfer.map((order) => (
                         <SelectItem key={order.id} value={order.id}>
                           {order.id.slice(0, 8)} - {order.customerName} - {formatCurrency(order.totalAmount)}
                         </SelectItem>

@@ -8,12 +8,14 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
-import { Phone, Search, Plus, User, MapPin, Clock, CreditCard } from 'lucide-react';
-import { Order, InventoryItem, PaymentMethod } from '@/types/delivery';
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
+import { Phone, Search, Plus, User, MapPin, Clock, CreditCard, Store } from 'lucide-react';
+import { Order, InventoryItem, PaymentMethod, DeliveryType, Sede } from '@/types/delivery';
 
 interface CallCenterProps {
   orders: Order[];
   inventory: InventoryItem[];
+  sedes: Sede[];
   onCreateOrder: (order: Omit<Order, 'id' | 'createdAt' | 'estimatedDeliveryTime'>) => void;
 }
 
@@ -23,7 +25,7 @@ interface CustomerData {
   orderHistory: Order[];
 }
 
-const CallCenter: React.FC<CallCenterProps> = ({ orders, inventory, onCreateOrder }) => {
+const CallCenter: React.FC<CallCenterProps> = ({ orders, inventory, sedes, onCreateOrder }) => {
   const [searchPhone, setSearchPhone] = useState('');
   const [customer, setCustomer] = useState<CustomerData | null>(null);
   const [showNewOrderDialog, setShowNewOrderDialog] = useState(false);
@@ -32,7 +34,9 @@ const CallCenter: React.FC<CallCenterProps> = ({ orders, inventory, onCreateOrde
     address: '',
     items: [] as { productId: string; quantity: number; toppings: string[] }[],
     paymentMethod: 'cash' as PaymentMethod,
-    specialInstructions: ''
+    specialInstructions: '',
+    deliveryType: 'delivery' as DeliveryType,
+    pickupSede: ''
   });
 
   // Normalize phone number by removing spaces, dashes, and parentheses
@@ -103,7 +107,9 @@ const CallCenter: React.FC<CallCenterProps> = ({ orders, inventory, onCreateOrde
   };
 
   const handleCreateOrder = () => {
-    if (!newOrder.address || newOrder.items.length === 0) return;
+    if (newOrder.deliveryType === 'delivery' && !newOrder.address) return;
+    if (newOrder.deliveryType === 'pickup' && !newOrder.pickupSede) return;
+    if (newOrder.items.length === 0) return;
     
     const customerName = customer?.name || newCustomerName;
     if (!customerName) return;
@@ -123,14 +129,16 @@ const CallCenter: React.FC<CallCenterProps> = ({ orders, inventory, onCreateOrde
     onCreateOrder({
       customerName,
       customerPhone: searchPhone,
-      address: newOrder.address,
+      address: newOrder.deliveryType === 'pickup' ? `Recogida en ${newOrder.pickupSede}` : newOrder.address,
       items: orderItems,
       status: 'received',
       totalAmount: calculateTotal(),
       source: 'call_center',
       specialInstructions: newOrder.specialInstructions || undefined,
       paymentMethod: newOrder.paymentMethod,
-      paymentStatus: 'pending'
+      paymentStatus: 'pending',
+      deliveryType: newOrder.deliveryType,
+      pickupSede: newOrder.deliveryType === 'pickup' ? newOrder.pickupSede : undefined
     });
 
     // Reset form
@@ -138,7 +146,9 @@ const CallCenter: React.FC<CallCenterProps> = ({ orders, inventory, onCreateOrde
       address: '',
       items: [],
       paymentMethod: 'cash',
-      specialInstructions: ''
+      specialInstructions: '',
+      deliveryType: 'delivery',
+      pickupSede: ''
     });
     setNewCustomerName('');
     setShowNewOrderDialog(false);
@@ -153,6 +163,7 @@ const CallCenter: React.FC<CallCenterProps> = ({ orders, inventory, onCreateOrde
       case 'kitchen': return 'bg-yellow-100 text-yellow-800';
       case 'delivery': return 'bg-purple-100 text-purple-800';
       case 'delivered': return 'bg-green-100 text-green-800';
+      case 'ready_pickup': return 'bg-orange-100 text-orange-800';
       default: return 'bg-gray-100 text-gray-800';
     }
   };
@@ -231,14 +242,56 @@ const CallCenter: React.FC<CallCenterProps> = ({ orders, inventory, onCreateOrde
                     )}
                     
                     <div>
-                      <Label htmlFor="address">Dirección de Entrega</Label>
-                      <Input
-                        id="address"
-                        value={newOrder.address}
-                        onChange={(e) => setNewOrder({ ...newOrder, address: e.target.value })}
-                        placeholder="Ingrese la dirección completa"
-                      />
+                      <Label>Tipo de Entrega</Label>
+                      <RadioGroup
+                        value={newOrder.deliveryType}
+                        onValueChange={(value: DeliveryType) => setNewOrder({ ...newOrder, deliveryType: value, address: '', pickupSede: '' })}
+                        className="flex gap-6"
+                      >
+                        <div className="flex items-center space-x-2">
+                          <RadioGroupItem value="delivery" id="delivery" />
+                          <Label htmlFor="delivery">Domicilio</Label>
+                        </div>
+                        <div className="flex items-center space-x-2">
+                          <RadioGroupItem value="pickup" id="pickup" />
+                          <Label htmlFor="pickup">Recogida en Tienda</Label>
+                        </div>
+                      </RadioGroup>
                     </div>
+
+                    {newOrder.deliveryType === 'delivery' ? (
+                      <div>
+                        <Label htmlFor="address">Dirección de Entrega</Label>
+                        <Input
+                          id="address"
+                          value={newOrder.address}
+                          onChange={(e) => setNewOrder({ ...newOrder, address: e.target.value })}
+                          placeholder="Ingrese la dirección completa"
+                        />
+                      </div>
+                    ) : (
+                      <div>
+                        <Label>Sede de Recogida</Label>
+                        <Select 
+                          value={newOrder.pickupSede} 
+                          onValueChange={(value) => setNewOrder({ ...newOrder, pickupSede: value })}
+                        >
+                          <SelectTrigger>
+                            <SelectValue placeholder="Seleccionar sede" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {sedes.filter(sede => sede.isActive).map((sede) => (
+                              <SelectItem key={sede.id} value={sede.name}>
+                                <div className="flex items-center gap-2">
+                                  <Store className="h-4 w-4" />
+                                  {sede.name} - {sede.address}
+                                </div>
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    )}
 
                     <div>
                       <Label>Método de Pago</Label>
@@ -322,7 +375,12 @@ const CallCenter: React.FC<CallCenterProps> = ({ orders, inventory, onCreateOrde
 
                     <Button
                       onClick={handleCreateOrder}
-                      disabled={!newOrder.address || newOrder.items.length === 0 || (!customer && !newCustomerName)}
+                      disabled={
+                        (newOrder.deliveryType === 'delivery' && !newOrder.address) ||
+                        (newOrder.deliveryType === 'pickup' && !newOrder.pickupSede) ||
+                        newOrder.items.length === 0 || 
+                        (!customer && !newCustomerName)
+                      }
                       className="w-full bg-brand-primary hover:bg-brand-primary/90"
                     >
                       Crear Pedido

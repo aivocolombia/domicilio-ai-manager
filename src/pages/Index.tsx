@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Dashboard } from '@/components/Dashboard';
@@ -113,7 +112,9 @@ const generateMockOrders = (): Order[] => {
       paymentStatus: paymentStatuses[Math.floor(Math.random() * paymentStatuses.length)],
       originSede: Math.random() > 0.5 ? 'Niza' : undefined,
       assignedSede: Math.random() > 0.3 ? ['Niza', 'Chapinero', 'Zona Rosa'][Math.floor(Math.random() * 3)] : undefined,
-      assignedDeliveryPersonId: Math.random() > 0.4 ? ['dp-1', 'dp-2', 'dp-3'][Math.floor(Math.random() * 3)] : undefined
+      assignedDeliveryPersonId: Math.random() > 0.4 ? ['dp-1', 'dp-2', 'dp-3'][Math.floor(Math.random() * 3)] : undefined,
+      deliveryType: Math.random() > 0.7 ? 'pickup' : 'delivery',
+      pickupSede: Math.random() > 0.7 ? ['Niza', 'Chapinero', 'Zona Rosa'][Math.floor(Math.random() * 3)] : undefined
     };
   });
 };
@@ -352,6 +353,7 @@ const Index = () => {
             <CallCenter
               orders={orders}
               inventory={inventory}
+              sedes={sedes}
               onCreateOrder={handleCreateOrder}
             />
           </TabsContent>

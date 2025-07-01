@@ -18,6 +18,8 @@ export interface Order {
   paymentStatus: PaymentStatus;
   originSede?: string; // Nueva propiedad para sede de origen
   assignedSede?: string; // Nueva propiedad para sede asignada
+  deliveryType: DeliveryType; // Nueva propiedad para tipo de entrega
+  pickupSede?: string; // Sede donde se recoge el pedido (solo para pickup)
 }
 
 export interface OrderItem {
@@ -78,10 +80,11 @@ export interface Sede {
   maxCapacity: number;
 }
 
-export type OrderStatus = 'received' | 'kitchen' | 'delivery' | 'delivered' | 'cancelled';
+export type OrderStatus = 'received' | 'kitchen' | 'delivery' | 'delivered' | 'cancelled' | 'ready_pickup';
 export type OrderSource = 'ai_agent' | 'call_center' | 'web' | 'app' | 'sede';
 export type PaymentMethod = 'card' | 'cash' | 'nequi' | 'transfer';
 export type PaymentStatus = 'pending' | 'paid' | 'failed';
+export type DeliveryType = 'delivery' | 'pickup'; // Nuevo tipo para método de entrega
 
 export interface DeliverySettings {
   acceptingOrders: boolean;
