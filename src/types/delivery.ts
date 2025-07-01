@@ -1,4 +1,3 @@
-
 export interface Order {
   id: string;
   customerName: string;
@@ -17,6 +16,8 @@ export interface Order {
   assignedDeliveryPersonId?: string;
   paymentMethod: PaymentMethod;
   paymentStatus: PaymentStatus;
+  originSede?: string; // Nueva propiedad para sede de origen
+  assignedSede?: string; // Nueva propiedad para sede asignada
 }
 
 export interface OrderItem {
@@ -58,8 +59,27 @@ export interface DeliveryPerson {
   activeOrders: number;
 }
 
+export interface User {
+  id: string;
+  name: string;
+  role: 'admin' | 'callcenter' | 'sede' | 'repartidor';
+  sede: string;
+  phone?: string;
+  createdAt: Date;
+}
+
+export interface Sede {
+  id: string;
+  name: string;
+  address: string;
+  phone: string;
+  isActive: boolean;
+  currentCapacity: number;
+  maxCapacity: number;
+}
+
 export type OrderStatus = 'received' | 'kitchen' | 'delivery' | 'delivered' | 'cancelled';
-export type OrderSource = 'ai_agent' | 'call_center' | 'web' | 'app';
+export type OrderSource = 'ai_agent' | 'call_center' | 'web' | 'app' | 'sede';
 export type PaymentMethod = 'card' | 'cash' | 'nequi' | 'transfer';
 export type PaymentStatus = 'pending' | 'paid' | 'failed';
 

@@ -5,9 +5,52 @@ import { Inventory } from '@/components/Inventory';
 import { DeliveryPersonnel } from '@/components/DeliveryPersonnel';
 import CallCenter from '@/components/CallCenter';
 import { Order, InventoryItem, DeliverySettings, OrderSource, DeliveryPerson, PaymentMethod, PaymentStatus } from '@/types/delivery';
-import { LayoutDashboard, Package, Users, Phone } from 'lucide-react';
+import { LayoutDashboard, Package, Users, Phone, Store } from 'lucide-react';
 
-// Mock data generator
+// Mock data generator for User and Sedes
+const generateMockUser = (): UserType => {
+  return {
+    id: 'user-1',
+    name: 'Carlos Admin',
+    role: 'admin',
+    sede: 'Niza',
+    phone: '320-555-9999',
+    createdAt: new Date('2024-01-01')
+  };
+};
+
+const generateMockSedes = (): Sede[] => {
+  return [
+    {
+      id: 'sede-1',
+      name: 'Niza',
+      address: 'Carrera 15 #127-45, Niza',
+      phone: '601-555-0001',
+      isActive: true,
+      currentCapacity: 8,
+      maxCapacity: 15
+    },
+    {
+      id: 'sede-2',
+      name: 'Chapinero',
+      address: 'Calle 72 #12-34, Chapinero',
+      phone: '601-555-0002',
+      isActive: true,
+      currentCapacity: 12,
+      maxCapacity: 20
+    },
+    {
+      id: 'sede-3',
+      name: 'Zona Rosa',
+      address: 'Carrera 14 #85-23, Zona Rosa',
+      phone: '601-555-0003',
+      isActive: true,
+      currentCapacity: 5,
+      maxCapacity: 10
+    }
+  ];
+};
+
 const generateMockOrders = (): Order[] => {
   const sources: OrderSource[] = ['ai_agent', 'call_center'];
   const statuses = ['received', 'kitchen', 'delivery', 'delivered'] as const;
@@ -65,6 +108,9 @@ const generateMockOrders = (): Order[] => {
       specialInstructions: Math.random() > 0.7 ? 'Extra crema de leche, sin mazorca' : undefined,
       paymentMethod: paymentMethods[Math.floor(Math.random() * paymentMethods.length)],
       paymentStatus: paymentStatuses[Math.floor(Math.random() * paymentStatuses.length)],
+      originSede: Math.random() > 0.5 ? 'Niza' : undefined,
+      assignedSede: Math.random() > 0.3 ? ['Niza', 'Chapinero', 'Zona Rosa'][Math.floor(Math.random() * 3)] : undefined,
+      assignedDeliveryPersonId: Math.random() > 0.4 ? ['dp-1', 'dp-2', 'dp-3'][Math.floor(Math.random() * 3)] : undefined
     };
   });
 };
@@ -186,6 +232,8 @@ const Index = () => {
   const [orders, setOrders] = useState<Order[]>([]);
   const [inventory, setInventory] = useState<InventoryItem[]>([]);
   const [deliveryPersonnel, setDeliveryPersonnel] = useState<DeliveryPerson[]>([]);
+  const [currentUser] = useState<UserType>(generateMockUser());
+  const [sedes] = useState<Sede[]>(generateMockSedes());
   const [settings, setSettings] = useState<DeliverySettings>({
     acceptingOrders: true,
     defaultDeliveryTime: 30,
@@ -211,20 +259,37 @@ const Index = () => {
     setOrders(prevOrders => [newOrder, ...prevOrders]);
   };
 
+  const handleTransferOrder = (orderId: string, targetSedeId: string) => {
+    setOrders(prevOrders => 
+      prevOrders.map(order => 
+        order.id === orderId 
+          ? { ...order, assignedSede: targetSedeId }
+          : order
+      )
+    );
+  };
+
   return (
     <div className="min-h-screen bg-background">
       {/* Brand Header */}
       <div className="bg-brand-primary text-white shadow-lg">
         <div className="container mx-auto p-4">
-          <div className="flex items-center gap-4">
-            <img 
-              src="/lovable-uploads/96fc454f-e0fb-40ad-9214-85dcb21960e5.png" 
-              alt="Ajiaco & Frijoles Logo" 
-              className="h-12 w-12 rounded-full bg-brand-secondary p-1"
-            />
-            <div>
-              <h1 className="text-2xl font-bold">Ajiaco & Frijoles</h1>
-              <p className="text-brand-secondary text-sm">Sistema de Gestión de Pedidos</p>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-4">
+              <img 
+                src="/lovable-uploads/96fc454f-e0fb-40ad-9214-85dcb21960e5.png" 
+                alt="Ajiaco & Frijoles Logo" 
+                className="h-12 w-12 rounded-full bg-brand-secondary p-1"
+              />
+              <div>
+                <h1 className="text-2xl font-bold">Ajiaco & Frijoles</h1>
+                <p className="text-brand-secondary text-sm">Sistema de Gestión de Pedidos</p>
+              </div>
+            </div>
+            
+            {/* User Profile */}
+            <div className="hidden md:block">
+              <UserProfile user={currentUser} />
             </div>
           </div>
         </div>
@@ -232,7 +297,7 @@ const Index = () => {
 
       <div className="container mx-auto p-6">
         <Tabs defaultValue="dashboard" className="space-y-6">
-          <TabsList className="grid w-full grid-cols-4 lg:w-auto lg:grid-cols-4 bg-brand-secondary">
+          <TabsList className="grid w-full grid-cols-5 lg:w-auto lg:grid-cols-5 bg-brand-secondary">
             <TabsTrigger value="dashboard" className="flex items-center gap-2 data-[state=active]:bg-brand-primary data-[state=active]:text-white">
               <LayoutDashboard className="h-4 w-4" />
               Dashboard
@@ -248,6 +313,10 @@ const Index = () => {
             <TabsTrigger value="callcenter" className="flex items-center gap-2 data-[state=active]:bg-brand-primary data-[state=active]:text-white">
               <Phone className="h-4 w-4" />
               Call Center
+            </TabsTrigger>
+            <TabsTrigger value="sede" className="flex items-center gap-2 data-[state=active]:bg-brand-primary data-[state=active]:text-white">
+              <Store className="h-4 w-4" />
+              Sede Local
             </TabsTrigger>
           </TabsList>
 
@@ -281,6 +350,17 @@ const Index = () => {
               orders={orders}
               inventory={inventory}
               onCreateOrder={handleCreateOrder}
+            />
+          </TabsContent>
+
+          <TabsContent value="sede">
+            <SedeOrders
+              orders={orders}
+              inventory={inventory}
+              sedes={sedes}
+              currentUser={currentUser}
+              onCreateOrder={handleCreateOrder}
+              onTransferOrder={handleTransferOrder}
             />
           </TabsContent>
         </Tabs>
