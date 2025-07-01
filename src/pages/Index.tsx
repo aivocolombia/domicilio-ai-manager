@@ -291,10 +291,8 @@ const Index = () => {
               </div>
             </div>
             
-            {/* User Profile */}
-            <div className="hidden md:block">
-              <UserProfile user={currentUser} />
-            </div>
+            {/* User Profile Button */}
+            <UserProfile user={currentUser} />
           </div>
         </div>
       </div>
