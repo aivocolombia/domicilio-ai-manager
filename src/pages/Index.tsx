@@ -1,10 +1,13 @@
+
 import React, { useState, useEffect } from 'react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Dashboard } from '@/components/Dashboard';
 import { Inventory } from '@/components/Inventory';
 import { DeliveryPersonnel } from '@/components/DeliveryPersonnel';
 import CallCenter from '@/components/CallCenter';
-import { Order, InventoryItem, DeliverySettings, OrderSource, DeliveryPerson, PaymentMethod, PaymentStatus } from '@/types/delivery';
+import { UserProfile } from '@/components/UserProfile';
+import { SedeOrders } from '@/components/SedeOrders';
+import { Order, InventoryItem, DeliverySettings, OrderSource, DeliveryPerson, PaymentMethod, PaymentStatus, User as UserType, Sede } from '@/types/delivery';
 import { LayoutDashboard, Package, Users, Phone, Store } from 'lucide-react';
 
 // Mock data generator for User and Sedes
