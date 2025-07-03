@@ -161,7 +161,7 @@ export const SedeOrders: React.FC<SedeOrdersProps> = ({
       items: orderItems,
       status: 'received',
       totalAmount: calculateTotal(),
-      source: 'sede_local',
+      source: 'sede',
       specialInstructions: newOrder.specialInstructions || undefined,
       paymentMethod: newOrder.paymentMethod,
       paymentStatus: 'pending',
