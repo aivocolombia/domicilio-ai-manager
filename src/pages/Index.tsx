@@ -352,6 +352,7 @@ const Index = () => {
               orders={orders}
               inventory={inventory}
               sedes={sedes}
+              settings={settings}
               onCreateOrder={handleCreateOrder}
             />
           </TabsContent>
@@ -362,6 +363,7 @@ const Index = () => {
               inventory={inventory}
               sedes={sedes}
               currentUser={currentUser}
+              settings={settings}
               onCreateOrder={handleCreateOrder}
               onTransferOrder={handleTransferOrder}
             />

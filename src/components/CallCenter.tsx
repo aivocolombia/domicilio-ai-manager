@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -9,13 +10,15 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
-import { Phone, Search, Plus, User, MapPin, Clock, CreditCard, Store } from 'lucide-react';
-import { Order, InventoryItem, PaymentMethod, DeliveryType, Sede } from '@/types/delivery';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Phone, Search, Plus, User, MapPin, Clock, CreditCard, Store, AlertTriangle, Pause } from 'lucide-react';
+import { Order, InventoryItem, PaymentMethod, DeliveryType, Sede, DeliverySettings } from '@/types/delivery';
 
 interface CallCenterProps {
   orders: Order[];
   inventory: InventoryItem[];
   sedes: Sede[];
+  settings: DeliverySettings;
   onCreateOrder: (order: Omit<Order, 'id' | 'createdAt' | 'estimatedDeliveryTime'>) => void;
 }
 
@@ -25,7 +28,7 @@ interface CustomerData {
   orderHistory: Order[];
 }
 
-const CallCenter: React.FC<CallCenterProps> = ({ orders, inventory, sedes, onCreateOrder }) => {
+const CallCenter: React.FC<CallCenterProps> = ({ orders, inventory, sedes, settings, onCreateOrder }) => {
   const [searchPhone, setSearchPhone] = useState('');
   const [customer, setCustomer] = useState<CustomerData | null>(null);
   const [showNewOrderDialog, setShowNewOrderDialog] = useState(false);
@@ -179,6 +182,20 @@ const CallCenter: React.FC<CallCenterProps> = ({ orders, inventory, sedes, onCre
 
   return (
     <div className="space-y-6">
+      {/* Orders Paused Alert */}
+      {!settings.acceptingOrders && (
+        <Alert className="border-amber-200 bg-amber-50">
+          <AlertTriangle className="h-4 w-4 text-amber-600" />
+          <AlertDescription className="text-amber-800">
+            <div className="flex items-center gap-2">
+              <Pause className="h-4 w-4" />
+              <span className="font-medium">Los pedidos están pausados momentáneamente.</span>
+            </div>
+            <p className="mt-1 text-sm">No se pueden crear nuevos pedidos hasta que se reactiven desde el Dashboard.</p>
+          </AlertDescription>
+        </Alert>
+      )}
+
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
@@ -219,7 +236,10 @@ const CallCenter: React.FC<CallCenterProps> = ({ orders, inventory, sedes, onCre
               </div>
               <Dialog open={showNewOrderDialog} onOpenChange={setShowNewOrderDialog}>
                 <DialogTrigger asChild>
-                  <Button className="bg-brand-primary hover:bg-brand-primary/90">
+                  <Button 
+                    className="bg-brand-primary hover:bg-brand-primary/90"
+                    disabled={!settings.acceptingOrders}
+                  >
                     <Plus className="h-4 w-4 mr-2" />
                     Nuevo Pedido
                   </Button>
@@ -228,6 +248,20 @@ const CallCenter: React.FC<CallCenterProps> = ({ orders, inventory, sedes, onCre
                   <DialogHeader>
                     <DialogTitle>Crear Nuevo Pedido</DialogTitle>
                   </DialogHeader>
+                  
+                  {!settings.acceptingOrders && (
+                    <Alert className="border-amber-200 bg-amber-50 mb-4">
+                      <AlertTriangle className="h-4 w-4 text-amber-600" />
+                      <AlertDescription className="text-amber-800">
+                        <div className="flex items-center gap-2">
+                          <Pause className="h-4 w-4" />
+                          <span className="font-medium">Los pedidos están pausados.</span>
+                        </div>
+                        <p className="mt-1 text-sm">No se pueden crear nuevos pedidos en este momento.</p>
+                      </AlertDescription>
+                    </Alert>
+                  )}
+
                   <div className="space-y-4">
                     {!customer && (
                       <div>
@@ -376,6 +410,7 @@ const CallCenter: React.FC<CallCenterProps> = ({ orders, inventory, sedes, onCre
                     <Button
                       onClick={handleCreateOrder}
                       disabled={
+                        !settings.acceptingOrders ||
                         (newOrder.deliveryType === 'delivery' && !newOrder.address) ||
                         (newOrder.deliveryType === 'pickup' && !newOrder.pickupSede) ||
                         newOrder.items.length === 0 || 
