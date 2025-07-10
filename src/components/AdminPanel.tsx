@@ -38,12 +38,15 @@ export function AdminPanel() {
   })
 
   useEffect(() => {
+    console.log('🚀 AdminPanel iniciando...')
     fetchUsers()
     fetchSedes()
   }, [])
 
   const fetchUsers = async () => {
     try {
+      console.log('🔍 Intentando obtener usuarios...')
+      
       const { data, error } = await supabase
         .from('profiles')
         .select(`
@@ -52,10 +55,15 @@ export function AdminPanel() {
         `)
         .order('created_at', { ascending: false })
 
-      if (error) throw error
+      if (error) {
+        console.error('❌ Error obteniendo usuarios:', error)
+        throw error
+      }
+      
+      console.log('✅ Usuarios obtenidos:', data?.length || 0)
       setUsers(data || [])
     } catch (error) {
-      console.error('Error fetching users:', error)
+      console.error('❌ Error fetching users:', error)
       toast({
         title: "Error",
         description: "No se pudieron cargar los usuarios",
@@ -68,16 +76,23 @@ export function AdminPanel() {
 
   const fetchSedes = async () => {
     try {
+      console.log('🔍 Intentando obtener sedes...')
+      
       const { data, error } = await supabase
         .from('sedes')
         .select('*')
         .eq('is_active', true)
         .order('name')
 
-      if (error) throw error
+      if (error) {
+        console.error('❌ Error obteniendo sedes:', error)
+        throw error
+      }
+      
+      console.log('✅ Sedes obtenidas:', data?.length || 0)
       setSedes(data || [])
     } catch (error) {
-      console.error('Error fetching sedes:', error)
+      console.error('❌ Error fetching sedes:', error)
     }
   }
 
@@ -174,6 +189,8 @@ export function AdminPanel() {
     }
   }
 
+  console.log('🎨 Renderizando AdminPanel, loading:', loading, 'users:', users.length)
+
   return (
     <div className="min-h-screen bg-background">
       {/* Header */}
@@ -209,11 +226,14 @@ export function AdminPanel() {
 
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Sedes Activas</CardTitle>
+              <CardTitle className="text-sm font-medium">Total Sedes</CardTitle>
               <Building2 className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold">{sedes.length}</div>
+              <p className="text-xs text-muted-foreground">
+                Todas activas
+              </p>
             </CardContent>
           </Card>
 
@@ -224,39 +244,42 @@ export function AdminPanel() {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold">
-                {users.filter(u => u.role === 'admin').length}
+                {users.filter(u => u.role === 'admin' && u.is_active).length}
               </div>
+              <p className="text-xs text-muted-foreground">
+                Usuarios con permisos de administrador
+              </p>
             </CardContent>
           </Card>
         </div>
 
-        {/* Users Management */}
+        {/* Users Table */}
         <Card>
           <CardHeader>
             <div className="flex items-center justify-between">
               <div>
                 <CardTitle>Gestión de Usuarios</CardTitle>
                 <CardDescription>
-                  Administra usuarios del sistema y sus permisos
+                  Administra los usuarios del sistema
                 </CardDescription>
               </div>
               <Dialog open={isCreateUserOpen} onOpenChange={setIsCreateUserOpen}>
                 <DialogTrigger asChild>
-                  <Button className="bg-primary hover:bg-primary/90">
-                    <Plus className="h-4 w-4 mr-2" />
+                  <Button>
+                    <Plus className="mr-2 h-4 w-4" />
                     Crear Usuario
                   </Button>
                 </DialogTrigger>
-                <DialogContent className="sm:max-w-[425px]">
+                <DialogContent>
                   <DialogHeader>
                     <DialogTitle>Crear Nuevo Usuario</DialogTitle>
                     <DialogDescription>
-                      Completa la información para crear un nuevo usuario
+                      Completa la información del nuevo usuario
                     </DialogDescription>
                   </DialogHeader>
                   <form onSubmit={handleCreateUser} className="space-y-4">
                     <div className="space-y-2">
-                      <Label htmlFor="name">Nombre Completo</Label>
+                      <Label htmlFor="name">Nombre</Label>
                       <Input
                         id="name"
                         value={formData.name}
@@ -265,7 +288,7 @@ export function AdminPanel() {
                       />
                     </div>
                     <div className="space-y-2">
-                      <Label htmlFor="email">Correo Electrónico</Label>
+                      <Label htmlFor="email">Email</Label>
                       <Input
                         id="email"
                         type="email"
@@ -282,7 +305,6 @@ export function AdminPanel() {
                         value={formData.password}
                         onChange={(e) => setFormData({ ...formData, password: e.target.value })}
                         required
-                        minLength={6}
                       />
                     </div>
                     <div className="space-y-2">
@@ -300,37 +322,38 @@ export function AdminPanel() {
                         </SelectContent>
                       </Select>
                     </div>
-                    {formData.role === 'agent' && (
-                      <div className="space-y-2">
-                        <Label htmlFor="sede">Sede</Label>
-                        <Select
-                          value={formData.sede_id}
-                          onValueChange={(value) => setFormData({ ...formData, sede_id: value })}
-                        >
-                          <SelectTrigger>
-                            <SelectValue placeholder="Selecciona una sede" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {sedes.map((sede) => (
-                              <SelectItem key={sede.id} value={sede.id}>
-                                {sede.name}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-                    )}
+                    <div className="space-y-2">
+                      <Label htmlFor="sede">Sede (Opcional)</Label>
+                      <Select
+                        value={formData.sede_id}
+                        onValueChange={(value) => setFormData({ ...formData, sede_id: value })}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Seleccionar sede" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {sedes.map((sede) => (
+                            <SelectItem key={sede.id} value={sede.id}>
+                              {sede.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
                     <div className="flex items-center space-x-2">
                       <Switch
                         id="is_active"
                         checked={formData.is_active}
                         onCheckedChange={(checked) => setFormData({ ...formData, is_active: checked })}
                       />
-                      <Label htmlFor="is_active">Usuario Activo</Label>
+                      <Label htmlFor="is_active">Usuario activo</Label>
                     </div>
-                    <Button type="submit" className="w-full">
-                      Crear Usuario
-                    </Button>
+                    <div className="flex justify-end space-x-2">
+                      <Button type="button" variant="outline" onClick={() => setIsCreateUserOpen(false)}>
+                        Cancelar
+                      </Button>
+                      <Button type="submit">Crear Usuario</Button>
+                    </div>
                   </form>
                 </DialogContent>
               </Dialog>
@@ -347,64 +370,63 @@ export function AdminPanel() {
                   className="max-w-sm"
                 />
               </div>
-
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Usuario</TableHead>
-                    <TableHead>Rol</TableHead>
-                    <TableHead>Sede</TableHead>
-                    <TableHead>Estado</TableHead>
-                    <TableHead>Fecha de Creación</TableHead>
-                    <TableHead>Acciones</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {filteredUsers.map((user) => (
-                    <TableRow key={user.id}>
-                      <TableCell>
-                        <div>
-                          <div className="font-medium">{user.name}</div>
-                          <div className="text-sm text-muted-foreground">{user.email}</div>
-                        </div>
-                      </TableCell>
-                      <TableCell>{getRoleBadge(user.role)}</TableCell>
-                      <TableCell>
-                        {user.sede_id ? (
-                          <Badge variant="outline">
-                            {sedes.find(s => s.id === user.sede_id)?.name || 'Sede desconocida'}
-                          </Badge>
-                        ) : (
-                          <span className="text-muted-foreground">No asignada</span>
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant={user.is_active ? "default" : "secondary"}>
-                          {user.is_active ? "Activo" : "Inactivo"}
-                        </Badge>
-                      </TableCell>
-                      <TableCell>
-                        {new Date(user.created_at).toLocaleDateString()}
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex items-center space-x-2">
+              
+              {loading ? (
+                <div className="text-center py-8">
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto"></div>
+                  <p className="text-muted-foreground mt-2">Cargando usuarios...</p>
+                </div>
+              ) : (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Usuario</TableHead>
+                      <TableHead>Rol</TableHead>
+                      <TableHead>Sede</TableHead>
+                      <TableHead>Estado</TableHead>
+                      <TableHead>Acciones</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {filteredUsers.map((user) => (
+                      <TableRow key={user.id}>
+                        <TableCell>
+                          <div>
+                            <div className="font-medium">{user.name}</div>
+                            <div className="text-sm text-muted-foreground">{user.email}</div>
+                          </div>
+                        </TableCell>
+                        <TableCell>{getRoleBadge(user.role)}</TableCell>
+                        <TableCell>
+                          {user.sede_id ? (
+                            <span className="text-sm text-muted-foreground">
+                              {sedes.find(s => s.id === user.sede_id)?.name || 'N/A'}
+                            </span>
+                          ) : (
+                            <span className="text-sm text-muted-foreground">Sin sede</span>
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          {user.is_active ? (
+                            <Badge variant="default">Activo</Badge>
+                          ) : (
+                            <Badge variant="secondary">Inactivo</Badge>
+                          )}
+                        </TableCell>
+                        <TableCell>
                           <Button
                             variant="outline"
                             size="sm"
                             onClick={() => toggleUserStatus(user.id, user.is_active)}
                           >
-                            {user.is_active ? (
-                              <UserX className="h-4 w-4" />
-                            ) : (
-                              <UserCheck className="h-4 w-4" />
-                            )}
+                            {user.is_active ? <UserX className="h-4 w-4" /> : <UserCheck className="h-4 w-4" />}
                           </Button>
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              )}
             </div>
           </CardContent>
         </Card>

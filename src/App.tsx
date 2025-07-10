@@ -21,7 +21,7 @@ const App = () => (
             <Route 
               path="/" 
               element={
-                <ProtectedRoute requiredRole="agent">
+                <ProtectedRoute>
                   <Index />
                 </ProtectedRoute>
               } 

@@ -12,7 +12,15 @@ interface ProtectedRouteProps {
 export function ProtectedRoute({ children, requiredRole }: ProtectedRouteProps) {
   const { user, profile, loading } = useAuth()
 
+  console.log('🛡️ ProtectedRoute renderizando:', {
+    user: user?.email,
+    profile: profile?.name,
+    loading,
+    requiredRole
+  })
+
   if (loading) {
+    console.log('⏳ Mostrando pantalla de carga...')
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
         <div className="text-center space-y-4">
@@ -24,10 +32,12 @@ export function ProtectedRoute({ children, requiredRole }: ProtectedRouteProps) 
   }
 
   if (!user || !profile) {
+    console.log('❌ No hay usuario o perfil, mostrando Login')
     return <Login />
   }
 
   if (!profile.is_active) {
+    console.log('⚠️ Usuario inactivo, mostrando pantalla de cuenta desactivada')
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
         <div className="text-center space-y-4 max-w-md">
@@ -44,6 +54,7 @@ export function ProtectedRoute({ children, requiredRole }: ProtectedRouteProps) 
   }
 
   if (requiredRole && profile.role !== requiredRole) {
+    console.log('🚫 Acceso denegado por rol:', profile.role, '!=', requiredRole)
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
         <div className="text-center space-y-4 max-w-md">
@@ -61,9 +72,11 @@ export function ProtectedRoute({ children, requiredRole }: ProtectedRouteProps) 
 
   // If user is admin, show admin panel
   if (profile.role === 'admin') {
+    console.log('👑 Usuario es admin, mostrando AdminPanel')
     return <AdminPanel />
   }
 
   // If user is agent, show the main app
+  console.log('👤 Usuario es agente, mostrando aplicación principal')
   return <>{children}</>
 }
