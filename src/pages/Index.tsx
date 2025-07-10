@@ -292,7 +292,7 @@ const Index = () => {
             </div>
             
             {/* User Profile Button */}
-            <UserProfile user={currentUser} />
+            <UserProfile />
           </div>
         </div>
       </div>

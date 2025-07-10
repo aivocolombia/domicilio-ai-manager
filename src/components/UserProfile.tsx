@@ -4,30 +4,30 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { User, MapPin, Phone, Calendar, UserRound } from 'lucide-react';
-import { User as UserType } from '@/types/delivery';
+import { User, MapPin, Phone, Calendar, UserRound, LogOut } from 'lucide-react';
+import { useAuth } from '@/hooks/useAuth';
 
 interface UserProfileProps {
-  user: UserType;
+  // No longer need user prop as we'll get it from auth context
 }
 
-export const UserProfile: React.FC<UserProfileProps> = ({ user }) => {
+export const UserProfile: React.FC<UserProfileProps> = () => {
+  const { profile, signOut } = useAuth();
+
+  if (!profile) return null;
+
   const getRoleColor = (role: string) => {
     switch (role) {
-      case 'admin': return 'bg-red-100 text-red-800';
-      case 'callcenter': return 'bg-blue-100 text-blue-800';
-      case 'sede': return 'bg-green-100 text-green-800';
-      case 'repartidor': return 'bg-purple-100 text-purple-800';
-      default: return 'bg-gray-100 text-gray-800';
+      case 'admin': return 'bg-destructive/10 text-destructive';
+      case 'agent': return 'bg-primary/10 text-primary';
+      default: return 'bg-muted text-muted-foreground';
     }
   };
 
   const getRoleText = (role: string) => {
     switch (role) {
       case 'admin': return 'Administrador';
-      case 'callcenter': return 'Call Center';
-      case 'sede': return 'Sede Local';
-      case 'repartidor': return 'Repartidor';
+      case 'agent': return 'Agente';
       default: return role;
     }
   };
@@ -41,7 +41,7 @@ export const UserProfile: React.FC<UserProfileProps> = ({ user }) => {
           className="flex items-center gap-2 text-white hover:bg-white/10 transition-colors"
         >
           <UserRound className="h-5 w-5" />
-          <span className="hidden md:inline">{user.name}</span>
+          <span className="hidden md:inline">{profile.name}</span>
         </Button>
       </PopoverTrigger>
       <PopoverContent 
@@ -58,29 +58,37 @@ export const UserProfile: React.FC<UserProfileProps> = ({ user }) => {
           </CardHeader>
           <CardContent className="space-y-4 p-4">
             <div className="space-y-2">
-              <p className="font-semibold text-lg text-gray-900">{user.name}</p>
-              <Badge className={getRoleColor(user.role)}>
-                {getRoleText(user.role)}
+              <p className="font-semibold text-lg text-foreground">{profile.name}</p>
+              <p className="text-sm text-muted-foreground">{profile.email}</p>
+              <Badge className={getRoleColor(profile.role)}>
+                {getRoleText(profile.role)}
               </Badge>
             </div>
             
             <div className="space-y-3">
-              <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                <MapPin className="h-4 w-4 text-brand-primary" />
-                <span>Sede: <span className="font-medium text-gray-700">{user.sede}</span></span>
-              </div>
-              
-              {user.phone && (
+              {profile.sede_id && (
                 <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                  <Phone className="h-4 w-4 text-brand-primary" />
-                  <span className="font-medium text-gray-700">{user.phone}</span>
+                  <MapPin className="h-4 w-4 text-primary" />
+                  <span>Sede asignada</span>
                 </div>
               )}
               
               <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                <Calendar className="h-4 w-4 text-brand-primary" />
-                <span>Desde: <span className="font-medium text-gray-700">{user.createdAt.toLocaleDateString('es-CO')}</span></span>
+                <Calendar className="h-4 w-4 text-primary" />
+                <span>Desde: <span className="font-medium text-foreground">{new Date(profile.created_at).toLocaleDateString('es-CO')}</span></span>
               </div>
+            </div>
+
+            <div className="pt-2 border-t">
+              <Button 
+                variant="outline" 
+                size="sm" 
+                className="w-full flex items-center gap-2 hover:bg-destructive hover:text-destructive-foreground"
+                onClick={signOut}
+              >
+                <LogOut className="h-4 w-4" />
+                Cerrar Sesión
+              </Button>
             </div>
           </CardContent>
         </Card>
