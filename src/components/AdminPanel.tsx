@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Plus, Search, Edit, Trash2, Users, Building2, UserCheck, UserX } from 'lucide-react'
+import { Plus, Search, Edit, Trash2, Users, Building2, UserCheck, UserX, TrendingUp, DollarSign, Package, Clock } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -13,8 +13,63 @@ import { useToast } from '@/hooks/use-toast'
 import { supabase, type Database } from '@/lib/supabase'
 import { useAuth } from '@/hooks/useAuth'
 
+
 type Profile = Database['public']['Tables']['profiles']['Row']
 type Sede = Database['public']['Tables']['sedes']['Row']
+
+// Datos de demo para las gráficas
+const generateDemoData = () => {
+  // Datos de domicilios por día (últimos 7 días)
+  const domiciliosPorDia = [
+    { dia: 'Lun', domicilios: 45, ganancia: 675000 },
+    { dia: 'Mar', domicilios: 52, ganancia: 780000 },
+    { dia: 'Mié', domicilios: 38, ganancia: 570000 },
+    { dia: 'Jue', domicilios: 61, ganancia: 915000 },
+    { dia: 'Vie', domicilios: 78, ganancia: 1170000 },
+    { dia: 'Sáb', domicilios: 89, ganancia: 1335000 },
+    { dia: 'Dom', domicilios: 67, ganancia: 1005000 }
+  ]
+
+  // Datos de productos más vendidos
+  const productosMasVendidos = [
+    { producto: 'Ajiaco', ventas: 156, porcentaje: 25 },
+    { producto: 'Bandeja Paisa', ventas: 134, porcentaje: 21 },
+    { producto: 'Sancocho', ventas: 98, porcentaje: 16 },
+    { producto: 'Lechona', ventas: 87, porcentaje: 14 },
+    { producto: 'Tamal', ventas: 76, porcentaje: 12 },
+    { producto: 'Otros', ventas: 67, porcentaje: 12 }
+  ]
+
+  // Datos de ganancias por sede
+  const gananciasPorSede = [
+    { sede: 'Niza', ganancia: 2850000, domicilios: 234 },
+    { sede: 'Centro', ganancia: 3200000, domicilios: 267 },
+    { sede: 'Norte', ganancia: 1980000, domicilios: 156 },
+    { sede: 'Sur', ganancia: 2450000, domicilios: 189 }
+  ]
+
+  // Datos de horarios pico
+  const horariosPico = [
+    { hora: '12:00', domicilios: 23 },
+    { hora: '13:00', domicilios: 45 },
+    { hora: '14:00', domicilios: 38 },
+    { hora: '15:00', domicilios: 28 },
+    { hora: '16:00', domicilios: 32 },
+    { hora: '17:00', domicilios: 41 },
+    { hora: '18:00', domicilios: 67 },
+    { hora: '19:00', domicilios: 89 },
+    { hora: '20:00', domicilios: 76 },
+    { hora: '21:00', domicilios: 54 },
+    { hora: '22:00', domicilios: 34 }
+  ]
+
+  return {
+    domiciliosPorDia,
+    productosMasVendidos,
+    gananciasPorSede,
+    horariosPico
+  }
+}
 
 export function AdminPanel() {
   const [users, setUsers] = useState<Profile[]>([])
@@ -23,6 +78,9 @@ export function AdminPanel() {
   const [loading, setLoading] = useState(true)
   const [isCreateUserOpen, setIsCreateUserOpen] = useState(false)
   const [selectedUser, setSelectedUser] = useState<Profile | null>(null)
+  
+  // Datos de demo para las gráficas
+  const demoData = generateDemoData()
   
   const { toast } = useToast()
   const { signOut } = useAuth()
@@ -249,6 +307,128 @@ export function AdminPanel() {
               <p className="text-xs text-muted-foreground">
                 Usuarios con permisos de administrador
               </p>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Métricas de Negocio */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {/* Domicilios por Día */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <TrendingUp className="h-5 w-5" />
+                Domicilios por Día (Última Semana)
+              </CardTitle>
+              <CardDescription>
+                Tendencia de domicilios y ganancias diarias
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-4">
+                {demoData.domiciliosPorDia.map((item, index) => (
+                  <div key={index} className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
+                    <div className="flex items-center gap-3">
+                      <div className="w-3 h-3 bg-primary rounded-full"></div>
+                      <span className="font-medium">{item.dia}</span>
+                    </div>
+                    <div className="text-right">
+                      <div className="font-bold text-lg">{item.domicilios} domicilios</div>
+                      <div className="text-sm text-muted-foreground">
+                        ${(item.ganancia / 1000).toFixed(0)}k ganancia
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Productos Más Vendidos */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Package className="h-5 w-5" />
+                Productos Más Vendidos
+              </CardTitle>
+              <CardDescription>
+                Distribución de ventas por producto
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-4">
+                {demoData.productosMasVendidos.map((item, index) => (
+                  <div key={index} className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <div 
+                        className="w-4 h-4 rounded-full"
+                        style={{ backgroundColor: `hsl(${index * 60}, 70%, 50%)` }}
+                      ></div>
+                      <span className="font-medium">{item.producto}</span>
+                    </div>
+                    <div className="text-right">
+                      <div className="font-bold">{item.ventas} ventas</div>
+                      <div className="text-sm text-muted-foreground">{item.porcentaje}%</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Ganancias por Sede */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <DollarSign className="h-5 w-5" />
+                Ganancias por Sede
+              </CardTitle>
+              <CardDescription>
+                Comparación de rendimiento por ubicación
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-4">
+                {demoData.gananciasPorSede.map((item, index) => (
+                  <div key={index} className="flex items-center justify-between p-3 bg-muted/30 rounded-lg">
+                    <div className="flex items-center gap-3">
+                      <div 
+                        className="w-4 h-4 rounded-full"
+                        style={{ backgroundColor: `hsl(${index * 90}, 70%, 50%)` }}
+                      ></div>
+                      <span className="font-medium">{item.sede}</span>
+                    </div>
+                    <div className="text-right">
+                      <div className="font-bold text-lg">${(item.ganancia / 1000000).toFixed(1)}M</div>
+                      <div className="text-sm text-muted-foreground">{item.domicilios} domicilios</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Horarios Pico */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Clock className="h-5 w-5" />
+                Horarios de Mayor Demanda
+              </CardTitle>
+              <CardDescription>
+                Distribución de domicilios por hora del día
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-3 gap-2">
+                {demoData.horariosPico.map((item, index) => (
+                  <div key={index} className="text-center p-2 bg-muted/30 rounded">
+                    <div className="text-xs text-muted-foreground">{item.hora}</div>
+                    <div className="font-bold text-lg">{item.domicilios}</div>
+                    <div className="text-xs">domicilios</div>
+                  </div>
+                ))}
+              </div>
             </CardContent>
           </Card>
         </div>
