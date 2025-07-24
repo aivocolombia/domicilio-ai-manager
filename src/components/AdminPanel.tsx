@@ -32,12 +32,8 @@ const generateDemoData = () => {
 
   // Datos de productos más vendidos
   const productosMasVendidos = [
-    { producto: 'Ajiaco', ventas: 156, porcentaje: 25 },
-    { producto: 'Bandeja Paisa', ventas: 134, porcentaje: 21 },
-    { producto: 'Sancocho', ventas: 98, porcentaje: 16 },
-    { producto: 'Lechona', ventas: 87, porcentaje: 14 },
-    { producto: 'Tamal', ventas: 76, porcentaje: 12 },
-    { producto: 'Otros', ventas: 67, porcentaje: 12 }
+    { producto: 'Ajiaco', ventas: 210, porcentaje: 60 },
+    { producto: 'Frijoles', ventas: 140, porcentaje: 40 }
   ]
 
   // Datos de ganancias por sede
