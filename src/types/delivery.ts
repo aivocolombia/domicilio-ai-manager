@@ -28,10 +28,10 @@ export interface OrderItem {
   productName: string;
   quantity: number;
   price: number;
-  toppings: Topping[];
+  toppings: OrderTopping[];
 }
 
-export interface Topping {
+export interface OrderTopping {
   id: string;
   name: string;
   price: number;
@@ -91,4 +91,71 @@ export interface DeliverySettings {
   defaultDeliveryTime: number; // minutes
   maxOrdersPerHour: number;
   deliveryFee: number;
+}
+
+// Tipos para productos
+export interface PlatoFuerte {
+  id: string;
+  name: string;
+  description: string | null;
+  price: number;
+  is_available: boolean;
+  image_url: string | null;
+  category: string;
+  preparation_time: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface Topping {
+  id: string;
+  name: string;
+  description: string | null;
+  price: number;
+  is_available: boolean;
+  category: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface PlatoTopping {
+  id: string;
+  plato_fuerte_id: string;
+  topping_id: string;
+  is_default: boolean;
+  created_at: string;
+}
+
+export interface Bebida {
+  id: string;
+  name: string;
+  description: string | null;
+  price: number;
+  is_available: boolean;
+  image_url: string | null;
+  category: string;
+  size: string;
+  created_at: string;
+  updated_at: string;
+}
+
+// Tipo para productos con toppings incluidos
+export interface PlatoFuerteConToppings extends PlatoFuerte {
+  toppings?: Topping[];
+  default_toppings?: Topping[];
+}
+
+// Tipo para inventario actualizado
+export interface InventoryItem {
+  id: string;
+  name: string;
+  description: string;
+  price: number;
+  isAvailable: boolean;
+  category: 'plato_fuerte' | 'topping' | 'bebida';
+  stock?: number;
+  imageUrl?: string;
+  preparationTime?: number;
+  size?: string;
+  toppings?: Topping[];
 }

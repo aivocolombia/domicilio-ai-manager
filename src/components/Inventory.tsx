@@ -1,73 +1,118 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Search, Package, Plus } from 'lucide-react';
-import { InventoryItem, Topping } from '@/types/delivery';
+import { Search, Package, Plus, Loader2, AlertCircle } from 'lucide-react';
+import { useMenu } from '@/hooks/useMenu';
 import { toast } from '@/hooks/use-toast';
+import { formatCurrency } from '@/utils/format';
 
-interface InventoryProps {
-  inventory: InventoryItem[];
-  onUpdateInventory: (inventory: InventoryItem[]) => void;
-}
+export const Inventory: React.FC = () => {
+  const {
+    platos,
+    bebidas,
+    toppings,
+    loading,
+    error,
+    loadInventory,
+    updatePlato,
+    updateBebida,
+    updateTopping,
+    clearError
+  } = useMenu();
 
-export const Inventory: React.FC<InventoryProps> = ({
-  inventory,
-  onUpdateInventory
-}) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
+  const [showInactive, setShowInactive] = useState(true); // Mostrar inactivos por defecto
 
-  const categories = ['all', ...new Set(inventory.map(item => item.category))];
+  // Combinar todos los productos para mostrar en el inventario (incluyendo inactivos)
+  const allProducts = [
+    ...platos.map(plato => ({
+      ...plato,
+      type: 'plato' as const,
+      category: 'Platos Principales',
+      description: plato.description || 'Sin descripción'
+    })),
+    ...bebidas.map(bebida => ({
+      ...bebida,
+      type: 'bebida' as const,
+      category: 'Bebidas',
+      description: 'Bebida refrescante'
+    })),
+    ...toppings.map(topping => ({
+      ...topping,
+      type: 'topping' as const,
+      category: 'Toppings',
+      description: 'Topping adicional'
+    }))
+  ];
+
+  const categories = ['all', ...new Set(allProducts.map(item => item.category))];
   
-  const filteredItems = inventory.filter(item => {
+  const filteredItems = allProducts.filter(item => {
     const matchesSearch = item.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          item.description.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesCategory = selectedCategory === 'all' || item.category === selectedCategory;
-    return matchesSearch && matchesCategory;
+    const matchesAvailability = showInactive || item.available; // Mostrar todos si showInactive es true, o solo activos si es false
+    return matchesSearch && matchesCategory && matchesAvailability;
   });
 
-  const toggleProductAvailability = (productId: string) => {
-    const updatedInventory = inventory.map(item => 
-      item.id === productId 
-        ? { ...item, isAvailable: !item.isAvailable }
-        : item
-    );
-    onUpdateInventory(updatedInventory);
-    
-    const product = inventory.find(item => item.id === productId);
-    toast({
-      title: "Producto actualizado",
-      description: `${product?.name} ${product?.isAvailable ? 'desactivado' : 'activado'} correctamente.`,
-    });
-  };
+  const toggleProductAvailability = async (productId: number, type: 'plato' | 'bebida' | 'topping') => {
+    try {
+      const product = allProducts.find(item => item.id === productId);
+      if (!product) return;
 
-  const toggleToppingAvailability = (productId: string, toppingId: string) => {
-    const updatedInventory = inventory.map(item => {
-      if (item.id === productId) {
-        const updatedToppings = item.availableToppings.map(topping =>
-          topping.id === toppingId 
-            ? { ...topping, price: topping.price === 0 ? 1000 : 0 } // Use price 0 to indicate unavailable
-            : topping
-        );
-        return { ...item, availableToppings: updatedToppings };
+      const isCurrentlyAvailable = product.available;
+      
+      switch (type) {
+        case 'plato':
+          await updatePlato(productId, { available: !isCurrentlyAvailable });
+          break;
+        case 'bebida':
+          await updateBebida(productId, { available: !isCurrentlyAvailable });
+          break;
+        case 'topping':
+          await updateTopping(productId, { available: !isCurrentlyAvailable });
+          break;
       }
-      return item;
-    });
-    onUpdateInventory(updatedInventory);
-    
-    toast({
-      title: "Topping actualizado",
-      description: "Disponibilidad del topping cambiada correctamente.",
-    });
+
+      toast({
+        title: "Producto actualizado",
+        description: `${product.name} ${isCurrentlyAvailable ? 'desactivado' : 'activado'} correctamente.`,
+      });
+    } catch (err) {
+      toast({
+        title: "Error",
+        description: "No se pudo actualizar el producto.",
+        variant: "destructive"
+      });
+    }
   };
 
-  const availableCount = inventory.filter(item => item.isAvailable).length;
-  const unavailableCount = inventory.length - availableCount;
+  const availableCount = allProducts.filter(item => item.available).length;
+  const unavailableCount = allProducts.filter(item => !item.available).length;
+  const totalCount = allProducts.length;
+
+  // Cargar inventario cuando el componente se monta
+  useEffect(() => {
+    loadInventory();
+  }, [loadInventory]);
+
+  if (error) {
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center gap-2 text-red-600">
+          <AlertCircle className="h-5 w-5" />
+          <span>Error: {error}</span>
+        </div>
+        <Button onClick={clearError}>Reintentar</Button>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -78,7 +123,12 @@ export const Inventory: React.FC<InventoryProps> = ({
             {availableCount} productos disponibles • {unavailableCount} no disponibles
           </p>
         </div>
-        <Button className="flex items-center gap-2">
+        <Button className="flex items-center gap-2" disabled={loading} onClick={() => {
+          toast({
+            title: "Funcionalidad en desarrollo",
+            description: "La funcionalidad de agregar productos estará disponible pronto.",
+          });
+        }}>
           <Plus className="h-4 w-4" />
           Agregar Producto
         </Button>
@@ -109,7 +159,7 @@ export const Inventory: React.FC<InventoryProps> = ({
         <Card>
           <CardContent className="flex items-center justify-between p-6">
             <div>
-              <p className="text-2xl font-bold">{inventory.length}</p>
+              <p className="text-2xl font-bold text-blue-600">{totalCount}</p>
               <p className="text-sm text-muted-foreground">Total Productos</p>
             </div>
             <Package className="h-8 w-8 text-blue-600" />
@@ -142,59 +192,87 @@ export const Inventory: React.FC<InventoryProps> = ({
                 </Button>
               ))}
             </div>
+            <div className="flex items-center gap-2">
+              <Switch
+                checked={showInactive}
+                onCheckedChange={setShowInactive}
+                id="show-inactive"
+              />
+              <label htmlFor="show-inactive" className="text-sm font-medium">
+                Mostrar inactivos
+              </label>
+            </div>
           </div>
         </CardContent>
       </Card>
 
+      {/* Loading State */}
+      {loading && (
+        <div className="flex items-center justify-center py-8">
+          <Loader2 className="h-8 w-8 animate-spin" />
+          <span className="ml-2">Cargando inventario...</span>
+        </div>
+      )}
+
       {/* Products Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {filteredItems.map((item) => (
-          <Card key={item.id} className={!item.isAvailable ? 'opacity-60' : ''}>
-            <CardHeader>
-              <div className="flex items-start justify-between">
-                <div className="flex-1">
-                  <CardTitle className="text-lg">{item.name}</CardTitle>
-                  <p className="text-sm text-muted-foreground mt-1">{item.description}</p>
+      {!loading && (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {filteredItems.map((item) => (
+            <Card 
+              key={`${item.type}-${item.id}`} 
+              className={`${!item.available ? 'opacity-75 border-dashed' : ''}`}
+            >
+              <CardHeader>
+                <div className="flex items-start justify-between">
+                  <div className="flex-1">
+                    <CardTitle className="text-lg">{item.name}</CardTitle>
+                    <p className="text-sm text-muted-foreground mt-1">{item.description}</p>
+                  </div>
+                  <Switch
+                    checked={item.available}
+                    onCheckedChange={() => toggleProductAvailability(item.id, item.type)}
+                    disabled={loading}
+                  />
                 </div>
-                <Switch
-                  checked={item.isAvailable}
-                  onCheckedChange={() => toggleProductAvailability(item.id)}
-                />
-              </div>
-              <div className="flex items-center justify-between">
-                <Badge variant={item.isAvailable ? "default" : "secondary"}>
-                  {item.isAvailable ? 'Disponible' : 'No Disponible'}
-                </Badge>
-                <span className="font-bold text-lg">${item.price.toLocaleString()}</span>
-              </div>
-            </CardHeader>
-            
-            {item.availableToppings.length > 0 && (
-              <CardContent>
-                <h4 className="font-medium mb-3">Toppings Disponibles</h4>
-                <div className="space-y-2">
-                  {item.availableToppings.map((topping) => (
-                    <div key={topping.id} className="flex items-center justify-between p-2 bg-muted rounded">
-                      <div className="flex items-center gap-2">
-                        <Switch
-                          checked={topping.price > 0}
-                          onCheckedChange={() => toggleToppingAvailability(item.id, topping.id)}
-                        />
-                        <span className={`text-sm ${topping.price === 0 ? 'text-muted-foreground line-through' : ''}`}>
-                          {topping.name}
-                        </span>
+                <div className="flex items-center justify-between">
+                  <Badge variant={item.available ? "default" : "destructive"}>
+                    {item.available ? 'Disponible' : 'No Disponible'}
+                  </Badge>
+                  <span className="font-bold text-lg">{formatCurrency(item.pricing)}</span>
+                </div>
+              </CardHeader>
+              
+              {/* Mostrar toppings solo para platos */}
+              {item.type === 'plato' && item.toppings && item.toppings.length > 0 && (
+                <CardContent>
+                  <h4 className="font-medium mb-3">Toppings Incluidos</h4>
+                  <div className="space-y-2">
+                    {item.toppings.map((topping) => (
+                      <div key={topping.id} className="flex items-center justify-between p-2 bg-muted rounded">
+                        <span className="text-sm">{topping.name}</span>
+                        {topping.pricing > 0 && (
+                          <span className="text-sm font-medium">+{formatCurrency(topping.pricing)}</span>
+                        )}
                       </div>
-                      {topping.price > 0 && (
-                        <span className="text-sm font-medium">+${topping.price.toLocaleString()}</span>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              </CardContent>
-            )}
-          </Card>
-        ))}
-      </div>
+                    ))}
+                  </div>
+                </CardContent>
+              )}
+            </Card>
+          ))}
+        </div>
+      )}
+
+      {/* Empty State */}
+      {!loading && filteredItems.length === 0 && (
+        <div className="text-center py-8">
+          <Package className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
+          <h3 className="text-lg font-medium mb-2">No se encontraron productos</h3>
+          <p className="text-muted-foreground">
+            {searchTerm ? 'Intenta con otros términos de búsqueda.' : 'No hay productos en el inventario.'}
+          </p>
+        </div>
+      )}
     </div>
   );
 };

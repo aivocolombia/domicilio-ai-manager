@@ -6,10 +6,10 @@ import { DeliveryPersonnel } from '@/components/DeliveryPersonnel';
 import CallCenter from '@/components/CallCenter';
 import { UserProfile } from '@/components/UserProfile';
 import { SedeOrders } from '@/components/SedeOrders';
-import { Order, InventoryItem, DeliverySettings, OrderSource, DeliveryPerson, PaymentMethod, PaymentStatus, User as UserType, Sede } from '@/types/delivery';
+import { Order, DeliverySettings, OrderSource, DeliveryPerson, PaymentMethod, PaymentStatus, User as UserType, Sede } from '@/types/delivery';
 import { LayoutDashboard, Package, Users, Phone, Store } from 'lucide-react';
 
-// Mock data generator for User and Sedes
+// Mock data generator for User and Sedes (temporary until API is ready)
 const generateMockUser = (): UserType => {
   return {
     id: 'user-1',
@@ -119,87 +119,6 @@ const generateMockOrders = (): Order[] => {
   });
 };
 
-const generateMockInventory = (): InventoryItem[] => {
-  return [
-    {
-      id: 'ajiaco-1',
-      name: 'Ajiaco Santafereño',
-      description: 'Sopa típica colombiana con pollo, papas criollas, guascas y mazorca',
-      price: 18000,
-      category: 'Platos Principales',
-      isAvailable: true,
-      estimatedPrepTime: 20,
-      availableToppings: [
-        { id: 'top-1', name: 'Arroz', price: 2000 },
-        { id: 'top-2', name: 'Carne', price: 5000 },
-        { id: 'top-3', name: 'Chicharrón', price: 4000 },
-        { id: 'top-4', name: 'Plátanos', price: 3000 },
-        { id: 'top-5', name: 'Mazorca', price: 3500 },
-        { id: 'top-6', name: 'Aguacate', price: 3000 },
-        { id: 'top-7', name: 'Crema de Leche', price: 2500 }
-      ]
-    },
-    {
-      id: 'frijoles-1',
-      name: 'Frijoles',
-      description: 'Frijoles rojos tradicionales colombianos con hogao',
-      price: 15000,
-      category: 'Platos Principales',
-      isAvailable: true,
-      estimatedPrepTime: 15,
-      availableToppings: [
-        { id: 'top-1', name: 'Arroz', price: 2000 },
-        { id: 'top-2', name: 'Carne', price: 5000 },
-        { id: 'top-3', name: 'Chicharrón', price: 4000 },
-        { id: 'top-4', name: 'Plátanos', price: 3000 },
-        { id: 'top-5', name: 'Mazorca', price: 3500 },
-        { id: 'top-6', name: 'Aguacate', price: 3000 },
-        { id: 'top-7', name: 'Crema de Leche', price: 2500 }
-      ]
-    },
-    {
-      id: 'coca-cola-1',
-      name: 'Coca Cola',
-      description: 'Gaseosa Coca Cola 350ml',
-      price: 3500,
-      category: 'Bebidas',
-      isAvailable: true,
-      estimatedPrepTime: 1,
-      availableToppings: []
-    },
-    {
-      id: 'ginger-1',
-      name: 'Ginger Ale',
-      description: 'Gaseosa Ginger Ale 350ml',
-      price: 4000,
-      category: 'Bebidas',
-      isAvailable: true,
-      estimatedPrepTime: 1,
-      availableToppings: []
-    },
-    {
-      id: 'limonada-panela-1',
-      name: 'Limonada de Panela',
-      description: 'Limonada natural endulzada con panela 400ml',
-      price: 5500,
-      category: 'Bebidas',
-      isAvailable: true,
-      estimatedPrepTime: 5,
-      availableToppings: []
-    },
-    {
-      id: 'limonada-natural-1',
-      name: 'Limonada Natural',
-      description: 'Limonada natural sin endulzar 400ml',
-      price: 5000,
-      category: 'Bebidas',
-      isAvailable: true,
-      estimatedPrepTime: 5,
-      availableToppings: []
-    }
-  ];
-};
-
 const generateMockDeliveryPersonnel = (): DeliveryPerson[] => {
   return [
     {
@@ -234,7 +153,6 @@ const generateMockDeliveryPersonnel = (): DeliveryPerson[] => {
 
 const Index = () => {
   const [orders, setOrders] = useState<Order[]>([]);
-  const [inventory, setInventory] = useState<InventoryItem[]>([]);
   const [deliveryPersonnel, setDeliveryPersonnel] = useState<DeliveryPerson[]>([]);
   const [currentUser] = useState<UserType>(generateMockUser());
   const [sedes] = useState<Sede[]>(generateMockSedes());
@@ -246,9 +164,8 @@ const Index = () => {
   });
 
   useEffect(() => {
-    // Initialize with mock data
+    // Initialize with mock data (temporary until API is ready)
     setOrders(generateMockOrders());
-    setInventory(generateMockInventory());
     setDeliveryPersonnel(generateMockDeliveryPersonnel());
   }, []);
 
@@ -333,10 +250,7 @@ const Index = () => {
           </TabsContent>
 
           <TabsContent value="inventory">
-            <Inventory
-              inventory={inventory}
-              onUpdateInventory={setInventory}
-            />
+            <Inventory />
           </TabsContent>
 
           <TabsContent value="personnel">
@@ -350,7 +264,6 @@ const Index = () => {
           <TabsContent value="callcenter">
             <CallCenter
               orders={orders}
-              inventory={inventory}
               sedes={sedes}
               settings={settings}
               onCreateOrder={handleCreateOrder}
@@ -360,7 +273,6 @@ const Index = () => {
           <TabsContent value="sede">
             <SedeOrders
               orders={orders}
-              inventory={inventory}
               sedes={sedes}
               currentUser={currentUser}
               settings={settings}

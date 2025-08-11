@@ -12,11 +12,11 @@ import { Textarea } from '@/components/ui/textarea';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Phone, Search, Plus, User, MapPin, Clock, CreditCard, Store, AlertTriangle, Pause } from 'lucide-react';
-import { Order, InventoryItem, PaymentMethod, DeliveryType, Sede, DeliverySettings } from '@/types/delivery';
+import { Order, PaymentMethod, DeliveryType, Sede, DeliverySettings } from '@/types/delivery';
+import { useMenu } from '@/hooks/useMenu';
 
 interface CallCenterProps {
   orders: Order[];
-  inventory: InventoryItem[];
   sedes: Sede[];
   settings: DeliverySettings;
   onCreateOrder: (order: Omit<Order, 'id' | 'createdAt' | 'estimatedDeliveryTime'>) => void;
@@ -28,7 +28,8 @@ interface CustomerData {
   orderHistory: Order[];
 }
 
-const CallCenter: React.FC<CallCenterProps> = ({ orders, inventory, sedes, settings, onCreateOrder }) => {
+const CallCenter: React.FC<CallCenterProps> = ({ orders, sedes, settings, onCreateOrder }) => {
+  const { platos, bebidas, loading: menuLoading } = useMenu();
   const [searchPhone, setSearchPhone] = useState('');
   const [customer, setCustomer] = useState<CustomerData | null>(null);
   const [showNewOrderDialog, setShowNewOrderDialog] = useState(false);
@@ -104,8 +105,9 @@ const CallCenter: React.FC<CallCenterProps> = ({ orders, inventory, sedes, setti
 
   const calculateTotal = () => {
     return newOrder.items.reduce((total, item) => {
-      const product = inventory.find(p => p.id === item.productId);
-      return total + (product ? product.price * item.quantity : 0);
+      const product = platos.find(p => p.id.toString() === item.productId) || 
+                     bebidas.find(b => b.id.toString() === item.productId);
+      return total + (product ? product.pricing * item.quantity : 0);
     }, 0);
   };
 
@@ -118,13 +120,14 @@ const CallCenter: React.FC<CallCenterProps> = ({ orders, inventory, sedes, setti
     if (!customerName) return;
 
     const orderItems = newOrder.items.map(item => {
-      const product = inventory.find(p => p.id === item.productId);
+      const product = platos.find(p => p.id.toString() === item.productId) || 
+                     bebidas.find(b => b.id.toString() === item.productId);
       return {
         id: `item-${Date.now()}-${item.productId}`,
         productId: item.productId,
         productName: product?.name || '',
         quantity: item.quantity,
-        price: product?.price || 0,
+        price: product?.pricing || 0,
         toppings: []
       };
     });
@@ -348,21 +351,42 @@ const CallCenter: React.FC<CallCenterProps> = ({ orders, inventory, sedes, setti
                     <div>
                       <Label>Productos Disponibles</Label>
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-2 max-h-40 overflow-y-auto border rounded p-2">
-                        {inventory.filter(item => item.isAvailable).map((item) => (
-                          <div key={item.id} className="flex items-center justify-between p-2 border rounded">
-                            <div>
-                              <p className="font-medium">{item.name}</p>
-                              <p className="text-sm text-gray-600">${item.price.toLocaleString()}</p>
-                            </div>
-                            <Button
-                              size="sm"
-                              onClick={() => addItemToOrder(item.id)}
-                              className="bg-brand-primary hover:bg-brand-primary/90"
-                            >
-                              <Plus className="h-4 w-4" />
-                            </Button>
-                          </div>
-                        ))}
+                        {menuLoading ? (
+                          <p className="text-center text-gray-500">Cargando productos...</p>
+                        ) : (
+                          <>
+                            {platos.filter(item => item.available).map((item) => (
+                              <div key={item.id} className="flex items-center justify-between p-2 border rounded">
+                                <div>
+                                  <p className="font-medium">{item.name}</p>
+                                  <p className="text-sm text-gray-600">${item.pricing.toLocaleString()}</p>
+                                </div>
+                                <Button
+                                  size="sm"
+                                  onClick={() => addItemToOrder(item.id.toString())}
+                                  className="bg-brand-primary hover:bg-brand-primary/90"
+                                >
+                                  <Plus className="h-4 w-4" />
+                                </Button>
+                              </div>
+                            ))}
+                            {bebidas.filter(item => item.available).map((item) => (
+                              <div key={item.id} className="flex items-center justify-between p-2 border rounded">
+                                <div>
+                                  <p className="font-medium">{item.name}</p>
+                                  <p className="text-sm text-gray-600">${item.pricing.toLocaleString()}</p>
+                                </div>
+                                <Button
+                                  size="sm"
+                                  onClick={() => addItemToOrder(item.id.toString())}
+                                  className="bg-brand-primary hover:bg-brand-primary/90"
+                                >
+                                  <Plus className="h-4 w-4" />
+                                </Button>
+                              </div>
+                            ))}
+                          </>
+                        )}
                       </div>
                     </div>
 
@@ -371,13 +395,14 @@ const CallCenter: React.FC<CallCenterProps> = ({ orders, inventory, sedes, setti
                         <Label>Productos Seleccionados</Label>
                         <div className="space-y-2 border rounded p-2">
                           {newOrder.items.map((item) => {
-                            const product = inventory.find(p => p.id === item.productId);
+                            const product = platos.find(p => p.id.toString() === item.productId) || 
+                                           bebidas.find(b => b.id.toString() === item.productId);
                             return (
                               <div key={item.productId} className="flex items-center justify-between p-2 bg-gray-50 rounded">
                                 <div>
                                   <p className="font-medium">{product?.name}</p>
                                   <p className="text-sm text-gray-600">
-                                    Cantidad: {item.quantity} × ${product?.price.toLocaleString()}
+                                    Cantidad: {item.quantity} × ${product?.pricing.toLocaleString()}
                                   </p>
                                 </div>
                                 <Button

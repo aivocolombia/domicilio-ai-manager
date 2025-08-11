@@ -45,12 +45,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (error.code === 'PGRST116' || error.message.includes('policy') || error.message.includes('Timeout')) {
           console.log('🔄 Creando perfil temporal...')
           
+          // Determinar el rol basado en el email
+          const userEmail = user?.email || '';
+          let userRole: 'admin' | 'agent' = 'agent'; // Por defecto es agente
+          
+          if (userEmail.includes('admin') || userEmail.includes('carlos')) {
+            userRole = 'admin';
+          }
+          
           // Crear un perfil temporal basado en el usuario autenticado
           const tempProfile: Profile = {
             id: userId,
-            email: user?.email || '',
-            name: user?.user_metadata?.name || user?.email || 'Usuario',
-            role: 'admin', // Asumir admin temporalmente
+            email: userEmail,
+            name: user?.user_metadata?.name || userEmail || 'Usuario',
+            role: userRole,
             sede_id: null,
             is_active: true,
             created_at: new Date().toISOString(),
@@ -71,11 +79,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       
       // Crear perfil temporal en caso de error
       console.log('🔄 Creando perfil temporal por error...')
+      
+      // Determinar el rol basado en el email
+      const userEmail = user?.email || '';
+      let userRole: 'admin' | 'agent' = 'agent'; // Por defecto es agente
+      
+      if (userEmail.includes('admin') || userEmail.includes('carlos')) {
+        userRole = 'admin';
+      }
+      
       const tempProfile: Profile = {
         id: userId,
-        email: user?.email || '',
-        name: user?.user_metadata?.name || user?.email || 'Usuario',
-        role: 'admin',
+        email: userEmail,
+        name: user?.user_metadata?.name || userEmail || 'Usuario',
+        role: userRole,
         sede_id: null,
         is_active: true,
         created_at: new Date().toISOString(),

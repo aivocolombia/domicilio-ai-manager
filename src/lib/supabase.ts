@@ -1,84 +1,123 @@
-import { createClient } from '@supabase/supabase-js'
+import { createClient } from '@supabase/supabase-js';
+import { SUPABASE_CONFIG } from '@/config/api';
 
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY
-
-if (!supabaseUrl || !supabaseAnonKey) {
-  throw new Error('Missing Supabase environment variables')
+// Verificar configuración antes de crear el cliente
+if (!SUPABASE_CONFIG.URL || !SUPABASE_CONFIG.ANON_KEY) {
+  console.error('ERROR: Variables de entorno de Supabase no configuradas');
+  throw new Error('Variables de entorno de Supabase no configuradas');
 }
 
-export const supabase = createClient(supabaseUrl, supabaseAnonKey)
+// Crear cliente de Supabase
+export const supabase = createClient(
+  SUPABASE_CONFIG.URL,
+  SUPABASE_CONFIG.ANON_KEY
+);
 
-export type Database = {
+// Tipos para las tablas de Supabase
+export interface Database {
   public: {
     Tables: {
-      profiles: {
+      platos: {
         Row: {
-          id: string
-          email: string
-          name: string
-          role: 'admin' | 'agent'
-          sede_id: string | null
-          is_active: boolean
-          created_at: string
-          updated_at: string
-        }
+          id: number;
+          name: string;
+          description: string | null;
+          pricing: number;
+          available: boolean;
+          created_at: string;
+          updated_at: string;
+        };
         Insert: {
-          id: string
-          email: string
-          name: string
-          role: 'admin' | 'agent'
-          sede_id?: string | null
-          is_active?: boolean
-          created_at?: string
-          updated_at?: string
-        }
+          id?: number;
+          name: string;
+          description?: string | null;
+          pricing: number;
+          available?: boolean;
+          created_at?: string;
+          updated_at?: string;
+        };
         Update: {
-          id?: string
-          email?: string
-          name?: string
-          role?: 'admin' | 'agent'
-          sede_id?: string | null
-          is_active?: boolean
-          created_at?: string
-          updated_at?: string
-        }
-      }
-      sedes: {
+          id?: number;
+          name?: string;
+          description?: string | null;
+          pricing?: number;
+          available?: boolean;
+          created_at?: string;
+          updated_at?: string;
+        };
+      };
+      toppings: {
         Row: {
-          id: string
-          name: string
-          address: string
-          phone: string
-          is_active: boolean
-          current_capacity: number
-          max_capacity: number
-          created_at: string
-          updated_at: string
-        }
+          id: number;
+          name: string;
+          pricing: number;
+          available: boolean;
+          created_at: string;
+          updated_at: string;
+        };
         Insert: {
-          id?: string
-          name: string
-          address: string
-          phone: string
-          is_active?: boolean
-          current_capacity?: number
-          max_capacity?: number
-          created_at?: string
-          updated_at?: string
-        }
+          id?: number;
+          name: string;
+          pricing: number;
+          available?: boolean;
+          created_at?: string;
+          updated_at?: string;
+        };
         Update: {
-          id?: string
-          name?: string
-          address?: string
-          phone?: string
-          is_active?: boolean
-          current_capacity?: number
-          max_capacity?: number
-          created_at?: string
-          updated_at?: string
-        }
-      }
-    }
-  }
+          id?: number;
+          name?: string;
+          pricing?: number;
+          available?: boolean;
+          created_at?: string;
+          updated_at?: string;
+        };
+      };
+      plato_toppings: {
+        Row: {
+          id: number;
+          plato_id: number;
+          topping_id: number;
+          created_at: string;
+        };
+        Insert: {
+          id?: number;
+          plato_id: number;
+          topping_id: number;
+          created_at?: string;
+        };
+        Update: {
+          id?: number;
+          plato_id?: number;
+          topping_id?: number;
+          created_at?: string;
+        };
+      };
+      bebidas: {
+        Row: {
+          id: number;
+          name: string;
+          pricing: number;
+          available: boolean;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: number;
+          name: string;
+          pricing: number;
+          available?: boolean;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: number;
+          name?: string;
+          pricing?: number;
+          available?: boolean;
+          created_at?: string;
+          updated_at?: string;
+        };
+      };
+    };
+  };
 }
