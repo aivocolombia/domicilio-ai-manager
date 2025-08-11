@@ -8,6 +8,8 @@ import { UserProfile } from '@/components/UserProfile';
 import { SedeOrders } from '@/components/SedeOrders';
 import { Order, DeliverySettings, OrderSource, DeliveryPerson, PaymentMethod, PaymentStatus, User as UserType, Sede } from '@/types/delivery';
 import { LayoutDashboard, Package, Users, Phone, Store } from 'lucide-react';
+import { StatusBar } from '@/components/StatusBar';
+import { InventoryProvider } from '@/contexts/InventoryContext';
 
 // Mock data generator for User and Sedes (temporary until API is ready)
 const generateMockUser = (): UserType => {
@@ -191,30 +193,34 @@ const Index = () => {
   };
 
   return (
-    <div className="min-h-screen bg-background">
-      {/* Brand Header */}
-      <div className="bg-brand-primary text-white shadow-lg">
-        <div className="container mx-auto p-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-4">
-              <img 
-                src="/lovable-uploads/96fc454f-e0fb-40ad-9214-85dcb21960e5.png" 
-                alt="Ajiaco & Frijoles Logo" 
-                className="h-12 w-12 rounded-full bg-brand-secondary p-1"
-              />
-              <div>
-                <h1 className="text-2xl font-bold">Ajiaco & Frijoles</h1>
-                <p className="text-brand-secondary text-sm">Sistema de Gestión de Pedidos</p>
+    <InventoryProvider>
+      <div className="min-h-screen bg-background">
+        {/* Brand Header */}
+        <div className="bg-brand-primary text-white shadow-lg">
+          <div className="container mx-auto p-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-4">
+                <img 
+                  src="/lovable-uploads/96fc454f-e0fb-40ad-9214-85dcb21960e5.png" 
+                  alt="Ajiaco & Frijoles Logo" 
+                  className="h-12 w-12 rounded-full bg-brand-secondary p-1"
+                />
+                <div>
+                  <h1 className="text-2xl font-bold">Ajiaco & Frijoles</h1>
+                  <p className="text-brand-secondary text-sm">Sistema de Gestión de Pedidos</p>
+                </div>
               </div>
+              
+              {/* User Profile Button */}
+              <UserProfile />
             </div>
-            
-            {/* User Profile Button */}
-            <UserProfile />
           </div>
         </div>
-      </div>
 
-      <div className="container mx-auto p-6">
+        {/* Status Bar - Solo visible para agentes */}
+        <StatusBar orders={orders} currentSede={currentUser.sede} />
+
+        <div className="container mx-auto p-6">
         <Tabs defaultValue="dashboard" className="space-y-6">
           <TabsList className="grid w-full grid-cols-5 lg:w-auto lg:grid-cols-5 bg-brand-secondary">
             <TabsTrigger value="dashboard" className="flex items-center gap-2 data-[state=active]:bg-brand-primary data-[state=active]:text-white">
@@ -283,6 +289,7 @@ const Index = () => {
         </Tabs>
       </div>
     </div>
+    </InventoryProvider>
   );
 };
 

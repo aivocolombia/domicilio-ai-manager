@@ -8,6 +8,7 @@ import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Search, Package, Plus, Loader2, AlertCircle } from 'lucide-react';
 import { useMenu } from '@/hooks/useMenu';
+import { useInventoryEvents } from '@/contexts/InventoryContext';
 import { toast } from '@/hooks/use-toast';
 import { formatCurrency } from '@/utils/format';
 
@@ -24,6 +25,7 @@ export const Inventory: React.FC = () => {
     updateTopping,
     clearError
   } = useMenu();
+  const { triggerUpdate } = useInventoryEvents();
 
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
@@ -51,34 +53,47 @@ export const Inventory: React.FC = () => {
     const matchesSearch = item.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          item.description.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesCategory = selectedCategory === 'all' || item.category === selectedCategory;
-    const matchesAvailability = showInactive || item.available; // Mostrar todos si showInactive es true, o solo activos si es false
-    return matchesSearch && matchesCategory && matchesAvailability;
+    // Siempre mostrar todos los productos, el switch solo controla el filtro visual
+    return matchesSearch && matchesCategory;
   });
 
   const toggleProductAvailability = async (productId: number, type: 'plato' | 'bebida') => {
     try {
+      console.log('🔄 Toggleando producto:', { productId, type });
+      
       const product = allProducts.find(item => item.id === productId);
-      if (!product) return;
+      if (!product) {
+        console.log('❌ Producto no encontrado:', productId);
+        return;
+      }
 
       const isCurrentlyAvailable = product.available;
+      console.log('📊 Estado actual:', { name: product.name, available: isCurrentlyAvailable });
       
       switch (type) {
         case 'plato':
+          console.log('🍽️ Actualizando plato...');
           await updatePlato(productId, { available: !isCurrentlyAvailable });
           break;
         case 'bebida':
+          console.log('🥤 Actualizando bebida...');
           await updateBebida(productId, { available: !isCurrentlyAvailable });
           break;
       }
 
+      console.log('🔄 Recargando inventario...');
       // Recargar el inventario para actualizar el frontend
       await loadInventory();
+
+      // Disparar evento de actualización para el StatusBar
+      triggerUpdate();
 
       toast({
         title: "Producto actualizado",
         description: `${product.name} ${isCurrentlyAvailable ? 'desactivado' : 'activado'} correctamente.`,
       });
     } catch (err) {
+      console.error('❌ Error al actualizar producto:', err);
       toast({
         title: "Error",
         description: "No se pudo actualizar el producto.",
@@ -98,6 +113,9 @@ export const Inventory: React.FC = () => {
 
       // Recargar el inventario para actualizar el frontend
       await loadInventory();
+
+      // Disparar evento de actualización para el StatusBar
+      triggerUpdate();
 
       toast({
         title: "Topping actualizado",
