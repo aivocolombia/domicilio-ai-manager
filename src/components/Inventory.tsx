@@ -29,7 +29,7 @@ export const Inventory: React.FC = () => {
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [showInactive, setShowInactive] = useState(true); // Mostrar inactivos por defecto
 
-  // Combinar todos los productos para mostrar en el inventario (incluyendo inactivos)
+  // Combinar solo platos y bebidas para mostrar en el inventario (incluyendo inactivos)
   const allProducts = [
     ...platos.map(plato => ({
       ...plato,
@@ -42,12 +42,6 @@ export const Inventory: React.FC = () => {
       type: 'bebida' as const,
       category: 'Bebidas',
       description: 'Bebida refrescante'
-    })),
-    ...toppings.map(topping => ({
-      ...topping,
-      type: 'topping' as const,
-      category: 'Toppings',
-      description: 'Topping adicional'
     }))
   ];
 
@@ -61,7 +55,7 @@ export const Inventory: React.FC = () => {
     return matchesSearch && matchesCategory && matchesAvailability;
   });
 
-  const toggleProductAvailability = async (productId: number, type: 'plato' | 'bebida' | 'topping') => {
+  const toggleProductAvailability = async (productId: number, type: 'plato' | 'bebida') => {
     try {
       const product = allProducts.find(item => item.id === productId);
       if (!product) return;
@@ -75,10 +69,10 @@ export const Inventory: React.FC = () => {
         case 'bebida':
           await updateBebida(productId, { available: !isCurrentlyAvailable });
           break;
-        case 'topping':
-          await updateTopping(productId, { available: !isCurrentlyAvailable });
-          break;
       }
+
+      // Recargar el inventario para actualizar el frontend
+      await loadInventory();
 
       toast({
         title: "Producto actualizado",
@@ -93,9 +87,38 @@ export const Inventory: React.FC = () => {
     }
   };
 
+  const toggleToppingAvailability = async (toppingId: number) => {
+    try {
+      const topping = toppings.find(t => t.id === toppingId);
+      if (!topping) return;
+
+      const isCurrentlyAvailable = topping.available;
+      
+      await updateTopping(toppingId, { available: !isCurrentlyAvailable });
+
+      // Recargar el inventario para actualizar el frontend
+      await loadInventory();
+
+      toast({
+        title: "Topping actualizado",
+        description: `${topping.name} ${isCurrentlyAvailable ? 'desactivado' : 'activado'} correctamente.`,
+      });
+    } catch (err) {
+      toast({
+        title: "Error",
+        description: "No se pudo actualizar el topping.",
+        variant: "destructive"
+      });
+    }
+  };
+
   const availableCount = allProducts.filter(item => item.available).length;
   const unavailableCount = allProducts.filter(item => !item.available).length;
   const totalCount = allProducts.length;
+  
+  // Contar toppings disponibles e inactivos para información adicional
+  const availableToppings = toppings.filter(topping => topping.available).length;
+  const unavailableToppings = toppings.filter(topping => !topping.available).length;
 
   // Cargar inventario cuando el componente se monta
   useEffect(() => {
@@ -120,7 +143,7 @@ export const Inventory: React.FC = () => {
         <div>
           <h1 className="text-3xl font-bold">Inventario</h1>
           <p className="text-muted-foreground">
-            {availableCount} productos disponibles • {unavailableCount} no disponibles
+            {availableCount} productos disponibles • {unavailableCount} no disponibles • {availableToppings} toppings disponibles
           </p>
         </div>
         <Button className="flex items-center gap-2" disabled={loading} onClick={() => {
@@ -249,10 +272,23 @@ export const Inventory: React.FC = () => {
                   <div className="space-y-2">
                     {item.toppings.map((topping) => (
                       <div key={topping.id} className="flex items-center justify-between p-2 bg-muted rounded">
-                        <span className="text-sm">{topping.name}</span>
-                        {topping.pricing > 0 && (
-                          <span className="text-sm font-medium">+{formatCurrency(topping.pricing)}</span>
-                        )}
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm">{topping.name}</span>
+                          {!topping.available && (
+                            <Badge variant="secondary" className="text-xs">No disponible</Badge>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-2">
+                          {topping.pricing > 0 && (
+                            <span className="text-sm font-medium">+{formatCurrency(topping.pricing)}</span>
+                          )}
+                          <Switch
+                            checked={topping.available}
+                            onCheckedChange={() => toggleToppingAvailability(topping.id)}
+                            disabled={loading}
+                            size="sm"
+                          />
+                        </div>
                       </div>
                     ))}
                   </div>
