@@ -29,7 +29,6 @@ export const Inventory: React.FC = () => {
 
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
-  const [showInactive, setShowInactive] = useState(true); // Mostrar inactivos por defecto
 
   // Combinar solo platos y bebidas para mostrar en el inventario (incluyendo inactivos)
   const allProducts = [
@@ -53,7 +52,6 @@ export const Inventory: React.FC = () => {
     const matchesSearch = item.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          item.description.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesCategory = selectedCategory === 'all' || item.category === selectedCategory;
-    // Siempre mostrar todos los productos, el switch solo controla el filtro visual
     return matchesSearch && matchesCategory;
   });
 
@@ -233,16 +231,7 @@ export const Inventory: React.FC = () => {
                 </Button>
               ))}
             </div>
-            <div className="flex items-center gap-2">
-              <Switch
-                checked={showInactive}
-                onCheckedChange={setShowInactive}
-                id="show-inactive"
-              />
-              <label htmlFor="show-inactive" className="text-sm font-medium">
-                Mostrar inactivos
-              </label>
-            </div>
+
           </div>
         </CardContent>
       </Card>
