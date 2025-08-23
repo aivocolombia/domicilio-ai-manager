@@ -70,13 +70,8 @@ export function ProtectedRoute({ children, requiredRole }: ProtectedRouteProps) 
     )
   }
 
-  // If user is admin, show admin panel
-  if (profile.role === 'admin') {
-    console.log('👑 Usuario es admin, mostrando AdminPanel')
-    return <AdminPanel />
-  }
-
-  // If user is agent, show the main app
-  console.log('👤 Usuario es agente, mostrando aplicación principal')
+  // Show the main app for both admin and agent users
+  // Admin users can navigate to AdminPanel through the UI
+  console.log('👤 Usuario autenticado, mostrando aplicación principal')
   return <>{children}</>
 }

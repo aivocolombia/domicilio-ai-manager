@@ -3,7 +3,9 @@ import { User as SupabaseUser } from '@supabase/supabase-js'
 import { supabase, type Database } from '@/lib/supabase'
 import { debugEnv } from '@/utils/debug'
 
-type Profile = Database['public']['Tables']['profiles']['Row']
+type Profile = Database['public']['Tables']['profiles']['Row'] & {
+  sede_name?: string; // Campo adicional para el nombre de la sede
+}
 
 interface AuthContextType {
   user: SupabaseUser | null
@@ -21,13 +23,118 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [profile, setProfile] = useState<Profile | null>(null)
   const [loading, setLoading] = useState(true)
 
+  const enrichProfileWithSedeName = async (profile: Profile): Promise<Profile> => {
+    try {
+      if (!profile.sede_id) return profile;
+      
+      console.log('🏢 Obteniendo nombre de sede para ID:', profile.sede_id);
+      const { data: sedeData, error } = await supabase
+        .from('sedes')
+        .select('name')
+        .eq('id', profile.sede_id)
+        .single();
+      
+      if (error) {
+        console.error('❌ Error obteniendo nombre de sede:', error);
+        return profile;
+      }
+      
+      const enrichedProfile = {
+        ...profile,
+        sede_name: sedeData?.name || 'Sede Desconocida'
+      };
+      
+      console.log('✅ Perfil enriquecido con nombre de sede:', enrichedProfile.sede_name);
+      return enrichedProfile;
+    } catch (error) {
+      console.error('❌ Error enriching profile:', error);
+      return profile;
+    }
+  };
+
+  const createTempProfile = async (userId: string, userEmail: string, userData?: SupabaseUser): Promise<Profile> => {
+    // Si ya tenemos un perfil válido, preservar sus datos
+    if (profile) {
+      console.log('📋 Perfil existente detectado, preservando datos actuales');
+      return {
+        ...profile,
+        id: userId,
+        email: userEmail
+      };
+    }
+    
+    let userRole: 'admin' | 'agent' = 'agent';
+    let sedeId: string | null = null;
+    
+    // Detección más robusta del rol admin
+    if (userEmail.includes('admin') || userEmail.includes('carlos') || userEmail === 'admin@ajiaco.com') {
+      userRole = 'admin';
+    }
+    
+    // PRIMERO: Intentar obtener el perfil real de la base de datos por si existe
+    console.log('🔍 Intentando obtener perfil real de la base de datos antes de crear temporal...');
+    try {
+      const { data: realProfile, error: profileError } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', userId)
+        .single();
+      
+      if (!profileError && realProfile) {
+        console.log('✅ Perfil real encontrado en la base de datos:', realProfile);
+        // Enriquecer con nombre de sede si tiene sede_id
+        if (realProfile.sede_id) {
+          const enrichedProfile = await enrichProfileWithSedeName(realProfile);
+          return enrichedProfile;
+        }
+        return realProfile;
+      }
+    } catch (error) {
+      console.log('ℹ️ No se encontró perfil real, continuando con temporal...');
+    }
+    
+    // SEGUNDO: Si no existe perfil real, crear temporal con sede por defecto
+    // Asignar sede_id por defecto basado en el email para usuarios conocidos
+    if (userEmail === 'agente@ajiaco.com') {
+      sedeId = '310368ae-1ab6-49bb-908b-8f95a77581f8'; // Sede que aparece en los logs
+    } else if (userEmail === 'admin@ajiaco.com') {
+      sedeId = '310368ae-1ab6-49bb-908b-8f95a77581f8'; // Misma sede por defecto
+    } else {
+      // Para cualquier otro usuario, asignar sede por defecto
+      sedeId = '310368ae-1ab6-49bb-908b-8f95a77581f8';
+    }
+    
+    console.log('🏢 Creando perfil temporal con sede por defecto:', { email: userEmail, sedeId, role: userRole });
+    
+    const tempProfile: Profile = {
+      id: userId,
+      email: userEmail,
+      name: userData?.user_metadata?.name || userEmail || 'Usuario',
+      role: userRole,
+      sede_id: sedeId,
+      is_active: true,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString()
+    };
+    
+    // Enriquecer con nombre de sede
+    const enrichedProfile = await enrichProfileWithSedeName(tempProfile);
+    return enrichedProfile;
+  };
+
   const fetchProfile = async (userId: string) => {
     try {
       console.log('🔍 Intentando obtener perfil para usuario:', userId)
       
-      // Crear un timeout para evitar que se quede colgado
-      const timeoutPromise = new Promise((_, reject) => {
-        setTimeout(() => reject(new Error('Timeout')), 5000)
+      // Verificar que hay un userId válido
+      if (!userId) {
+        console.log('⚠️ No se proporcionó userId, retornando null')
+        return null
+      }
+      
+      // Crear un timeout más largo para evitar errores innecesarios
+      const timeoutPromise = new Promise<never>((_, reject) => {
+        setTimeout(() => reject(new Error('Timeout')), 10000) // 10 segundos
       })
       
       const fetchPromise = supabase
@@ -36,78 +143,72 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         .eq('id', userId)
         .single()
 
-      const { data, error } = await Promise.race([fetchPromise, timeoutPromise])
+      const result = await Promise.race([fetchPromise, timeoutPromise]);
+      const { data, error } = result;
 
       if (error) {
         console.error('❌ Error fetching profile:', error)
         
-        // Si hay error de RLS o timeout, crear un perfil temporal
-        if (error.code === 'PGRST116' || error.message.includes('policy') || error.message.includes('Timeout')) {
-          console.log('🔄 Creando perfil temporal...')
-          
-          // Determinar el rol basado en el email
+        // Solo crear perfil temporal si no encontramos el perfil y es un error específico de "no encontrado"
+        if (error.code === 'PGRST116' || error.code === 'PGRST001') {
+          console.log('🔄 Perfil no encontrado en base de datos, creando temporal...')
           const userEmail = user?.email || '';
-          let userRole: 'admin' | 'agent' = 'agent'; // Por defecto es agente
-          
-          if (userEmail.includes('admin') || userEmail.includes('carlos')) {
-            userRole = 'admin';
-          }
-          
-          // Crear un perfil temporal basado en el usuario autenticado
-          const tempProfile: Profile = {
-            id: userId,
-            email: userEmail,
-            name: user?.user_metadata?.name || userEmail || 'Usuario',
-            role: userRole,
-            sede_id: null,
-            is_active: true,
-            created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString()
-          }
-          
+          const tempProfile = await createTempProfile(userId, userEmail, user);
           console.log('✅ Perfil temporal creado:', tempProfile)
           return tempProfile
         }
         
+        // Para otros errores (timeouts, conexión, etc), retornar null y mantener estado actual
+        // IMPORTANTE: NO crear perfil temporal para errores de red/timeout
+        console.log('⚠️ Error temporal de conexión/timeout, manteniendo estado actual')
         return null
       }
 
-      console.log('✅ Perfil obtenido:', data)
+      console.log('✅ Perfil obtenido desde base de datos:', data)
+      
+      // Si el perfil tiene sede_id, obtener el nombre de la sede
+      if (data && data.sede_id) {
+        const sedeProfile = await enrichProfileWithSedeName(data);
+        return sedeProfile;
+      }
+      
       return data
-    } catch (error) {
+    } catch (error: unknown) {
       console.error('❌ Error fetching profile:', error)
       
-      // Crear perfil temporal en caso de error
-      console.log('🔄 Creando perfil temporal por error...')
-      
-      // Determinar el rol basado en el email
-      const userEmail = user?.email || '';
-      let userRole: 'admin' | 'agent' = 'agent'; // Por defecto es agente
-      
-      if (userEmail.includes('admin') || userEmail.includes('carlos')) {
-        userRole = 'admin';
+      // Solo crear perfil temporal si es un error específico de "perfil no encontrado"
+      // Para errores de red/timeout, mantener estado actual
+      if (error instanceof Error && (
+        error.message.includes('not found') || 
+        error.message.includes('PGRST116') ||
+        error.message.includes('Row not found')
+      )) {
+        console.log('🔄 Perfil no encontrado (catch), creando temporal...')
+        const userEmail = user?.email || '';
+        const tempProfile = await createTempProfile(userId, userEmail, user);
+        console.log('✅ Perfil temporal creado:', tempProfile)
+        return tempProfile
       }
       
-      const tempProfile: Profile = {
-        id: userId,
-        email: userEmail,
-        name: user?.user_metadata?.name || userEmail || 'Usuario',
-        role: userRole,
-        sede_id: null,
-        is_active: true,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString()
-      }
-      
-      console.log('✅ Perfil temporal creado:', tempProfile)
-      return tempProfile
+      // Para errores de timeout/red, NO crear perfil temporal - mantener estado actual
+      console.log('⚠️ Error de conexión/timeout, NO creando perfil temporal')
+      return null
     }
   }
 
   const refreshProfile = async () => {
-    if (user) {
-      const profileData = await fetchProfile(user.id)
-      setProfile(profileData)
+    if (user?.id) {
+      try {
+        console.log('🔄 Refrescando perfil de usuario...')
+        const profileData = await fetchProfile(user.id)
+        setProfile(profileData)
+        console.log('✅ Perfil refrescado exitosamente')
+      } catch (error) {
+        console.error('❌ Error refrescando perfil:', error)
+        // No establecer profile como null aquí para mantener el estado actual
+      }
+    } else {
+      console.log('⚠️ No hay usuario para refrescar perfil')
     }
   }
 
@@ -134,10 +235,29 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       data: { subscription },
     } = supabase.auth.onAuthStateChange(async (event, session) => {
       console.log('🔄 Auth state change:', event, session?.user?.email)
+      
+      // Si es un evento de sign out, limpiar estado inmediatamente
+      if (event === 'SIGNED_OUT') {
+        console.log('👋 Usuario cerró sesión, limpiando estado...')
+        setUser(null)
+        setProfile(null)
+        setLoading(false)
+        return
+      }
+      
       setUser(session?.user ?? null)
-      if (session?.user) {
-        const profileData = await fetchProfile(session.user.id)
-        setProfile(profileData)
+      if (session?.user && event !== 'SIGNED_OUT') {
+        try {
+          const profileData = await fetchProfile(session.user.id)
+          // Solo actualizar perfil si obtenemos datos válidos
+          if (profileData) {
+            setProfile(profileData)
+          }
+          // Si profileData es null pero ya tenemos un perfil, mantenerlo
+        } catch (error) {
+          console.error('❌ Error obteniendo perfil en auth change:', error)
+          // No sobrescribir el perfil existente en caso de error temporal
+        }
       } else {
         setProfile(null)
       }
@@ -178,9 +298,28 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }
 
   const signOut = async () => {
-    console.log('🚪 Cerrando sesión...')
-    await supabase.auth.signOut()
-    setProfile(null)
+    try {
+      console.log('🚪 Cerrando sesión...')
+      setLoading(true)
+      
+      // Limpiar estado inmediatamente para evitar llamadas adicionales
+      setProfile(null)
+      
+      // Cerrar sesión en Supabase
+      const { error } = await supabase.auth.signOut()
+      if (error) {
+        console.error('❌ Error cerrando sesión:', error)
+        // Aún así limpiamos el estado local
+      }
+      
+      console.log('✅ Sesión cerrada exitosamente')
+    } catch (error) {
+      console.error('❌ Error durante signOut:', error)
+      // Forzar limpieza del estado incluso si hay error
+      setProfile(null)
+    } finally {
+      setLoading(false)
+    }
   }
 
   const value = {

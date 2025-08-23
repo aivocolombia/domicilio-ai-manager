@@ -6,10 +6,16 @@ import { DeliveryPersonnel } from '@/components/DeliveryPersonnel';
 import CallCenter from '@/components/CallCenter';
 import { UserProfile } from '@/components/UserProfile';
 import { SedeOrders } from '@/components/SedeOrders';
+import { AdminPanel } from '@/components/AdminPanel';
 import { Order, DeliverySettings, OrderSource, DeliveryPerson, PaymentMethod, PaymentStatus, User as UserType, Sede } from '@/types/delivery';
-import { LayoutDashboard, Package, Users, Phone, Store } from 'lucide-react';
+import { LayoutDashboard, Package, Users, Phone, Store, Settings, Building2, ChevronDown } from 'lucide-react';
 import { StatusBar } from '@/components/StatusBar';
 import { InventoryProvider } from '@/contexts/InventoryContext';
+import { SedeProvider } from '@/contexts/SedeContext';
+import { useAuth } from '@/hooks/useAuth';
+import { Button } from '@/components/ui/button';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { supabase } from '@/lib/supabase';
 
 // Mock data generator for User and Sedes (temporary until API is ready)
 const generateMockUser = (): UserType => {
@@ -154,10 +160,19 @@ const generateMockDeliveryPersonnel = (): DeliveryPerson[] => {
 };
 
 const Index = () => {
+  const { profile } = useAuth();
+  const [showAdminPanel, setShowAdminPanel] = useState(false);
   const [orders, setOrders] = useState<Order[]>([]);
   const [deliveryPersonnel, setDeliveryPersonnel] = useState<DeliveryPerson[]>([]);
   const [currentUser] = useState<UserType>(generateMockUser());
-  const [sedes] = useState<Sede[]>(generateMockSedes());
+  const [sedes, setSedes] = useState<Sede[]>([]);
+  const [sedesLoading, setSedesLoading] = useState(false);
+  
+  // Estado para sede seleccionada por admin (solo para admins)
+  const [selectedSedeId, setSelectedSedeId] = useState<string>(() => {
+    // Admin empieza con la primera sede disponible, agentes usan su sede asignada
+    return profile?.role === 'admin' ? profile?.sede_id || sedes[0]?.id : profile?.sede_id || '';
+  });
   const [settings, setSettings] = useState<DeliverySettings>({
     acceptingOrders: true,
     defaultDeliveryTime: 30,
@@ -165,11 +180,71 @@ const Index = () => {
     deliveryFee: 3000
   });
 
+  // Sede efectiva: la seleccionada por admin o la asignada al agente
+  const effectiveSedeId = profile?.role === 'admin' ? selectedSedeId : profile?.sede_id;
+  
+  // Nombre de la sede (buscar en array de sedes cargadas o usar nombre del perfil)
+  const currentSedeName = sedes.find(s => s.id === effectiveSedeId)?.name || 
+                          profile?.sede_name || 
+                          'Sede Desconocida';
+
+  // Cargar sedes reales desde la base de datos
+  const loadSedes = async () => {
+    if (profile?.role !== 'admin') return; // Solo admins necesitan cargar todas las sedes
+    
+    try {
+      setSedesLoading(true);
+      console.log('🏢 Cargando sedes desde base de datos...');
+      
+      const { data: sedesData, error } = await supabase
+        .from('sedes')
+        .select('id, name, address, phone, is_active, current_capacity, max_capacity')
+        .eq('is_active', true)
+        .order('name');
+      
+      if (error) {
+        console.error('❌ Error cargando sedes:', error);
+        return;
+      }
+      
+      // Mapear al formato esperado
+      const mappedSedes: Sede[] = (sedesData || []).map(sede => ({
+        id: sede.id,
+        name: sede.name,
+        address: sede.address || '',
+        phone: sede.phone || '',
+        isActive: sede.is_active,
+        currentCapacity: sede.current_capacity || 0,
+        maxCapacity: sede.max_capacity || 10
+      }));
+      
+      setSedes(mappedSedes);
+      
+      // Si no hay sede seleccionada, seleccionar la primera
+      if (!selectedSedeId && mappedSedes.length > 0) {
+        setSelectedSedeId(mappedSedes[0].id);
+      }
+      
+      console.log('✅ Sedes cargadas:', mappedSedes.length);
+    } catch (error) {
+      console.error('❌ Error al cargar sedes:', error);
+    } finally {
+      setSedesLoading(false);
+    }
+  };
+
   useEffect(() => {
     // Initialize with mock data (temporary until API is ready)
     setOrders(generateMockOrders());
     setDeliveryPersonnel(generateMockDeliveryPersonnel());
   }, []);
+
+  // Cargar sedes cuando el perfil esté disponible (solo para admins)
+  useEffect(() => {
+    if (profile?.role === 'admin') {
+      loadSedes();
+    }
+  }, [profile?.role]);
 
   const handleCreateOrder = (orderData: Omit<Order, 'id' | 'createdAt' | 'estimatedDeliveryTime'>) => {
     const newOrder: Order = {
@@ -192,9 +267,15 @@ const Index = () => {
     );
   };
 
+  // Si showAdminPanel es true, mostrar el AdminPanel
+  if (showAdminPanel) {
+    return <AdminPanel onBack={() => setShowAdminPanel(false)} />;
+  }
+
   return (
-    <InventoryProvider>
-      <div className="min-h-screen bg-background">
+    <SedeProvider effectiveSedeId={effectiveSedeId || ''} currentSedeName={currentSedeName}>
+      <InventoryProvider>
+        <div className="min-h-screen bg-background">
         {/* Brand Header */}
         <div className="bg-brand-primary text-white shadow-lg">
           <div className="container mx-auto p-4">
@@ -211,8 +292,41 @@ const Index = () => {
                 </div>
               </div>
               
-              {/* User Profile Button */}
-              <UserProfile />
+              <div className="flex items-center gap-2">
+                {/* Selector de Sede - Solo visible para administradores */}
+                {profile?.role === 'admin' && (
+                  <div className="flex items-center gap-2 text-white">
+                    <Building2 className="h-4 w-4" />
+                    <Select value={selectedSedeId} onValueChange={setSelectedSedeId}>
+                      <SelectTrigger className="w-48 bg-brand-secondary text-white border-brand-secondary hover:bg-brand-primary">
+                        <SelectValue placeholder="Seleccionar sede" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {sedes.map((sede) => (
+                          <SelectItem key={sede.id} value={sede.id}>
+                            {sede.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
+
+                {/* Admin Panel Button - Solo visible para administradores */}
+                {profile?.role === 'admin' && (
+                  <Button
+                    variant="outline"
+                    onClick={() => setShowAdminPanel(true)}
+                    className="flex items-center gap-2 bg-brand-secondary text-white border-brand-secondary hover:bg-brand-primary"
+                  >
+                    <Settings className="h-4 w-4" />
+                    Admin Panel
+                  </Button>
+                )}
+                
+                {/* User Profile Button */}
+                <UserProfile />
+              </div>
             </div>
           </div>
         </div>
@@ -260,11 +374,7 @@ const Index = () => {
           </TabsContent>
 
           <TabsContent value="personnel">
-            <DeliveryPersonnel
-              deliveryPersonnel={deliveryPersonnel}
-              orders={orders}
-              onUpdateDeliveryPersonnel={setDeliveryPersonnel}
-            />
+            <DeliveryPersonnel />
           </TabsContent>
 
           <TabsContent value="callcenter">
@@ -287,9 +397,10 @@ const Index = () => {
             />
           </TabsContent>
         </Tabs>
+        </div>
       </div>
-    </div>
-    </InventoryProvider>
+      </InventoryProvider>
+    </SedeProvider>
   );
 };
 

@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { useMenu } from '@/hooks/useMenu';
 import { useInventoryEvents } from '@/contexts/InventoryContext';
+import { useAuth } from '@/hooks/useAuth';
+import { menuService } from '@/services/menuService';
+import { supabase } from '@/lib/supabase';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -19,6 +21,7 @@ import {
   X,
   RefreshCw
 } from 'lucide-react';
+import { PlatoConSede, BebidaConSede, ToppingConSede } from '@/types/menu';
 
 interface StatusBarProps {
   orders: any[];
@@ -26,36 +29,142 @@ interface StatusBarProps {
 }
 
 export const StatusBar: React.FC<StatusBarProps> = ({ orders, currentSede = 'Niza' }) => {
-  const { platos, bebidas, toppings, loadInventory } = useMenu();
+  const { profile } = useAuth();
   const { lastUpdate } = useInventoryEvents();
   const [isOpen, setIsOpen] = useState(false);
   const [isBlinking, setIsBlinking] = useState(false);
+  const [platos, setPlatos] = useState<PlatoConSede[]>([]);
+  const [bebidas, setBebidas] = useState<BebidaConSede[]>([]);
+  const [toppings, setToppings] = useState<ToppingConSede[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  // Función para cargar el inventario con información de sede
+  const loadInventoryConSede = async (retryCount = 0) => {
+    if (!profile?.sede_id) {
+      console.log('⚠️ StatusBar: No hay sede asignada al usuario');
+      return;
+    }
+
+    try {
+      if (retryCount === 0) {
+        setLoading(true);
+        setError(null);
+      }
+      console.log('🔍 StatusBar: Cargando inventario para sede:', profile.sede_id, retryCount > 0 ? `(retry ${retryCount})` : '');
+      const menuData = await menuService.getMenuConSede(profile.sede_id);
+      
+      setPlatos(menuData.platos);
+      setBebidas(menuData.bebidas);
+      setToppings(menuData.toppings || []);
+      setError(null); // Clear any previous errors
+      
+      console.log('✅ StatusBar: Inventario cargado exitosamente');
+    } catch (err) {
+      console.error('❌ StatusBar: Error al cargar inventario:', err);
+      
+      // Retry once on connection errors but only if this isn't already a retry
+      if (retryCount === 0 && err instanceof Error && (
+        err.message.includes('ERR_CONNECTION_CLOSED') || 
+        err.message.includes('network') ||
+        err.message.includes('fetch') ||
+        err.message.includes('Failed to fetch')
+      )) {
+        console.log('🔄 StatusBar: Reintentando después de error de conexión...');
+        setTimeout(() => loadInventoryConSede(1), 3000); // Retry after 3 seconds
+        return; // Don't set loading to false yet
+      }
+      
+      // Set error if retry fails or it's not a network error
+      setError(err instanceof Error ? err.message : 'Error desconocido');
+    } finally {
+      if (retryCount === 0 || retryCount > 0) {
+        setLoading(false);
+      }
+    }
+  };
 
   // Recargar datos cuando se abre el popover
   useEffect(() => {
     if (isOpen) {
-      loadInventory();
+      loadInventoryConSede();
     }
-  }, [isOpen, loadInventory]);
+  }, [isOpen, profile?.sede_id]);
 
-  // Actualizar datos automáticamente cada 30 segundos
+  // Suscripción en tiempo real a cambios de inventario (reemplaza polling)
   useEffect(() => {
-    const interval = setInterval(() => {
-      loadInventory();
-    }, 30000); // 30 segundos
+    if (!profile?.sede_id) return;
 
-    return () => clearInterval(interval);
-  }, [loadInventory]);
+    // Suscripción a cambios en platos_sedes
+    const platosChannel = supabase
+      .channel('platos_sedes_changes')
+      .on(
+        'postgres_changes',
+        { 
+          event: '*', 
+          schema: 'public', 
+          table: 'platos_sedes',
+          filter: `sede_id=eq.${profile.sede_id}`
+        },
+        (payload) => {
+          console.log('🔄 Inventario platos actualizado:', payload);
+          loadInventoryConSede();
+        }
+      )
+      .subscribe();
+
+    // Suscripción a cambios en bebidas_sedes
+    const bebidasChannel = supabase
+      .channel('bebidas_sedes_changes')
+      .on(
+        'postgres_changes',
+        { 
+          event: '*', 
+          schema: 'public', 
+          table: 'bebidas_sedes',
+          filter: `sede_id=eq.${profile.sede_id}`
+        },
+        (payload) => {
+          console.log('🔄 Inventario bebidas actualizado:', payload);
+          loadInventoryConSede();
+        }
+      )
+      .subscribe();
+
+    // Suscripción a cambios en toppings_sedes
+    const toppingsChannel = supabase
+      .channel('toppings_sedes_changes')
+      .on(
+        'postgres_changes',
+        { 
+          event: '*', 
+          schema: 'public', 
+          table: 'toppings_sedes',
+          filter: `sede_id=eq.${profile.sede_id}`
+        },
+        (payload) => {
+          console.log('🔄 Inventario toppings actualizado:', payload);
+          loadInventoryConSede();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(platosChannel);
+      supabase.removeChannel(bebidasChannel);
+      supabase.removeChannel(toppingsChannel);
+    };
+  }, [profile?.sede_id]);
 
   // Actualizar datos cuando hay cambios en el inventario (tiempo real)
   useEffect(() => {
-    loadInventory();
-  }, [lastUpdate, loadInventory]);
+    loadInventoryConSede();
+  }, [lastUpdate, profile?.sede_id]);
 
   // Contar productos no disponibles
-  const unavailablePlatos = platos.filter(plato => !plato.available);
-  const unavailableBebidas = bebidas.filter(bebida => !bebida.available);
-  const unavailableToppings = toppings.filter(topping => !topping.available);
+  const unavailablePlatos = platos.filter(plato => !plato.sede_available);
+  const unavailableBebidas = bebidas.filter(bebida => !bebida.sede_available);
+  const unavailableToppings = toppings.filter(topping => !topping.sede_available);
 
   // Contar pedidos en curso (received, kitchen, delivery)
   const activeOrders = orders.filter(order => 
@@ -88,9 +197,9 @@ export const StatusBar: React.FC<StatusBarProps> = ({ orders, currentSede = 'Niz
 
   // Debug detallado de productos
   console.log('📊 Productos disponibles:', {
-    platos: platos.map(p => ({ id: p.id, name: p.name, available: p.available })),
-    bebidas: bebidas.map(b => ({ id: b.id, name: b.name, available: b.available })),
-    toppings: toppings.map(t => ({ id: t.id, name: t.name, available: t.available }))
+    platos: platos.map(p => ({ id: p.id, name: p.name, available: p.sede_available })),
+    bebidas: bebidas.map(b => ({ id: b.id, name: b.name, available: b.sede_available })),
+    toppings: toppings.map(t => ({ id: t.id, name: t.name, available: t.sede_available }))
   });
 
   // Solo mostrar si hay productos no disponibles o pedidos activos
@@ -145,7 +254,7 @@ export const StatusBar: React.FC<StatusBarProps> = ({ orders, currentSede = 'Niz
                     <Button
                       variant="ghost"
                       size="sm"
-                      onClick={() => loadInventory()}
+                      onClick={() => loadInventoryConSede()}
                       className="h-6 w-6 p-0"
                       title="Actualizar datos"
                     >

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -24,10 +24,14 @@ import {
   AlertTriangle,
   Pause,
   Package,
-  ShoppingCart
+  ShoppingCart,
+  RefreshCw
 } from 'lucide-react';
 import { Order, Sede, User as UserType, PaymentMethod, DeliveryType, DeliverySettings } from '@/types/delivery';
 import { useMenu } from '@/hooks/useMenu';
+import { useSedeOrders } from '@/hooks/useSedeOrders';
+import { useAuth } from '@/hooks/useAuth';
+import { CreateOrderData } from '@/services/sedeOrdersService';
 
 interface SedeOrdersProps {
   orders: Order[];
@@ -38,67 +42,104 @@ interface SedeOrdersProps {
   onTransferOrder: (orderId: string, targetSedeId: string) => void;
 }
 
-interface CustomerData {
-  name: string;
-  phone: string;
-  orderHistory: Order[];
-}
-
 export const SedeOrders: React.FC<SedeOrdersProps> = ({ 
-  orders, 
+  orders: legacyOrders, 
   sedes, 
   currentUser, 
   settings,
   onCreateOrder, 
   onTransferOrder 
 }) => {
+  const { profile } = useAuth();
   const { platos, bebidas, loading: menuLoading } = useMenu();
+  
+  // Hook para manejar pedidos de sede con datos reales
+  const {
+    orders: realOrders,
+    customer,
+    loading,
+    error,
+    searchCustomer,
+    loadSedeOrders,
+    createOrder,
+    transferOrder: transferRealOrder,
+    clearCustomer
+  } = useSedeOrders(profile?.sede_id);
+
   const [searchPhone, setSearchPhone] = useState('');
-  const [customer, setCustomer] = useState<CustomerData | null>(null);
   const [showCreateDialog, setShowCreateDialog] = useState(false);
-  const [newCustomerName, setNewCustomerName] = useState('');
+  const [customerData, setCustomerData] = useState({
+    name: '',
+    phone: '',
+    address: ''
+  });
   const [newOrder, setNewOrder] = useState({
     address: '',
     items: [] as { productId: string; quantity: number; toppings: string[] }[],
     paymentMethod: 'cash' as PaymentMethod,
     specialInstructions: '',
     deliveryType: 'delivery' as DeliveryType,
-    pickupSede: ''
+    pickupSede: '',
+    // Campos adicionales para recogida en tienda
+    pickupCustomerName: '',
+    pickupCustomerPhone: ''
   });
   const [transferOrderId, setTransferOrderId] = useState('');
   const [transferSedeId, setTransferSedeId] = useState('');
 
+  // Usar SOLO pedidos reales - NUNCA legacy/dummy
+  const orders = realOrders;
+
+  // Cargar pedidos al montar el componente
+  useEffect(() => {
+    if (profile?.sede_id) {
+      loadSedeOrders();
+    }
+  }, [profile?.sede_id, loadSedeOrders]);
+
   const normalizePhone = (phone: string) => {
-    return phone.replace(/[\s\-\(\)]/g, '');
+    return phone.replace(/[\s\-()]/g, '');
   };
 
-  const searchCustomer = () => {
+  const handleSearchCustomer = async () => {
     if (!searchPhone.trim()) return;
+    const foundCustomer = await searchCustomer(searchPhone.trim());
     
-    const normalizedSearchPhone = normalizePhone(searchPhone.trim());
-    console.log('Searching for normalized phone:', normalizedSearchPhone);
-    
-    // Find customer by normalized phone in existing orders
-    const customerOrders = orders.filter(order => {
-      const normalizedOrderPhone = normalizePhone(order.customerPhone);
-      console.log('Comparing with order phone:', normalizedOrderPhone);
-      return normalizedOrderPhone === normalizedSearchPhone;
-    });
-    
-    console.log('Found orders:', customerOrders.length);
-    
-    if (customerOrders.length > 0) {
-      const customerName = customerOrders[0].customerName;
-      setCustomer({
-        name: customerName,
-        phone: searchPhone.trim(),
-        orderHistory: customerOrders.sort((a, b) => 
-          new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-        )
+    // Si se encuentra un cliente, precargar sus datos
+    if (foundCustomer) {
+      setCustomerData({
+        name: foundCustomer.nombre,
+        phone: foundCustomer.telefono,
+        address: foundCustomer.direccion_reciente || ''
       });
     } else {
-      setCustomer(null);
+      // Si no se encuentra, mantener el teléfono buscado
+      setCustomerData({
+        name: '',
+        phone: searchPhone.trim(),
+        address: ''
+      });
     }
+  };
+
+  // Función para abrir el modal de crear pedido con datos precargados
+  const handleOpenCreateDialog = () => {
+    // Precargar datos del cliente si están disponibles
+    if (customer) {
+      setCustomerData({
+        name: customer.nombre,
+        phone: customer.telefono,
+        address: customer.direccion_reciente || ''
+      });
+    } else if (searchPhone.trim()) {
+      setCustomerData({
+        name: '',
+        phone: searchPhone.trim(),
+        address: ''
+      });
+    }
+    
+    setShowCreateDialog(true);
   };
 
   const addItemToOrder = (productId: string) => {
@@ -135,65 +176,114 @@ export const SedeOrders: React.FC<SedeOrdersProps> = ({
     }, 0);
   };
 
-  const handleCreateOrder = () => {
-    if (newOrder.deliveryType === 'delivery' && !newOrder.address) return;
-    if (newOrder.deliveryType === 'pickup' && !newOrder.pickupSede) return;
+  const handleCreateOrder = async () => {
+    // Validaciones básicas
+    if (newOrder.deliveryType === 'delivery' && !customerData.address) return;
+    if (newOrder.deliveryType === 'pickup' && (!newOrder.pickupSede || !newOrder.pickupCustomerName || !newOrder.pickupCustomerPhone)) return;
     if (newOrder.items.length === 0) return;
-    
-    const customerName = customer?.name || newCustomerName;
-    if (!customerName) return;
+    if (!profile?.sede_id) return;
+    if (!customerData.name || !customerData.phone) return;
 
-    const orderItems = newOrder.items.map(item => {
-      const product = platos.find(p => p.id.toString() === item.productId) || 
-                     bebidas.find(b => b.id.toString() === item.productId);
-      return {
-        id: `item-${Date.now()}-${item.productId}`,
-        productId: item.productId,
-        productName: product?.name || '',
-        quantity: item.quantity,
-        price: product?.pricing || 0,
-        toppings: []
+    try {
+      // Determinar los datos finales del cliente y la dirección
+      const finalCustomerName = customerData.name;
+      const finalCustomerPhone = customerData.phone;
+      const finalAddress = newOrder.deliveryType === 'pickup' 
+        ? `Recogida en ${newOrder.pickupSede} - Cliente: ${newOrder.pickupCustomerName} (${newOrder.pickupCustomerPhone})`
+        : customerData.address;
+
+      // Preparar datos para el servicio con actualización de cliente
+      const orderData: CreateOrderData = {
+        cliente_nombre: finalCustomerName,
+        cliente_telefono: finalCustomerPhone,
+        direccion: finalAddress,
+        tipo_entrega: newOrder.deliveryType,
+        sede_recogida: newOrder.deliveryType === 'pickup' ? newOrder.pickupSede : undefined,
+        pago_tipo: newOrder.paymentMethod === 'cash' ? 'efectivo' : 
+                   newOrder.paymentMethod === 'card' ? 'tarjeta' :
+                   newOrder.paymentMethod === 'nequi' ? 'nequi' : 'transferencia',
+        instrucciones: newOrder.specialInstructions || undefined,
+        items: newOrder.items.map(item => {
+          const product = platos.find(p => p.id.toString() === item.productId);
+          if (product) {
+            return {
+              producto_tipo: 'plato' as const,
+              producto_id: product.id,
+              cantidad: item.quantity
+            };
+          }
+          
+          const bebida = bebidas.find(b => b.id.toString() === item.productId);
+          if (bebida) {
+            return {
+              producto_tipo: 'bebida' as const,
+              producto_id: bebida.id,
+              cantidad: item.quantity
+            };
+          }
+          
+          throw new Error(`Producto no encontrado: ${item.productId}`);
+        }),
+        sede_id: profile.sede_id,
+        // Datos para actualización de cliente
+        update_customer_data: {
+          nombre: finalCustomerName,
+          telefono: finalCustomerPhone,
+          direccion: newOrder.deliveryType === 'delivery' ? customerData.address : undefined
+        }
       };
-    });
 
-    onCreateOrder({
-      customerName,
-      customerPhone: searchPhone,
-      address: newOrder.deliveryType === 'pickup' ? `Recogida en ${newOrder.pickupSede}` : newOrder.address,
-      items: orderItems,
-      status: 'received',
-      totalAmount: calculateTotal(),
-      source: 'sede',
-      specialInstructions: newOrder.specialInstructions || undefined,
-      paymentMethod: newOrder.paymentMethod,
-      paymentStatus: 'pending',
-      originSede: currentUser.sede,
-      assignedSede: currentUser.sede,
-      deliveryType: newOrder.deliveryType,
-      pickupSede: newOrder.deliveryType === 'pickup' ? newOrder.pickupSede : undefined
-    });
+      // Crear pedido usando el servicio real
+      await createOrder(orderData);
 
-    // Reset form
-    setNewOrder({
-      address: '',
-      items: [],
-      paymentMethod: 'cash',
-      specialInstructions: '',
-      deliveryType: 'delivery',
-      pickupSede: ''
-    });
-    setNewCustomerName('');
-    setShowCreateDialog(false);
-    
-    // Refresh customer data
-    setTimeout(() => searchCustomer(), 100);
+      // Reset form
+      setNewOrder({
+        address: '',
+        items: [],
+        paymentMethod: 'cash',
+        specialInstructions: '',
+        deliveryType: 'delivery',
+        pickupSede: '',
+        pickupCustomerName: '',
+        pickupCustomerPhone: ''
+      });
+      setCustomerData({
+        name: '',
+        phone: '',
+        address: ''
+      });
+      setShowCreateDialog(false);
+      
+      // Refresh customer data si existe
+      if (customer) {
+        setTimeout(() => searchCustomer(customer.telefono), 500);
+      }
+
+    } catch (error) {
+      console.error('Error creando pedido:', error);
+      // El error ya se maneja en el hook useSedeOrders
+    }
   };
 
-  const handleTransferOrder = () => {
+  const handleTransferOrder = async () => {
     if (!transferOrderId || !transferSedeId) return;
-    onTransferOrder(transferOrderId, transferSedeId);
-    setTransferOrderId('');
-    setTransferSedeId('');
+    
+    try {
+      // Intentar usar el servicio real primero
+      const orderId = parseInt(transferOrderId);
+      if (!isNaN(orderId)) {
+        await transferRealOrder(orderId, transferSedeId);
+      } else {
+        // Fallback a la función legacy
+        onTransferOrder(transferOrderId, transferSedeId);
+      }
+      
+      setTransferOrderId('');
+      setTransferSedeId('');
+    } catch (error) {
+      console.error('Error transfiriendo pedido:', error);
+      // El error ya se maneja en el hook useSedeOrders
+    }
   };
 
   const getStatusColor = (status: string) => {
@@ -216,7 +306,10 @@ export const SedeOrders: React.FC<SedeOrdersProps> = ({
     }
   };
 
-  const sedeOrders = orders.filter(order => order.assignedSede === currentUser.sede);
+  // Filtrar pedidos: usar datos reales si están disponibles
+  const sedeOrders = realOrders.length > 0 
+    ? realOrders 
+    : orders.filter((order: any) => order.assignedSede === currentUser.sede);
 
   return (
     <div className="space-y-6">
@@ -250,30 +343,48 @@ export const SedeOrders: React.FC<SedeOrdersProps> = ({
                 placeholder="Número de teléfono"
                 value={searchPhone}
                 onChange={(e) => setSearchPhone(e.target.value)}
-                onKeyPress={(e) => e.key === 'Enter' && searchCustomer()}
+                onKeyPress={(e) => e.key === 'Enter' && handleSearchCustomer()}
+                disabled={loading}
               />
-              <Button onClick={searchCustomer} variant="outline">
-                <Search className="h-4 w-4" />
+              <Button onClick={handleSearchCustomer} variant="outline" disabled={loading}>
+                {loading ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
               </Button>
             </div>
+
+            {error && (
+              <Alert className="border-red-200 bg-red-50">
+                <AlertTriangle className="h-4 w-4 text-red-600" />
+                <AlertDescription className="text-red-800">
+                  {error}
+                </AlertDescription>
+              </Alert>
+            )}
 
             {customer ? (
               <div className="space-y-2">
                 <p>
-                  <span className="font-semibold">Nombre:</span> {customer.name}
+                  <span className="font-semibold">Nombre:</span> {customer.nombre}
                 </p>
                 <p>
-                  <span className="font-semibold">Teléfono:</span> {customer.phone}
+                  <span className="font-semibold">Teléfono:</span> {customer.telefono}
                 </p>
-                <Button variant="link" onClick={() => setCustomer(null)}>
+                <p>
+                  <span className="font-semibold">Pedidos anteriores:</span> {customer.historial_pedidos.length}
+                </p>
+                {customer.direccion_reciente && (
+                  <p>
+                    <span className="font-semibold">Última dirección:</span> {customer.direccion_reciente}
+                  </p>
+                )}
+                <Button variant="link" onClick={clearCustomer}>
                   Limpiar Cliente
                 </Button>
               </div>
-            ) : (
+            ) : searchPhone && !loading ? (
               <p className="text-muted-foreground">
                 No se encontró ningún cliente con este número de teléfono.
               </p>
-            )}
+            ) : null}
           </CardContent>
         </Card>
 
@@ -286,11 +397,32 @@ export const SedeOrders: React.FC<SedeOrdersProps> = ({
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
+            <Dialog open={showCreateDialog} onOpenChange={(open) => {
+              setShowCreateDialog(open);
+              if (!open) {
+                // Limpiar form cuando se cierra el modal
+                setNewOrder({
+                  address: '',
+                  items: [],
+                  paymentMethod: 'cash',
+                  specialInstructions: '',
+                  deliveryType: 'delivery',
+                  pickupSede: '',
+                  pickupCustomerName: '',
+                  pickupCustomerPhone: ''
+                });
+                setCustomerData({
+                  name: '',
+                  phone: '',
+                  address: ''
+                });
+              }
+            }}>
               <DialogTrigger asChild>
                 <Button 
                   className="w-full bg-brand-primary hover:bg-brand-primary/90"
-                  disabled={!settings.acceptingOrders}
+                  disabled={!settings.acceptingOrders || loading}
+                  onClick={handleOpenCreateDialog}
                 >
                   <Plus className="h-4 w-4 mr-2" />
                   Crear Nuevo Pedido
@@ -315,17 +447,38 @@ export const SedeOrders: React.FC<SedeOrdersProps> = ({
                 )}
 
                 <div className="space-y-4">
-                  {!customer && (
+                  {/* Datos del Cliente - Siempre visibles y editables */}
+                  <div className="space-y-3 p-4 border rounded-lg bg-gray-50">
+                    <h4 className="font-medium text-gray-900">Datos del Cliente</h4>
+                    
                     <div>
-                      <Label htmlFor="customerName">Nombre del Cliente</Label>
+                      <Label htmlFor="customerName">Nombre del Cliente *</Label>
                       <Input
                         id="customerName"
-                        value={newCustomerName}
-                        onChange={(e) => setNewCustomerName(e.target.value)}
+                        value={customerData.name}
+                        onChange={(e) => setCustomerData(prev => ({ ...prev, name: e.target.value }))}
                         placeholder="Ingrese el nombre del cliente"
                       />
                     </div>
-                  )}
+                    
+                    <div>
+                      <Label htmlFor="customerPhone">Teléfono *</Label>
+                      <Input
+                        id="customerPhone"
+                        type="tel"
+                        value={customerData.phone}
+                        onChange={(e) => setCustomerData(prev => ({ ...prev, phone: e.target.value }))}
+                        placeholder="Ingrese el teléfono del cliente"
+                      />
+                    </div>
+                    
+                    {customer && (
+                      <div className="text-sm text-green-600 flex items-center gap-2">
+                        <User className="h-4 w-4" />
+                        Cliente encontrado - Datos precargados (puedes editarlos)
+                      </div>
+                    )}
+                  </div>
                   
                   <div>
                     <Label>Tipo de Entrega</Label>
@@ -347,35 +500,63 @@ export const SedeOrders: React.FC<SedeOrdersProps> = ({
 
                   {newOrder.deliveryType === 'delivery' ? (
                     <div>
-                      <Label htmlFor="address">Dirección de Entrega</Label>
+                      <Label htmlFor="address">Dirección de Entrega *</Label>
                       <Input
                         id="address"
-                        value={newOrder.address}
-                        onChange={(e) => setNewOrder({ ...newOrder, address: e.target.value })}
+                        value={customerData.address}
+                        onChange={(e) => setCustomerData(prev => ({ ...prev, address: e.target.value }))}
                         placeholder="Ingrese la dirección completa"
                       />
                     </div>
                   ) : (
-                    <div>
-                      <Label>Sede de Recogida</Label>
-                      <Select 
-                        value={newOrder.pickupSede} 
-                        onValueChange={(value) => setNewOrder({ ...newOrder, pickupSede: value })}
-                      >
-                        <SelectTrigger>
-                          <SelectValue placeholder="Seleccionar sede" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {sedes.filter(sede => sede.isActive).map((sede) => (
-                            <SelectItem key={sede.id} value={sede.name}>
-                              <div className="flex items-center gap-2">
-                                <Store className="h-4 w-4" />
-                                {sede.name} - {sede.address}
-                              </div>
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
+                    <div className="space-y-3">
+                      <div>
+                        <Label>Sede de Recogida *</Label>
+                        <Select 
+                          value={newOrder.pickupSede} 
+                          onValueChange={(value) => setNewOrder({ ...newOrder, pickupSede: value })}
+                        >
+                          <SelectTrigger>
+                            <SelectValue placeholder="Seleccionar sede" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {sedes.filter(sede => sede.isActive).map((sede) => (
+                              <SelectItem key={sede.id} value={sede.name}>
+                                <div className="flex items-center gap-2">
+                                  <Store className="h-4 w-4" />
+                                  {sede.name} - {sede.address}
+                                </div>
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      
+                      {/* Datos adicionales para recogida en tienda */}
+                      <div className="p-3 border rounded-lg bg-blue-50">
+                        <h5 className="font-medium text-blue-900 mb-2">Datos de la Persona que Recoge</h5>
+                        <div className="space-y-2">
+                          <div>
+                            <Label htmlFor="pickupName">Nombre *</Label>
+                            <Input
+                              id="pickupName"
+                              value={newOrder.pickupCustomerName}
+                              onChange={(e) => setNewOrder({ ...newOrder, pickupCustomerName: e.target.value })}
+                              placeholder="Nombre de quien recoge el pedido"
+                            />
+                          </div>
+                          <div>
+                            <Label htmlFor="pickupPhone">Teléfono *</Label>
+                            <Input
+                              id="pickupPhone"
+                              type="tel"
+                              value={newOrder.pickupCustomerPhone}
+                              onChange={(e) => setNewOrder({ ...newOrder, pickupCustomerPhone: e.target.value })}
+                              placeholder="Teléfono de quien recoge el pedido"
+                            />
+                          </div>
+                        </div>
+                      </div>
                     </div>
                   )}
 
@@ -404,7 +585,7 @@ export const SedeOrders: React.FC<SedeOrdersProps> = ({
                         <p className="text-center text-gray-500">Cargando productos...</p>
                       ) : (
                         <>
-                          {platos.filter(item => item.available).map((item) => (
+                          {platos.filter(item => !('available' in item) || (item as any).available !== false).map((item) => (
                             <div key={item.id} className="flex items-center justify-between p-2 border rounded">
                               <div>
                                 <p className="font-medium">{item.name}</p>
@@ -419,7 +600,7 @@ export const SedeOrders: React.FC<SedeOrdersProps> = ({
                               </Button>
                             </div>
                           ))}
-                          {bebidas.filter(item => item.available).map((item) => (
+                          {bebidas.filter(item => !('available' in item) || (item as any).available !== false).map((item) => (
                             <div key={item.id} className="flex items-center justify-between p-2 border rounded">
                               <div>
                                 <p className="font-medium">{item.name}</p>
@@ -485,14 +666,16 @@ export const SedeOrders: React.FC<SedeOrdersProps> = ({
                     onClick={handleCreateOrder}
                     disabled={
                       !settings.acceptingOrders ||
-                      (newOrder.deliveryType === 'delivery' && !newOrder.address) ||
-                      (newOrder.deliveryType === 'pickup' && !newOrder.pickupSede) ||
-                      newOrder.items.length === 0 || 
-                      (!customer && !newCustomerName)
+                      !customerData.name ||
+                      !customerData.phone ||
+                      (newOrder.deliveryType === 'delivery' && !customerData.address) ||
+                      (newOrder.deliveryType === 'pickup' && (!newOrder.pickupSede || !newOrder.pickupCustomerName || !newOrder.pickupCustomerPhone)) ||
+                      newOrder.items.length === 0 ||
+                      loading
                     }
                     className="w-full bg-brand-primary hover:bg-brand-primary/90"
                   >
-                    Crear Pedido
+                    {loading ? 'Creando...' : 'Crear Pedido'}
                   </Button>
                 </div>
               </DialogContent>
@@ -535,9 +718,20 @@ export const SedeOrders: React.FC<SedeOrdersProps> = ({
       {/* Sede Orders Section */}
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Store className="h-5 w-5" />
-            Pedidos de la Sede - {currentUser.sede}
+          <CardTitle className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Store className="h-5 w-5" />
+              Pedidos de la Sede - {profile?.sede_name || currentUser.sede}
+            </div>
+            <Button 
+              variant="outline" 
+              size="sm" 
+              onClick={() => loadSedeOrders()}
+              disabled={loading}
+            >
+              {loading ? <RefreshCw className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+              Recargar
+            </Button>
           </CardTitle>
         </CardHeader>
         <CardContent>
@@ -558,41 +752,63 @@ export const SedeOrders: React.FC<SedeOrdersProps> = ({
               </TableRow>
             </TableHeader>
             <TableBody>
-              {sedeOrders.map((order) => (
-                <TableRow key={order.id}>
-                  <TableCell>
-                    <div className="flex items-center gap-2">
-                      <Clock className="h-4 w-4 text-gray-500" />
-                      {new Date(order.createdAt).toLocaleDateString()}
+              {loading ? (
+                <TableRow>
+                  <TableCell colSpan={6} className="text-center py-8">
+                    <div className="flex items-center justify-center gap-2">
+                      <RefreshCw className="h-4 w-4 animate-spin" />
+                      Cargando pedidos...
                     </div>
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex items-center gap-2">
-                      <User className="h-4 w-4 text-gray-500" />
-                      {order.customerName}
-                    </div>
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex items-center gap-2">
-                      <MapPin className="h-4 w-4 text-gray-500" />
-                      <span className="truncate max-w-xs">{order.address}</span>
-                    </div>
-                  </TableCell>
-                  <TableCell className="font-medium">
-                    ${order.totalAmount.toLocaleString()}
-                  </TableCell>
-                  <TableCell>
-                    <Badge className={getStatusColor(order.status)}>
-                      {order.status}
-                    </Badge>
-                  </TableCell>
-                  <TableCell>
-                    <Badge className={getPaymentStatusColor(order.paymentStatus)}>
-                      {order.paymentStatus}
-                    </Badge>
                   </TableCell>
                 </TableRow>
-              ))}
+              ) : sedeOrders.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
+                    No hay pedidos para mostrar
+                  </TableCell>
+                </TableRow>
+              ) : (
+                sedeOrders.map((order) => {
+                  // Solo datos reales - simplificado
+                  return (
+                    <TableRow key={order.id}>
+                      <TableCell>
+                        <div className="flex items-center gap-2">
+                          <Clock className="h-4 w-4 text-gray-500" />
+                          {new Date(order.created_at).toLocaleDateString()}
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex items-center gap-2">
+                          <User className="h-4 w-4 text-gray-500" />
+                          {order.cliente_nombre}
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex items-center gap-2">
+                          <MapPin className="h-4 w-4 text-gray-500" />
+                          <span className="truncate max-w-xs">
+                            {order.direccion}
+                          </span>
+                        </div>
+                      </TableCell>
+                      <TableCell className="font-medium">
+                        ${order.total.toLocaleString()}
+                      </TableCell>
+                      <TableCell>
+                        <Badge className={getStatusColor(order.estado)}>
+                          {order.estado}
+                        </Badge>
+                      </TableCell>
+                      <TableCell>
+                        <Badge className={getPaymentStatusColor(order.pago_estado)}>
+                          {order.pago_estado}
+                        </Badge>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })
+              )}
             </TableBody>
           </Table>
         </CardContent>

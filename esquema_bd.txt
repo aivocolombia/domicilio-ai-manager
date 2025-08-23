@@ -1,0 +1,172 @@
+# 📄 Documento técnico: Modelo Entidad-Relación (Órdenes y Productos)
+
+## 1. Objetivo
+Este documento describe la estructura de la base de datos relacionada con las órdenes, productos, bebidas y otros elementos asociados.  
+Sirve como guía para desarrolladores (por ejemplo, en Cursor) para entender las relaciones entre tablas y cómo se maneja la información.
+
+---
+
+## 2. Resumen del Modelo Entidad-Relación
+
+El sistema gestiona pedidos (órdenes) que pueden incluir **múltiples productos** y **múltiples bebidas**.  
+Cada orden está asociada a un cliente, un repartidor y un pago, y puede tener tiempos estimados de entrega, extras y auditoría de cambios.
+
+**Relaciones principales:**
+- **Cliente** (1) → (N) **Órdenes**
+- **Repartidor** (1) → (N) **Órdenes**
+- **Pago** (1) → (1) **Orden**
+- **Orden** (1) → (N) **Ordenes_Productos**
+- **Orden** (1) → (N) **Ordenes_Bebidas**
+- **Plato** (1) → (N) **Ordenes_Productos**
+- **Bebida** (1) → (N) **Ordenes_Bebidas**
+- **Plato** (1) → (N) **Plato_Toppings**
+- **Topping** (1) → (N) **Plato_Toppings**
+
+---
+
+## 3. Tablas y Campos
+
+### 3.1 `clientes`
+- `id` **PK**
+- `nombre` (TEXT)
+- `telefono` (TEXT)
+- `direccion` (TEXT)
+- `created_at` (TIMESTAMPTZ)
+- `updated_at` (TIMESTAMPTZ)
+
+**Relaciones:**
+- 1 cliente puede tener muchas órdenes (`ordenes.cliente_id`).
+
+---
+
+### 3.2 `repartidores`
+- `id` **PK**
+- `disponible` (BOOLEAN)
+- `nombre` (TEXT)
+- `telefono` (TEXT)
+- `placas` (TEXT)
+- `created_at` (TIMESTAMPTZ)
+
+**Relaciones:**
+- 1 repartidor puede tener muchas órdenes (`ordenes.repartidor_id`).
+
+---
+
+### 3.3 `pagos`
+- `id` **PK**
+- `type` (TEXT)
+- `token` (TEXT / NULL)
+- `status` (TEXT)
+- `created_at` (TIMESTAMPTZ)
+- `updated_at` (TIMESTAMPTZ)
+
+**Relaciones:**
+- 1 pago corresponde a 1 orden (`ordenes.payment_id`).
+
+---
+
+### 3.4 `ordenes`
+- `id` **PK**
+- `repartidor_id` **FK** → `repartidores.id`
+- `order_at` (TIMESTAMPTZ) — antes `date`
+- `status` (TEXT)
+- `payment_id` **FK** → `pagos.id`
+- `base_eta` (INTERVAL) — antes `time`
+- `extra_eta` (INTERVAL) — antes `add_time`
+- `razon_tiempo_extra` (TEXT)
+- `hora_entrega` (TIMESTAMPTZ)
+- `created_at` (TIMESTAMPTZ)
+- `observaciones` (TEXT)
+- `cliente_id` **FK** → `clientes.id`
+- `eta_updates_count` (INTEGER) — contador de cambios en ETA
+
+**Relaciones:**
+- 1 orden tiene muchos productos y muchas bebidas.
+- Cada orden está ligada a un cliente, un repartidor y un pago.
+
+---
+
+### 3.5 `ordenes_platos`
+- `id` **PK**
+- `orden_id` **FK** → `ordenes.id`
+- `plato_id` **FK** → `platos.id`
+- `quantity` (INTEGER)
+- `unit_price` (NUMERIC)
+- `total_price` (NUMERIC, calculado)
+- `created_at` (TIMESTAMPTZ)
+
+**Relaciones:**
+- Une órdenes con platos (relación N:N conceptual, materializada en esta tabla).
+
+---
+
+### 3.6 `ordenes_bebidas`
+- `id` **PK**
+- `orden_id` **FK** → `ordenes.id`
+- `bebidas_id` **FK** → `bebidas.id`
+- `quantity` (INTEGER)
+- `unit_price` (NUMERIC)
+- `total_price` (NUMERIC, calculado)
+- `created_at` (TIMESTAMPTZ)
+
+**Relaciones:**
+- Une órdenes con bebidas (relación N:N conceptual, materializada en esta tabla).
+
+---
+
+### 3.7 `platos`
+*(Datos ya existentes)*
+- `id` **PK**
+- `nombre` (TEXT)
+- `precio` (NUMERIC)
+- Otros campos según definición
+
+---
+
+### 3.8 `bebidas`
+*(Datos ya existentes)*
+- `id` **PK**
+- `nombre` (TEXT)
+- `precio` (NUMERIC)
+- Otros campos según definición
+
+---
+
+### 3.9 `toppings`
+*(Datos ya existentes)*
+- `id` **PK**
+- `nombre` (TEXT)
+- `precio` (NUMERIC)
+- Otros campos según definición
+
+---
+
+### 3.10 `plato_toppings`
+- `plato_id` **FK** → `platos.id`
+- `topping_id` **FK** → `toppings.id`
+- `created_at` (TIMESTAMPTZ)
+
+**Relaciones:**
+- Relación N:N entre `platos` y `toppings`.
+
+---
+
+## 4. Notas sobre Datos y Ejemplos
+
+- **ID Autoincrementales**: en `ordenes`, `ordenes_platos`, `ordenes_bebidas`, `clientes`, `repartidores`, `pagos`.
+- **Tipos de fecha/hora**: usar `TIMESTAMPTZ` para momentos exactos y `INTERVAL` para duraciones.
+- **ON DELETE CASCADE**: recomendable en tablas de detalle (`ordenes_platos`, `ordenes_bebidas`, `plato_toppings`).
+- **Dummy Data**: usar `RETURNING` para encadenar inserts y evitar errores de FK.
+- **Auditoría**: `eta_updates_count` debe actualizarse con trigger cuando cambie `base_eta` o `extra_eta`.
+
+---
+
+## 5. Buenas Prácticas
+
+1. **Evitar nombres reservados** (`date`, `time`, etc.) usando alias más descriptivos.
+2. **Mantener integridad referencial** con `FOREIGN KEY` y cascadas.
+3. **Separar datos estáticos** (productos, bebidas, toppings) de datos dinámicos (órdenes, pagos).
+4. **Usar índices** en campos de búsqueda frecuente (`status`, `cliente_id`, `repartidor_id`, `hora_entrega`).
+5. **Documentar relaciones** en diagramas o comentarios en el código para facilitar mantenimiento.
+
+---

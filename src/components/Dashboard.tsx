@@ -19,11 +19,16 @@ import {
   Banknote,
   Smartphone,
   Building2,
-  User
+  User,
+  RefreshCw,
+  AlertCircle
 } from 'lucide-react';
 import { Order, OrderStatus, OrderSource, DeliverySettings, DeliveryPerson, PaymentMethod } from '@/types/delivery';
 import { OrderConfigModal } from './OrderConfigModal';
 import { cn } from '@/lib/utils';
+import { useDashboard } from '@/hooks/useDashboard';
+import { DashboardOrder } from '@/services/dashboardService';
+import { useAuth } from '@/hooks/useAuth';
 
 interface DashboardProps {
   orders: Order[];
@@ -34,7 +39,7 @@ interface DashboardProps {
 }
 
 export const Dashboard: React.FC<DashboardProps> = ({
-  orders,
+  orders: legacyOrders,
   settings,
   deliveryPersonnel,
   onUpdateOrders,
@@ -43,34 +48,60 @@ export const Dashboard: React.FC<DashboardProps> = ({
   const [selectedOrders, setSelectedOrders] = useState<string[]>([]);
   const [isConfigModalOpen, setIsConfigModalOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
-  const [statusFilter, setStatusFilter] = useState<OrderStatus | 'all'>('all');
+  const [statusFilter, setStatusFilter] = useState<string>('all');
+
+  // Obtener datos del usuario autenticado
+  const { user, profile } = useAuth();
+
+  // Debug: Log user information
+  console.log('🏠 Dashboard: Usuario autenticado:', user);
+  console.log('👤 Dashboard: Perfil del usuario:', profile);
+  console.log('🏢 Dashboard: Sede ID del usuario:', profile?.sede_id);
+  console.log('🏷️ Dashboard: Tipo de sede_id:', typeof profile?.sede_id);
+
+  // Hook para datos reales del dashboard
+  const { 
+    orders: realOrders, 
+    stats, 
+    loading, 
+    error, 
+    filterOrdersByStatus, 
+    refreshData 
+  } = useDashboard(profile?.sede_id);
+
+  // Usar SOLO datos reales - NUNCA datos legacy para evitar mostrar datos dummy
+  // Una sede nueva debe mostrar dashboard vacío, no datos dummy
+  const orders = realOrders;
 
   const filteredOrders = orders.filter(order => {
-    const matchesSearch = order.customerName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         order.customerPhone.includes(searchTerm) ||
-                         order.id.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         order.address.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesStatus = statusFilter === 'all' || order.status === statusFilter;
+    // Solo datos reales - no más datos legacy/dummy
+    const realOrder = order as DashboardOrder;
+    const matchesSearch = realOrder.cliente_nombre.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                         realOrder.cliente_telefono.includes(searchTerm) ||
+                         realOrder.id_display.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                         realOrder.direccion.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesStatus = statusFilter === 'all' || realOrder.estado === statusFilter;
     return matchesSearch && matchesStatus;
   });
 
-  const getStatusIcon = (status: OrderStatus) => {
+  const getStatusIcon = (status: string) => {
     switch (status) {
-      case 'received': return <Clock className="h-4 w-4" />;
-      case 'kitchen': return <Package className="h-4 w-4" />;
-      case 'delivery': return <Truck className="h-4 w-4" />;
-      case 'delivered': return <CheckCircle className="h-4 w-4" />;
+      case 'Recibidos': return <Clock className="h-4 w-4" />;
+      case 'Cocina': return <Package className="h-4 w-4" />;
+      case 'Camino': return <Truck className="h-4 w-4" />;
+      case 'Entregados': return <CheckCircle className="h-4 w-4" />;
+      case 'Cancelado': return <AlertCircle className="h-4 w-4" />;
       default: return <Clock className="h-4 w-4" />;
     }
   };
 
-  const getStatusColor = (status: OrderStatus) => {
+  const getStatusColor = (status: string) => {
     switch (status) {
-      case 'received': return 'bg-yellow-500';
-      case 'kitchen': return 'bg-blue-500';
-      case 'delivery': return 'bg-orange-500';
-      case 'delivered': return 'bg-green-500';
-      case 'cancelled': return 'bg-red-500';
+      case 'Recibidos': return 'bg-yellow-500';
+      case 'Cocina': return 'bg-blue-500';
+      case 'Camino': return 'bg-orange-500';
+      case 'Entregados': return 'bg-green-500';
+      case 'Cancelado': return 'bg-red-500';
       default: return 'bg-gray-500';
     }
   };
@@ -148,7 +179,37 @@ export const Dashboard: React.FC<DashboardProps> = ({
     });
   };
 
-  const activeOrdersCount = orders.filter(o => o.status !== 'delivered' && o.status !== 'cancelled').length;
+  // Manejar error
+  if (error) {
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center gap-2 text-red-600">
+          <AlertCircle className="h-5 w-5" />
+          <span>Error: {error}</span>
+        </div>
+        <Button onClick={refreshData}>Reintentar</Button>
+      </div>
+    );
+  }
+
+  // Verificar si el usuario tiene sede asignada
+  if (!profile?.sede_id) {
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center gap-2 text-orange-600">
+          <AlertCircle className="h-5 w-5" />
+          <span>No tienes una sede asignada. Contacta al administrador.</span>
+        </div>
+        <div className="text-sm text-gray-600">
+          <p>Debug: Usuario: {user?.email}</p>
+          <p>Debug: Perfil cargado: {profile ? 'Sí' : 'No'}</p>
+          <p>Debug: Sede ID: {profile?.sede_id || 'No asignada'}</p>
+        </div>
+      </div>
+    );
+  }
+
+  const activeOrdersCount = stats.recibidos + stats.cocina + stats.camino;
 
   return (
     <div className="space-y-6">
@@ -157,11 +218,24 @@ export const Dashboard: React.FC<DashboardProps> = ({
         <div>
           <h1 className="text-3xl font-bold">Dashboard de Domicilios</h1>
           <p className="text-muted-foreground">
-            {activeOrdersCount} pedidos activos • {orders.length} pedidos totales
+            {activeOrdersCount} pedidos activos • {stats.total} pedidos totales
+          </p>
+          <p className="text-sm text-blue-600 font-medium">
+            Sede: {profile?.sede_name || profile?.sede_id || 'Sede actual'}
           </p>
         </div>
         
         <div className="flex gap-3">
+          <Button
+            onClick={refreshData}
+            disabled={loading}
+            variant="outline"
+            className="flex items-center gap-2"
+          >
+            <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+            {loading ? 'Cargando...' : 'Recargar'}
+          </Button>
+          
           <Button
             onClick={toggleAcceptingOrders}
             variant={settings.acceptingOrders ? "destructive" : "default"}
@@ -190,30 +264,26 @@ export const Dashboard: React.FC<DashboardProps> = ({
       </div>
 
       {/* Status Overview */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        {(['received', 'kitchen', 'delivery', 'delivered'] as OrderStatus[]).map(status => {
-          const count = orders.filter(o => o.status === status).length;
-          const statusLabels = {
-            received: 'Recibidos',
-            kitchen: 'En Cocina',
-            delivery: 'En Camino',
-            delivered: 'Entregados'
-          };
-          
-          return (
-            <Card key={status}>
-              <CardContent className="flex items-center justify-between p-6">
-                <div>
-                  <p className="text-2xl font-bold">{count}</p>
-                  <p className="text-sm text-muted-foreground">{statusLabels[status]}</p>
-                </div>
-                <div className={cn("p-2 rounded-full", getStatusColor(status))}>
-                  {getStatusIcon(status)}
-                </div>
-              </CardContent>
-            </Card>
-          );
-        })}
+      <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+        {[
+          { key: 'recibidos', label: 'Recibidos', count: stats.recibidos },
+          { key: 'cocina', label: 'En Cocina', count: stats.cocina },
+          { key: 'camino', label: 'En Camino', count: stats.camino },
+          { key: 'entregados', label: 'Entregados', count: stats.entregados },
+          { key: 'cancelados', label: 'Cancelados', count: stats.cancelados }
+        ].map(({ key, label, count }) => (
+          <Card key={key}>
+            <CardContent className="flex items-center justify-between p-6">
+              <div>
+                <p className="text-2xl font-bold">{count}</p>
+                <p className="text-sm text-muted-foreground">{label}</p>
+              </div>
+              <div className={cn("p-2 rounded-full", getStatusColor(key === 'recibidos' ? 'Recibidos' : key === 'cocina' ? 'Cocina' : key === 'camino' ? 'Camino' : key === 'entregados' ? 'Entregados' : 'Cancelado'))}>
+                {getStatusIcon(key === 'recibidos' ? 'Recibidos' : key === 'cocina' ? 'Cocina' : key === 'camino' ? 'Camino' : key === 'entregados' ? 'Entregados' : 'Cancelado')}
+              </div>
+            </CardContent>
+          </Card>
+        ))}
       </div>
 
       {/* Filters */}
@@ -228,17 +298,24 @@ export const Dashboard: React.FC<DashboardProps> = ({
               />
             </div>
             <div className="flex gap-2">
-              {(['all', 'received', 'kitchen', 'delivery', 'delivered'] as const).map(status => (
+              {[
+                { value: 'all', label: 'Todos' },
+                { value: 'Recibidos', label: 'Recibidos' },
+                { value: 'Cocina', label: 'Cocina' },
+                { value: 'Camino', label: 'Camino' },
+                { value: 'Entregados', label: 'Entregados' },
+                { value: 'Cancelado', label: 'Cancelados' }
+              ].map(({ value, label }) => (
                 <Button
-                  key={status}
-                  variant={statusFilter === status ? "default" : "outline"}
+                  key={value}
+                  variant={statusFilter === value ? "default" : "outline"}
                   size="sm"
-                  onClick={() => setStatusFilter(status)}
+                  onClick={() => {
+                    setStatusFilter(value);
+                    filterOrdersByStatus(value === 'all' ? null : value);
+                  }}
                 >
-                  {status === 'all' ? 'Todos' : 
-                   status === 'received' ? 'Recibidos' :
-                   status === 'kitchen' ? 'Cocina' :
-                   status === 'delivery' ? 'Camino' : 'Entregados'}
+                  {label}
                 </Button>
               ))}
             </div>
@@ -269,7 +346,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                   <th className="text-left p-2">ID</th>
                   <th className="text-left p-2">Cliente</th>
                   <th className="text-left p-2">Dirección</th>
-                  <th className="text-left p-2">Origen</th>
+                  <th className="text-left p-2">Sede</th>
                   <th className="text-left p-2">Estado</th>
                   <th className="text-left p-2">Pago</th>
                   <th className="text-left p-2">Repartidor</th>
@@ -279,78 +356,91 @@ export const Dashboard: React.FC<DashboardProps> = ({
                 </tr>
               </thead>
               <tbody>
-                {filteredOrders.map((order) => (
-                  <tr key={order.id} className="border-b hover:bg-muted/50">
-                    <td className="p-2">
-                      <Checkbox
-                        checked={selectedOrders.includes(order.id)}
-                        onCheckedChange={(checked) => handleSelectOrder(order.id, checked as boolean)}
-                      />
-                    </td>
-                    <td className="p-2 font-mono text-sm">{order.id.slice(0, 8)}</td>
-                    <td className="p-2">
-                      <div>
-                        <div className="font-medium">{order.customerName}</div>
-                        <div className="text-sm text-muted-foreground">{order.customerPhone}</div>
+                {loading ? (
+                  <tr>
+                    <td colSpan={12} className="p-8 text-center text-muted-foreground">
+                      <div className="flex items-center justify-center gap-2">
+                        <RefreshCw className="h-4 w-4 animate-spin" />
+                        Cargando órdenes...
                       </div>
-                    </td>
-                    <td className="p-2">
-                      <div className="text-sm max-w-32 truncate" title={order.address}>
-                        {order.address}
-                      </div>
-                    </td>
-                    <td className="p-2">
-                      <div className="flex items-center gap-2">
-                        {getSourceIcon(order.source)}
-                        <span className="text-sm">
-                          {order.source === 'ai_agent' ? 'AI Agent' : 'Call Center'}
-                        </span>
-                      </div>
-                    </td>
-                    <td className="p-2">
-                      <Badge className={cn("text-white", getStatusColor(order.status))}>
-                        <div className="flex items-center gap-1">
-                          {getStatusIcon(order.status)}
-                          {order.status === 'received' ? 'Recibido' :
-                           order.status === 'kitchen' ? 'Cocina' :
-                           order.status === 'delivery' ? 'Camino' : 'Entregado'}
-                        </div>
-                      </Badge>
-                    </td>
-                    <td className="p-2">
-                      <div className="space-y-1">
-                        <div className="flex items-center gap-1">
-                          {getPaymentMethodIcon(order.paymentMethod)}
-                          <span className="text-xs">{getPaymentMethodLabel(order.paymentMethod)}</span>
-                        </div>
-                        <Badge className={cn("text-white text-xs", getPaymentStatusColor(order.paymentStatus))}>
-                          {order.paymentStatus === 'paid' ? 'Pagado' :
-                           order.paymentStatus === 'pending' ? 'Pendiente' : 'Fallido'}
-                        </Badge>
-                      </div>
-                    </td>
-                    <td className="p-2">
-                      <div className="flex items-center gap-1">
-                        <User className="h-4 w-4 text-muted-foreground" />
-                        <span className="text-sm">{getDeliveryPersonName(order.assignedDeliveryPersonId)}</span>
-                      </div>
-                    </td>
-                    <td className="p-2 font-medium">${order.totalAmount.toLocaleString()}</td>
-                    <td className="p-2">
-                      <div className="text-sm">
-                        {formatTime(order.estimatedDeliveryTime)}
-                        {order.extraTime && (
-                          <div className="text-xs text-orange-600">
-                            +{order.extraTime}min
-                          </div>
-                        )}
-                      </div>
-                    </td>
-                    <td className="p-2 text-sm text-muted-foreground">
-                      {formatTime(order.createdAt)}
                     </td>
                   </tr>
-                ))}
+                ) : filteredOrders.length === 0 ? (
+                  <tr>
+                    <td colSpan={12} className="p-8 text-center text-muted-foreground">
+                      No se encontraron órdenes
+                    </td>
+                  </tr>
+                ) : (
+                  filteredOrders.map((order) => {
+                    const realOrder = order as DashboardOrder;
+                    return (
+                      <tr key={realOrder.orden_id} className="border-b hover:bg-muted/50">
+                        <td className="p-2">
+                          <Checkbox
+                            checked={selectedOrders.includes(realOrder.id_display)}
+                            onCheckedChange={(checked) => handleSelectOrder(realOrder.id_display, checked as boolean)}
+                          />
+                        </td>
+                        <td className="p-2 font-mono text-sm">{realOrder.id_display}</td>
+                        <td className="p-2">
+                          <div>
+                            <div className="font-medium">{realOrder.cliente_nombre}</div>
+                            <div className="text-sm text-muted-foreground">{realOrder.cliente_telefono}</div>
+                          </div>
+                        </td>
+                        <td className="p-2">
+                          <div className="text-sm max-w-32 truncate" title={realOrder.direccion}>
+                            {realOrder.direccion}
+                          </div>
+                        </td>
+                        <td className="p-2">
+                          <div className="flex items-center gap-2">
+                            <Building2 className="h-4 w-4 text-blue-600" />
+                            <span className="text-sm">{realOrder.sede}</span>
+                          </div>
+                        </td>
+                        <td className="p-2">
+                          <Badge className={cn("text-white", getStatusColor(realOrder.estado))}>
+                            <div className="flex items-center gap-1">
+                              {getStatusIcon(realOrder.estado)}
+                              {realOrder.estado}
+                            </div>
+                          </Badge>
+                        </td>
+                        <td className="p-2">
+                          <div className="space-y-1">
+                            <div className="flex items-center gap-1">
+                              <CreditCard className="h-4 w-4" />
+                              <span className="text-xs">{realOrder.pago_tipo}</span>
+                            </div>
+                            <Badge className={cn("text-white text-xs", 
+                              realOrder.pago_estado === 'Pagado' ? 'bg-green-500' : 
+                              realOrder.pago_estado === 'Pendiente' ? 'bg-yellow-500' : 'bg-red-500'
+                            )}>
+                              {realOrder.pago_estado}
+                            </Badge>
+                          </div>
+                        </td>
+                        <td className="p-2">
+                          <div className="flex items-center gap-1">
+                            <User className="h-4 w-4 text-muted-foreground" />
+                            <span className="text-sm">{realOrder.repartidor}</span>
+                          </div>
+                        </td>
+                        <td className="p-2 font-medium">${realOrder.total.toLocaleString()}</td>
+                        <td className="p-2">
+                          <div className="text-sm">
+                            {realOrder.entrega_hora}
+                          </div>
+                        </td>
+                        <td className="p-2 text-sm text-muted-foreground">
+                          {realOrder.creado_hora}
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
               </tbody>
             </table>
           </div>
@@ -365,6 +455,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
         deliveryPersonnel={deliveryPersonnel}
         onUpdateOrders={onUpdateOrders}
         onClearSelection={() => setSelectedOrders([])}
+        onRefreshData={refreshData}
       />
     </div>
   );

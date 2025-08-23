@@ -1,83 +1,51 @@
 import { useState, useEffect } from 'react'
-import { Plus, Search, Edit, Trash2, Users, Building2, UserCheck, UserX, TrendingUp, DollarSign, Package, Clock } from 'lucide-react'
+import { Plus, Search, Edit, Trash2, Users, Building2, UserCheck, UserX, TrendingUp, DollarSign, Package, Clock, LayoutDashboard, Phone, MapPin, Settings, RefreshCw } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
 import { useToast } from '@/hooks/use-toast'
 import { supabase, type Database } from '@/lib/supabase'
 import { useAuth } from '@/hooks/useAuth'
+import { adminService, CreateUserData, User, CreateSedeData, UpdateSedeData, Sede } from '@/services/adminService'
+import { metricsService, DashboardMetrics, MetricsFilters } from '@/services/metricsService'
+import { Calendar } from '@/components/ui/calendar'
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
+import { CalendarIcon } from 'lucide-react'
+import { format } from 'date-fns'
+import { es } from 'date-fns/locale'
 
 
-type Profile = Database['public']['Tables']['profiles']['Row']
-type Sede = Database['public']['Tables']['sedes']['Row']
+type Profile = User
 
-// Datos de demo para las gráficas
-const generateDemoData = () => {
-  // Datos de domicilios por día (últimos 7 días)
-  const domiciliosPorDia = [
-    { dia: 'Lun', domicilios: 45, ganancia: 675000 },
-    { dia: 'Mar', domicilios: 52, ganancia: 780000 },
-    { dia: 'Mié', domicilios: 38, ganancia: 570000 },
-    { dia: 'Jue', domicilios: 61, ganancia: 915000 },
-    { dia: 'Vie', domicilios: 78, ganancia: 1170000 },
-    { dia: 'Sáb', domicilios: 89, ganancia: 1335000 },
-    { dia: 'Dom', domicilios: 67, ganancia: 1005000 }
-  ]
 
-  // Datos de productos más vendidos
-  const productosMasVendidos = [
-    { producto: 'Ajiaco', ventas: 210, porcentaje: 60 },
-    { producto: 'Frijoles', ventas: 140, porcentaje: 40 }
-  ]
-
-  // Datos de ganancias por sede
-  const gananciasPorSede = [
-    { sede: 'Niza', ganancia: 2850000, domicilios: 234 },
-    { sede: 'Centro', ganancia: 3200000, domicilios: 267 },
-    { sede: 'Norte', ganancia: 1980000, domicilios: 156 },
-    { sede: 'Sur', ganancia: 2450000, domicilios: 189 }
-  ]
-
-  // Datos de horarios pico
-  const horariosPico = [
-    { hora: '12:00', domicilios: 23 },
-    { hora: '13:00', domicilios: 45 },
-    { hora: '14:00', domicilios: 38 },
-    { hora: '15:00', domicilios: 28 },
-    { hora: '16:00', domicilios: 32 },
-    { hora: '17:00', domicilios: 41 },
-    { hora: '18:00', domicilios: 67 },
-    { hora: '19:00', domicilios: 89 },
-    { hora: '20:00', domicilios: 76 },
-    { hora: '21:00', domicilios: 54 },
-    { hora: '22:00', domicilios: 34 }
-  ]
-
-  return {
-    domiciliosPorDia,
-    productosMasVendidos,
-    gananciasPorSede,
-    horariosPico
-  }
+interface AdminPanelProps {
+  onBack?: () => void;
 }
 
-export function AdminPanel() {
+export function AdminPanel({ onBack }: AdminPanelProps) {
   const [users, setUsers] = useState<Profile[]>([])
   const [sedes, setSedes] = useState<Sede[]>([])
+  const [sedesSimple, setSedesSimple] = useState<Array<{ id: string; name: string }>>([])
   const [searchTerm, setSearchTerm] = useState('')
   const [loading, setLoading] = useState(true)
   const [isCreateUserOpen, setIsCreateUserOpen] = useState(false)
+  const [isCreateSedeOpen, setIsCreateSedeOpen] = useState(false)
+  const [isEditSedeOpen, setIsEditSedeOpen] = useState(false)
+  const [isUserSedeEditOpen, setIsUserSedeEditOpen] = useState(false)
+  const [isCreatingUser, setIsCreatingUser] = useState(false)
   const [selectedUser, setSelectedUser] = useState<Profile | null>(null)
-  
-  // Datos de demo para las gráficas
-  const demoData = generateDemoData()
-  
+  const [selectedSede, setSelectedSede] = useState<Sede | null>(null)
+  const [userSedeFormData, setUserSedeFormData] = useState({ sede_id: '' })
+  const [showMainApp, setShowMainApp] = useState(false)
+  const [activeTab, setActiveTab] = useState('users')
+
   const { toast } = useToast()
   const { signOut } = useAuth()
 
@@ -91,11 +59,36 @@ export function AdminPanel() {
     is_active: true
   })
 
+  const [sedeFormData, setSedeFormData] = useState({
+    name: '',
+    address: '',
+    phone: '',
+    max_capacity: 10,
+    is_active: true
+  })
+
+  // Estados para métricas
+  const [metricsData, setMetricsData] = useState<DashboardMetrics | null>(null)
+  const [metricsLoading, setMetricsLoading] = useState(false)
+  const [selectedDate, setSelectedDate] = useState<Date>(new Date())
+  const [selectedSedeFilter, setSelectedSedeFilter] = useState<string>('all')
+  const [dateRange, setDateRange] = useState<{ from: Date; to: Date }>({
+    from: new Date(new Date().setDate(new Date().getDate() - 7)), // Última semana
+    to: new Date()
+  })
+
   useEffect(() => {
     console.log('🚀 AdminPanel iniciando...')
     fetchUsers()
     fetchSedes()
+    fetchSedesComplete()
+    loadMetrics()
   }, [])
+
+  // Recargar métricas cuando cambien los filtros
+  useEffect(() => {
+    loadMetrics()
+  }, [dateRange, selectedSedeFilter])
 
   const fetchUsers = async () => {
     try {
@@ -130,23 +123,64 @@ export function AdminPanel() {
 
   const fetchSedes = async () => {
     try {
-      console.log('🔍 Intentando obtener sedes...')
+      console.log('🔍 Intentando obtener sedes simples...')
       
-      const { data, error } = await supabase
-        .from('sedes')
-        .select('*')
-        .eq('is_active', true)
-        .order('name')
-
-      if (error) {
-        console.error('❌ Error obteniendo sedes:', error)
-        throw error
-      }
-      
-      console.log('✅ Sedes obtenidas:', data?.length || 0)
-      setSedes(data || [])
+      const sedesData = await adminService.getSedes()
+      setSedesSimple(sedesData)
+      console.log('✅ Sedes simples obtenidas:', sedesData.length)
     } catch (error) {
       console.error('❌ Error fetching sedes:', error)
+    }
+  }
+
+  const fetchSedesComplete = async () => {
+    try {
+      console.log('🔍 Intentando obtener sedes completas...')
+      
+      const sedesData = await adminService.getSedesComplete()
+      setSedes(sedesData)
+      console.log('✅ Sedes completas obtenidas:', sedesData.length)
+    } catch (error) {
+      console.error('❌ Error fetching sedes completas:', error)
+    }
+  }
+
+  const loadMetrics = async () => {
+    try {
+      setMetricsLoading(true)
+      console.log('📊 Cargando métricas...')
+
+      const filters: MetricsFilters = {
+        fecha_inicio: format(dateRange.from, 'yyyy-MM-dd'),
+        fecha_fin: format(dateRange.to, 'yyyy-MM-dd'),
+        sede_id: selectedSedeFilter === 'all' ? undefined : selectedSedeFilter
+      }
+
+      console.log('🔍 DEBUG AdminPanel - Filtros aplicados:', {
+        fecha_inicio: filters.fecha_inicio,
+        fecha_fin: filters.fecha_fin,
+        sede_id: filters.sede_id,
+        dateRange_from: dateRange.from,
+        dateRange_to: dateRange.to,
+        selectedSedeFilter: selectedSedeFilter
+      })
+
+      const metrics = await metricsService.getDashboardMetrics(filters)
+      setMetricsData(metrics)
+      console.log('✅ Métricas cargadas exitosamente:', {
+        metricasPorDia: metrics.metricasPorDia?.length || 0,
+        totalPedidos: metrics.totalGeneral?.pedidos || 0,
+        totalIngresos: metrics.totalGeneral?.ingresos || 0
+      })
+    } catch (error) {
+      console.error('❌ Error cargando métricas:', error)
+      toast({
+        title: "Error",
+        description: "No se pudieron cargar las métricas",
+        variant: "destructive",
+      })
+    } finally {
+      setMetricsLoading(false)
     }
   }
 
@@ -154,32 +188,24 @@ export function AdminPanel() {
     e.preventDefault()
     
     try {
-      // Create auth user
-      const { data: authData, error: authError } = await supabase.auth.admin.createUser({
+      setIsCreatingUser(true)
+      console.log('➕ Creando usuario con nuevo servicio...')
+      
+      // Usar el nuevo servicio para crear el perfil de usuario
+      const userData: CreateUserData = {
         email: formData.email,
         password: formData.password,
-        email_confirm: true
-      })
+        name: formData.name,
+        role: formData.role,
+        sede_id: formData.sede_id || undefined,
+        is_active: formData.is_active
+      }
 
-      if (authError) throw authError
-
-      // Create profile
-      const { error: profileError } = await supabase
-        .from('profiles')
-        .insert({
-          id: authData.user.id,
-          email: formData.email,
-          name: formData.name,
-          role: formData.role,
-          sede_id: formData.sede_id || null,
-          is_active: formData.is_active
-        })
-
-      if (profileError) throw profileError
+      const newUser = await adminService.createUser(userData)
 
       toast({
-        title: "Usuario creado",
-        description: "El usuario ha sido creado exitosamente",
+        title: "Usuario creado exitosamente",
+        description: `${formData.name} ha sido creado y puede iniciar sesión inmediatamente con: ${formData.email}`,
       })
 
       setFormData({
@@ -196,7 +222,194 @@ export function AdminPanel() {
       console.error('Error creating user:', error)
       toast({
         title: "Error",
-        description: error.message || "No se pudo crear el usuario",
+        description: error.message || "No se pudo crear el perfil de usuario",
+        variant: "destructive",
+      })
+    } finally {
+      setIsCreatingUser(false)
+    }
+  }
+
+  const handleUserSedeEdit = (user: Profile) => {
+    setSelectedUser(user)
+    setUserSedeFormData({ sede_id: user.sede_id || '' })
+    setIsUserSedeEditOpen(true)
+  }
+
+  const handleUpdateUserSede = async (e: React.FormEvent) => {
+    e.preventDefault()
+    
+    if (!selectedUser) return
+    
+    try {
+      await adminService.updateUserSede(selectedUser.id, userSedeFormData.sede_id)
+      
+      toast({
+        title: "Sede actualizada",
+        description: `La sede de ${selectedUser.name} ha sido actualizada exitosamente.`,
+      })
+      
+      setIsUserSedeEditOpen(false)
+      setSelectedUser(null)
+      setUserSedeFormData({ sede_id: '' })
+      fetchUsers()
+    } catch (error: any) {
+      console.error('Error updating user sede:', error)
+      toast({
+        title: "Error",
+        description: error.message || "No se pudo actualizar la sede del usuario",
+        variant: "destructive",
+      })
+    }
+  }
+
+  const handleCreateSede = async (e: React.FormEvent) => {
+    e.preventDefault()
+    
+    try {
+      console.log('➕ Creando sede...')
+      
+      const sedeData: CreateSedeData = {
+        name: sedeFormData.name,
+        address: sedeFormData.address,
+        phone: sedeFormData.phone,
+        max_capacity: sedeFormData.max_capacity,
+        is_active: sedeFormData.is_active
+      }
+
+      const newSede = await adminService.createSede(sedeData)
+
+      toast({
+        title: "Sede creada",
+        description: `La sede ${sedeFormData.name} ha sido creada exitosamente`,
+      })
+
+      setSedeFormData({
+        name: '',
+        address: '',
+        phone: '',
+        max_capacity: 10,
+        is_active: true
+      })
+      setIsCreateSedeOpen(false)
+      fetchSedesComplete()
+      fetchSedes()
+    } catch (error: any) {
+      console.error('Error creating sede:', error)
+      toast({
+        title: "Error",
+        description: error.message || "No se pudo crear la sede",
+        variant: "destructive",
+      })
+    }
+  }
+
+  const handleEditSede = async (e: React.FormEvent) => {
+    e.preventDefault()
+    
+    if (!selectedSede) return
+
+    try {
+      console.log('✏️ Editando sede...')
+      
+      const updateData: UpdateSedeData = {
+        name: sedeFormData.name,
+        address: sedeFormData.address,
+        phone: sedeFormData.phone,
+        max_capacity: sedeFormData.max_capacity,
+        is_active: sedeFormData.is_active
+      }
+
+      await adminService.updateSede(selectedSede.id, updateData)
+
+      toast({
+        title: "Sede actualizada",
+        description: `La sede ${sedeFormData.name} ha sido actualizada exitosamente`,
+      })
+
+      setSedeFormData({
+        name: '',
+        address: '',
+        phone: '',
+        max_capacity: 10,
+        is_active: true
+      })
+      setIsEditSedeOpen(false)
+      setSelectedSede(null)
+      fetchSedesComplete()
+      fetchSedes()
+    } catch (error: any) {
+      console.error('Error updating sede:', error)
+      toast({
+        title: "Error",
+        description: error.message || "No se pudo actualizar la sede",
+        variant: "destructive",
+      })
+    }
+  }
+
+  const handleDeleteSede = async (sede: Sede) => {
+    if (!confirm(`¿Estás seguro de que quieres eliminar la sede "${sede.name}"?`)) {
+      return
+    }
+
+    try {
+      console.log('🗑️ Eliminando sede...')
+      
+      await adminService.deleteSede(sede.id)
+
+      toast({
+        title: "Sede eliminada",
+        description: `La sede ${sede.name} ha sido eliminada exitosamente`,
+      })
+
+      fetchSedesComplete()
+      fetchSedes()
+    } catch (error: any) {
+      console.error('Error deleting sede:', error)
+      toast({
+        title: "Error",
+        description: error.message || "No se pudo eliminar la sede",
+        variant: "destructive",
+      })
+    }
+  }
+
+  const openEditSede = (sede: Sede) => {
+    setSelectedSede(sede)
+    setSedeFormData({
+      name: sede.name,
+      address: sede.address,
+      phone: sede.phone,
+      max_capacity: sede.max_capacity,
+      is_active: sede.is_active
+    })
+    setIsEditSedeOpen(true)
+  }
+
+  const handleInitializeSedeProducts = async (sede: Sede) => {
+    if (!confirm(`¿Inicializar productos para la sede "${sede.name}"?\n\nEsto creará registros de productos, bebidas y toppings con disponibilidad activada.`)) {
+      return
+    }
+
+    try {
+      console.log('🔄 Inicializando productos para sede:', sede.name, sede.id)
+      
+      await adminService.initializeExistingSedeProducts(sede.id)
+
+      toast({
+        title: "Productos inicializados",
+        description: `Productos inicializados exitosamente para la sede "${sede.name}"`,
+      })
+
+      // Recargar la lista (opcional)
+      await fetchSedes()
+      
+    } catch (error: any) {
+      console.error('Error initializing sede products:', error)
+      toast({
+        title: "Error",
+        description: error.message || "No se pudieron inicializar los productos para la sede",
         variant: "destructive",
       })
     }
@@ -204,12 +417,7 @@ export function AdminPanel() {
 
   const toggleUserStatus = async (userId: string, currentStatus: boolean) => {
     try {
-      const { error } = await supabase
-        .from('profiles')
-        .update({ is_active: !currentStatus })
-        .eq('id', userId)
-
-      if (error) throw error
+      await adminService.updateUserStatus(userId, !currentStatus)
 
       toast({
         title: currentStatus ? "Usuario desactivado" : "Usuario activado",
@@ -245,6 +453,76 @@ export function AdminPanel() {
 
   console.log('🎨 Renderizando AdminPanel, loading:', loading, 'users:', users.length)
 
+  // Si showMainApp es true, mostrar la aplicación principal
+  if (showMainApp) {
+    return (
+      <div className="min-h-screen bg-background">
+        {/* Header con botón de regreso */}
+        <div className="border-b bg-card">
+          <div className="flex h-16 items-center justify-between px-6">
+            <div className="flex items-center space-x-4">
+              <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
+                <span className="text-sm font-bold text-primary-foreground">A&F</span>
+              </div>
+              <h1 className="text-xl font-semibold">Aplicación Principal</h1>
+            </div>
+            <div className="flex items-center space-x-2">
+                               <Button
+                   variant="outline"
+                   onClick={() => {
+                     if (onBack) {
+                       onBack();
+                     } else {
+                       setShowMainApp(false);
+                     }
+                   }}
+                   className="flex items-center gap-2"
+                 >
+                   <Users className="h-4 w-4" />
+                   Volver a Admin
+                 </Button>
+              <Button variant="outline" onClick={signOut}>
+                Cerrar Sesión
+              </Button>
+            </div>
+          </div>
+        </div>
+        
+        {/* Aquí iría el contenido de la aplicación principal */}
+        <div className="p-6">
+          <div className="text-center py-12">
+            <h2 className="text-2xl font-bold mb-4">Bienvenido a la Aplicación Principal</h2>
+            <p className="text-muted-foreground mb-6">
+              Aquí puedes gestionar pedidos, inventario, repartidores y más.
+            </p>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+              <Card className="p-6 text-center cursor-pointer hover:shadow-md transition-shadow">
+                <LayoutDashboard className="h-8 w-8 mx-auto mb-2 text-primary" />
+                <h3 className="font-semibold">Dashboard</h3>
+                <p className="text-sm text-muted-foreground">Ver estadísticas</p>
+              </Card>
+              <Card className="p-6 text-center cursor-pointer hover:shadow-md transition-shadow">
+                <Package className="h-8 w-8 mx-auto mb-2 text-primary" />
+                <h3 className="font-semibold">Inventario</h3>
+                <p className="text-sm text-muted-foreground">Gestionar productos</p>
+              </Card>
+              <Card className="p-6 text-center cursor-pointer hover:shadow-md transition-shadow">
+                <Users className="h-8 w-8 mx-auto mb-2 text-primary" />
+                <h3 className="font-semibold">Repartidores</h3>
+                <p className="text-sm text-muted-foreground">Gestionar personal</p>
+              </Card>
+              <Card className="p-6 text-center cursor-pointer hover:shadow-md transition-shadow">
+                <Phone className="h-8 w-8 mx-auto mb-2 text-primary" />
+                <h3 className="font-semibold">Call Center</h3>
+                <p className="text-sm text-muted-foreground">Atención al cliente</p>
+              </Card>
+            </div>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="min-h-screen bg-background">
       {/* Header */}
@@ -256,9 +534,25 @@ export function AdminPanel() {
             </div>
             <h1 className="text-xl font-semibold">Panel de Administración</h1>
           </div>
-          <Button variant="outline" onClick={signOut}>
-            Cerrar Sesión
-          </Button>
+          <div className="flex items-center space-x-2">
+                         <Button
+               variant="outline"
+               onClick={() => {
+                 if (onBack) {
+                   onBack();
+                 } else {
+                   setShowMainApp(true);
+                 }
+               }}
+               className="flex items-center gap-2"
+             >
+               <LayoutDashboard className="h-4 w-4" />
+               Ir a Aplicación
+             </Button>
+            <Button variant="outline" onClick={signOut}>
+              Cerrar Sesión
+            </Button>
+          </div>
         </div>
       </div>
 
@@ -307,7 +601,142 @@ export function AdminPanel() {
           </Card>
         </div>
 
+        {/* Controles de Filtros */}
+        <Card className="mb-6">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Settings className="h-5 w-5" />
+              Filtros de Métricas
+            </CardTitle>
+            <CardDescription>
+              Selecciona el rango de fechas y sede para ver las métricas
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-end">
+              {/* Selector de Rango de Fechas */}
+              <div className="flex flex-col gap-2">
+                <Label>Rango de Fechas</Label>
+                <div className="flex gap-2">
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <Button variant="outline" className="w-[140px] justify-start text-left font-normal">
+                        <CalendarIcon className="mr-2 h-4 w-4" />
+                        {format(dateRange.from, 'dd/MM/yyyy', { locale: es })}
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-auto p-0" align="start">
+                      <Calendar
+                        mode="single"
+                        selected={dateRange.from}
+                        onSelect={(date) => date && setDateRange({ ...dateRange, from: date })}
+                        disabled={(date) => date > new Date() || date < new Date("2024-01-01")}
+                        initialFocus
+                      />
+                    </PopoverContent>
+                  </Popover>
+                  
+                  <span className="flex items-center text-muted-foreground">hasta</span>
+                  
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <Button variant="outline" className="w-[140px] justify-start text-left font-normal">
+                        <CalendarIcon className="mr-2 h-4 w-4" />
+                        {format(dateRange.to, 'dd/MM/yyyy', { locale: es })}
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-auto p-0" align="start">
+                      <Calendar
+                        mode="single"
+                        selected={dateRange.to}
+                        onSelect={(date) => date && setDateRange({ ...dateRange, to: date })}
+                        disabled={(date) => date > new Date() || date < dateRange.from}
+                        initialFocus
+                      />
+                    </PopoverContent>
+                  </Popover>
+                </div>
+              </div>
+
+              {/* Selector de Sede */}
+              <div className="flex flex-col gap-2">
+                <Label>Filtrar por Sede</Label>
+                <Select value={selectedSedeFilter} onValueChange={setSelectedSedeFilter}>
+                  <SelectTrigger className="w-[200px]">
+                    <SelectValue placeholder="Seleccionar sede" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">🌐 Todas las sedes</SelectItem>
+                    {sedesSimple.map((sede) => (
+                      <SelectItem key={sede.id} value={sede.id}>
+                        📍 {sede.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Botón de Actualizar */}
+              <Button 
+                onClick={loadMetrics} 
+                disabled={metricsLoading}
+                className="w-[120px]"
+              >
+                {metricsLoading ? (
+                  <RefreshCw className="h-4 w-4 animate-spin mr-2" />
+                ) : (
+                  <RefreshCw className="h-4 w-4 mr-2" />
+                )}
+                Actualizar
+              </Button>
+            </div>
+
+            {/* Resumen de filtros aplicados */}
+            <div className="mt-4 p-3 bg-muted/30 rounded-lg">
+              <div className="text-sm text-muted-foreground">
+                📊 Mostrando datos del{' '}
+                <span className="font-medium">{format(dateRange.from, 'dd/MM/yyyy', { locale: es })}</span>
+                {' '}al{' '}
+                <span className="font-medium">{format(dateRange.to, 'dd/MM/yyyy', { locale: es })}</span>
+                {selectedSedeFilter !== 'all' && (
+                  <>
+                    {' '}para la sede{' '}
+                    <span className="font-medium">
+                      {sedesSimple.find(s => s.id === selectedSedeFilter)?.name || 'Desconocida'}
+                    </span>
+                  </>
+                )}
+              </div>
+              {metricsData && (
+                <div className="mt-2 text-sm font-medium">
+                  📈 Total: {metricsData.totalGeneral.pedidos} pedidos • 
+                  💰 ${metricsData.totalGeneral.ingresos.toLocaleString()} • 
+                  📊 Promedio: ${Math.round(metricsData.totalGeneral.promedio).toLocaleString()}/pedido
+                </div>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+
         {/* Métricas de Negocio */}
+        {metricsLoading ? (
+          <Card className="mb-6">
+            <CardContent className="flex items-center justify-center py-12">
+              <div className="flex items-center gap-2 text-muted-foreground">
+                <RefreshCw className="h-5 w-5 animate-spin" />
+                Cargando métricas...
+              </div>
+            </CardContent>
+          </Card>
+        ) : !metricsData ? (
+          <Card className="mb-6">
+            <CardContent className="flex items-center justify-center py-12">
+              <div className="text-muted-foreground">
+                No hay datos disponibles para el rango seleccionado
+              </div>
+            </CardContent>
+          </Card>
+        ) : (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {/* Domicilios por Día */}
           <Card>
@@ -322,20 +751,25 @@ export function AdminPanel() {
             </CardHeader>
             <CardContent>
               <div className="space-y-4">
-                {demoData.domiciliosPorDia.map((item, index) => (
+                {metricsData.metricasPorDia.map((item, index) => (
                   <div key={index} className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
                     <div className="flex items-center gap-3">
                       <div className="w-3 h-3 bg-primary rounded-full"></div>
-                      <span className="font-medium">{item.dia}</span>
+                      <span className="font-medium">{format(new Date(item.fecha), 'dd/MM', { locale: es })}</span>
                     </div>
                     <div className="text-right">
-                      <div className="font-bold text-lg">{item.domicilios} domicilios</div>
+                      <div className="font-bold text-lg">{item.total_pedidos} pedidos</div>
                       <div className="text-sm text-muted-foreground">
-                        ${(item.ganancia / 1000).toFixed(0)}k ganancia
+                        ${(item.total_ingresos / 1000).toFixed(0)}k ingresos
                       </div>
                     </div>
                   </div>
                 ))}
+                {metricsData.metricasPorDia.length === 0 && (
+                  <div className="text-center py-8 text-muted-foreground">
+                    No hay datos para el período seleccionado
+                  </div>
+                )}
               </div>
             </CardContent>
           </Card>
@@ -353,21 +787,26 @@ export function AdminPanel() {
             </CardHeader>
             <CardContent>
               <div className="space-y-4">
-                {demoData.productosMasVendidos.map((item, index) => (
+                {metricsData.productosMasVendidos.slice(0, 5).map((item, index) => (
                   <div key={index} className="flex items-center justify-between">
                     <div className="flex items-center gap-3">
                       <div 
                         className="w-4 h-4 rounded-full"
                         style={{ backgroundColor: `hsl(${index * 60}, 70%, 50%)` }}
                       ></div>
-                      <span className="font-medium">{item.producto}</span>
+                      <span className="font-medium">{item.producto_nombre}</span>
                     </div>
                     <div className="text-right">
-                      <div className="font-bold">{item.ventas} ventas</div>
-                      <div className="text-sm text-muted-foreground">{item.porcentaje}%</div>
+                      <div className="font-bold">{item.total_vendido} vendidos</div>
+                      <div className="text-sm text-muted-foreground">{item.porcentaje_ventas.toFixed(1)}%</div>
                     </div>
                   </div>
                 ))}
+                {metricsData.productosMasVendidos.length === 0 && (
+                  <div className="text-center py-8 text-muted-foreground">
+                    No hay datos de productos para el período seleccionado
+                  </div>
+                )}
               </div>
             </CardContent>
           </Card>
@@ -385,21 +824,31 @@ export function AdminPanel() {
             </CardHeader>
             <CardContent>
               <div className="space-y-4">
-                {demoData.gananciasPorSede.map((item, index) => (
+                {metricsData.metricasPorSede.map((item, index) => (
                   <div key={index} className="flex items-center justify-between p-3 bg-muted/30 rounded-lg">
                     <div className="flex items-center gap-3">
                       <div 
                         className="w-4 h-4 rounded-full"
                         style={{ backgroundColor: `hsl(${index * 90}, 70%, 50%)` }}
                       ></div>
-                      <span className="font-medium">{item.sede}</span>
+                      <span className="font-medium">{item.sede_nombre}</span>
                     </div>
                     <div className="text-right">
-                      <div className="font-bold text-lg">${(item.ganancia / 1000000).toFixed(1)}M</div>
-                      <div className="text-sm text-muted-foreground">{item.domicilios} domicilios</div>
+                      <div className="font-bold text-lg">${(item.total_ingresos / 1000).toFixed(0)}k</div>
+                      <div className="text-sm text-muted-foreground">{item.total_pedidos} pedidos</div>
+                      {item.pedidos_activos > 0 && (
+                        <div className="text-xs text-orange-600">
+                          {item.pedidos_activos} activos
+                        </div>
+                      )}
                     </div>
                   </div>
                 ))}
+                {metricsData.metricasPorSede.length === 0 && (
+                  <div className="text-center py-8 text-muted-foreground">
+                    No hay datos de sedes para el período seleccionado
+                  </div>
+                )}
               </div>
             </CardContent>
           </Card>
@@ -417,35 +866,56 @@ export function AdminPanel() {
             </CardHeader>
             <CardContent>
               <div className="grid grid-cols-3 gap-2">
-                {demoData.horariosPico.map((item, index) => (
+                {metricsData.metricasPorHora.filter(item => item.cantidad_pedidos > 0).map((item, index) => (
                   <div key={index} className="text-center p-2 bg-muted/30 rounded">
                     <div className="text-xs text-muted-foreground">{item.hora}</div>
-                    <div className="font-bold text-lg">{item.domicilios}</div>
-                    <div className="text-xs">domicilios</div>
+                    <div className="font-bold text-lg">{item.cantidad_pedidos}</div>
+                    <div className="text-xs">pedidos</div>
                   </div>
                 ))}
+                {metricsData.metricasPorHora.filter(item => item.cantidad_pedidos > 0).length === 0 && (
+                  <div className="col-span-3 text-center py-8 text-muted-foreground">
+                    No hay datos de horarios para el período seleccionado
+                  </div>
+                )}
               </div>
             </CardContent>
           </Card>
         </div>
+        )}
 
-        {/* Users Table */}
-        <Card>
-          <CardHeader>
-            <div className="flex items-center justify-between">
-              <div>
-                <CardTitle>Gestión de Usuarios</CardTitle>
-                <CardDescription>
-                  Administra los usuarios del sistema
-                </CardDescription>
-              </div>
-              <Dialog open={isCreateUserOpen} onOpenChange={setIsCreateUserOpen}>
-                <DialogTrigger asChild>
-                  <Button>
-                    <Plus className="mr-2 h-4 w-4" />
-                    Crear Usuario
-                  </Button>
-                </DialogTrigger>
+        {/* Tabs para Gestión */}
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
+          <TabsList className="grid w-full grid-cols-2">
+            <TabsTrigger value="users" className="flex items-center gap-2">
+              <Users className="h-4 w-4" />
+              Usuarios
+            </TabsTrigger>
+            <TabsTrigger value="sedes" className="flex items-center gap-2">
+              <Building2 className="h-4 w-4" />
+              Sedes
+            </TabsTrigger>
+          </TabsList>
+
+          {/* Tab Content: Usuarios */}
+          <TabsContent value="users">
+            {/* Users Table */}
+            <Card>
+              <CardHeader>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <CardTitle>Gestión de Usuarios</CardTitle>
+                    <CardDescription>
+                      Administra los usuarios del sistema
+                    </CardDescription>
+                  </div>
+                  <Dialog open={isCreateUserOpen} onOpenChange={setIsCreateUserOpen}>
+                    <DialogTrigger asChild>
+                      <Button>
+                        <Plus className="mr-2 h-4 w-4" />
+                        Crear Usuario
+                      </Button>
+                    </DialogTrigger>
                 <DialogContent>
                   <DialogHeader>
                     <DialogTitle>Crear Nuevo Usuario</DialogTitle>
@@ -508,7 +978,7 @@ export function AdminPanel() {
                           <SelectValue placeholder="Seleccionar sede" />
                         </SelectTrigger>
                         <SelectContent>
-                          {sedes.map((sede) => (
+                          {sedesSimple.map((sede) => (
                             <SelectItem key={sede.id} value={sede.id}>
                               {sede.name}
                             </SelectItem>
@@ -525,10 +995,19 @@ export function AdminPanel() {
                       <Label htmlFor="is_active">Usuario activo</Label>
                     </div>
                     <div className="flex justify-end space-x-2">
-                      <Button type="button" variant="outline" onClick={() => setIsCreateUserOpen(false)}>
+                      <Button type="button" variant="outline" onClick={() => setIsCreateUserOpen(false)} disabled={isCreatingUser}>
                         Cancelar
                       </Button>
-                      <Button type="submit">Crear Usuario</Button>
+                      <Button type="submit" disabled={isCreatingUser}>
+                        {isCreatingUser ? (
+                          <>
+                            <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
+                            Creando Usuario...
+                          </>
+                        ) : (
+                          'Crear Usuario'
+                        )}
+                      </Button>
                     </div>
                   </form>
                 </DialogContent>
@@ -576,7 +1055,7 @@ export function AdminPanel() {
                         <TableCell>
                           {user.sede_id ? (
                             <span className="text-sm text-muted-foreground">
-                              {sedes.find(s => s.id === user.sede_id)?.name || 'N/A'}
+                              {sedesSimple.find(s => s.id === user.sede_id)?.name || 'N/A'}
                             </span>
                           ) : (
                             <span className="text-sm text-muted-foreground">Sin sede</span>
@@ -590,13 +1069,22 @@ export function AdminPanel() {
                           )}
                         </TableCell>
                         <TableCell>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => toggleUserStatus(user.id, user.is_active)}
-                          >
-                            {user.is_active ? <UserX className="h-4 w-4" /> : <UserCheck className="h-4 w-4" />}
-                          </Button>
+                          <div className="flex gap-2">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => toggleUserStatus(user.id, user.is_active)}
+                            >
+                              {user.is_active ? <UserX className="h-4 w-4" /> : <UserCheck className="h-4 w-4" />}
+                            </Button>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => handleUserSedeEdit(user)}
+                            >
+                              <Building2 className="h-4 w-4" />
+                            </Button>
+                          </div>
                         </TableCell>
                       </TableRow>
                     ))}
@@ -606,6 +1094,303 @@ export function AdminPanel() {
             </div>
           </CardContent>
         </Card>
+          </TabsContent>
+
+          {/* Tab Content: Sedes */}
+          <TabsContent value="sedes">
+            <Card>
+              <CardHeader>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <CardTitle>Gestión de Sedes</CardTitle>
+                    <CardDescription>
+                      Administra las sedes del sistema
+                    </CardDescription>
+                  </div>
+                  <Dialog open={isCreateSedeOpen} onOpenChange={setIsCreateSedeOpen}>
+                    <DialogTrigger asChild>
+                      <Button>
+                        <Plus className="mr-2 h-4 w-4" />
+                        Crear Sede
+                      </Button>
+                    </DialogTrigger>
+                    <DialogContent>
+                      <DialogHeader>
+                        <DialogTitle>Crear Nueva Sede</DialogTitle>
+                        <DialogDescription>
+                          Completa la información de la nueva sede
+                        </DialogDescription>
+                      </DialogHeader>
+                      <form onSubmit={handleCreateSede} className="space-y-4">
+                        <div className="space-y-2">
+                          <Label htmlFor="sede-name">Nombre</Label>
+                          <Input
+                            id="sede-name"
+                            value={sedeFormData.name}
+                            onChange={(e) => setSedeFormData({ ...sedeFormData, name: e.target.value })}
+                            required
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="sede-address">Dirección</Label>
+                          <Input
+                            id="sede-address"
+                            value={sedeFormData.address}
+                            onChange={(e) => setSedeFormData({ ...sedeFormData, address: e.target.value })}
+                            required
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="sede-phone">Teléfono</Label>
+                          <Input
+                            id="sede-phone"
+                            type="tel"
+                            value={sedeFormData.phone}
+                            onChange={(e) => setSedeFormData({ ...sedeFormData, phone: e.target.value })}
+                            required
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="sede-capacity">Capacidad Máxima</Label>
+                          <Input
+                            id="sede-capacity"
+                            type="number"
+                            min="1"
+                            value={sedeFormData.max_capacity}
+                            onChange={(e) => setSedeFormData({ ...sedeFormData, max_capacity: parseInt(e.target.value) || 10 })}
+                            required
+                          />
+                        </div>
+                        <div className="flex items-center space-x-2">
+                          <Switch
+                            id="sede-active"
+                            checked={sedeFormData.is_active}
+                            onCheckedChange={(checked) => setSedeFormData({ ...sedeFormData, is_active: checked })}
+                          />
+                          <Label htmlFor="sede-active">Sede activa</Label>
+                        </div>
+                        <div className="flex justify-end space-x-2">
+                          <Button type="button" variant="outline" onClick={() => setIsCreateSedeOpen(false)}>
+                            Cancelar
+                          </Button>
+                          <Button type="submit">Crear Sede</Button>
+                        </div>
+                      </form>
+                    </DialogContent>
+                  </Dialog>
+                </div>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-4">
+                  {/* Search bar for sedes */}
+                  <div className="flex items-center space-x-2">
+                    <Search className="h-4 w-4 text-muted-foreground" />
+                    <Input
+                      placeholder="Buscar sedes..."
+                      value={searchTerm}
+                      onChange={(e) => setSearchTerm(e.target.value)}
+                      className="max-w-sm"
+                    />
+                  </div>
+
+                  {loading ? (
+                    <div className="text-center py-8">
+                      <div className="text-muted-foreground">Cargando sedes...</div>
+                    </div>
+                  ) : (
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Sede</TableHead>
+                          <TableHead>Dirección</TableHead>
+                          <TableHead>Teléfono</TableHead>
+                          <TableHead>Capacidad</TableHead>
+                          <TableHead>Estado</TableHead>
+                          <TableHead>Acciones</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {sedes
+                          .filter(sede => 
+                            sede.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                            sede.address.toLowerCase().includes(searchTerm.toLowerCase())
+                          )
+                          .map((sede) => (
+                          <TableRow key={sede.id}>
+                            <TableCell>
+                              <div>
+                                <div className="font-medium">{sede.name}</div>
+                                <div className="text-sm text-muted-foreground">ID: {sede.id}</div>
+                              </div>
+                            </TableCell>
+                            <TableCell>
+                              <div className="flex items-center gap-2">
+                                <MapPin className="h-4 w-4 text-muted-foreground" />
+                                <span className="text-sm">{sede.address}</span>
+                              </div>
+                            </TableCell>
+                            <TableCell>
+                              <div className="flex items-center gap-2">
+                                <Phone className="h-4 w-4 text-muted-foreground" />
+                                <span className="text-sm">{sede.phone}</span>
+                              </div>
+                            </TableCell>
+                            <TableCell>
+                              <div className="text-sm">
+                                <span className="font-medium">{sede.current_capacity}</span>
+                                <span className="text-muted-foreground"> / {sede.max_capacity}</span>
+                              </div>
+                            </TableCell>
+                            <TableCell>
+                              {sede.is_active ? (
+                                <Badge variant="default">Activa</Badge>
+                              ) : (
+                                <Badge variant="secondary">Inactiva</Badge>
+                              )}
+                            </TableCell>
+                            <TableCell>
+                              <div className="flex items-center gap-2">
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => openEditSede(sede)}
+                                  title="Editar sede"
+                                >
+                                  <Edit className="h-4 w-4" />
+                                </Button>
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => handleInitializeSedeProducts(sede)}
+                                  title="Inicializar productos para esta sede"
+                                >
+                                  <Package className="h-4 w-4" />
+                                </Button>
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => handleDeleteSede(sede)}
+                                  title="Eliminar sede"
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                </Button>
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
+        </Tabs>
+
+        {/* Dialog para editar sede */}
+        <Dialog open={isEditSedeOpen} onOpenChange={setIsEditSedeOpen}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Editar Sede</DialogTitle>
+              <DialogDescription>
+                Modifica la información de la sede
+              </DialogDescription>
+            </DialogHeader>
+            <form onSubmit={handleEditSede} className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="edit-sede-name">Nombre</Label>
+                <Input
+                  id="edit-sede-name"
+                  value={sedeFormData.name}
+                  onChange={(e) => setSedeFormData({ ...sedeFormData, name: e.target.value })}
+                  required
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="edit-sede-address">Dirección</Label>
+                <Input
+                  id="edit-sede-address"
+                  value={sedeFormData.address}
+                  onChange={(e) => setSedeFormData({ ...sedeFormData, address: e.target.value })}
+                  required
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="edit-sede-phone">Teléfono</Label>
+                <Input
+                  id="edit-sede-phone"
+                  type="tel"
+                  value={sedeFormData.phone}
+                  onChange={(e) => setSedeFormData({ ...sedeFormData, phone: e.target.value })}
+                  required
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="edit-sede-capacity">Capacidad Máxima</Label>
+                <Input
+                  id="edit-sede-capacity"
+                  type="number"
+                  min="1"
+                  value={sedeFormData.max_capacity}
+                  onChange={(e) => setSedeFormData({ ...sedeFormData, max_capacity: parseInt(e.target.value) || 10 })}
+                  required
+                />
+              </div>
+              <div className="flex items-center space-x-2">
+                <Switch
+                  id="edit-sede-active"
+                  checked={sedeFormData.is_active}
+                  onCheckedChange={(checked) => setSedeFormData({ ...sedeFormData, is_active: checked })}
+                />
+                <Label htmlFor="edit-sede-active">Sede activa</Label>
+              </div>
+              <div className="flex justify-end space-x-2">
+                <Button type="button" variant="outline" onClick={() => setIsEditSedeOpen(false)}>
+                  Cancelar
+                </Button>
+                <Button type="submit">Actualizar Sede</Button>
+              </div>
+            </form>
+          </DialogContent>
+        </Dialog>
+
+        {/* Modal para Reasignar Sede de Usuario */}
+        <Dialog open={isUserSedeEditOpen} onOpenChange={setIsUserSedeEditOpen}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Reasignar Sede de Usuario</DialogTitle>
+              <DialogDescription>
+                Cambia la sede asignada a {selectedUser?.name}
+              </DialogDescription>
+            </DialogHeader>
+            <form onSubmit={handleUpdateUserSede} className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="user-sede-select">Nueva Sede</Label>
+                <Select value={userSedeFormData.sede_id} onValueChange={(value) => setUserSedeFormData({ sede_id: value })}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Seleccionar sede" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {sedesSimple.map((sede) => (
+                      <SelectItem key={sede.id} value={sede.id}>
+                        {sede.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="flex justify-end space-x-2">
+                <Button type="button" variant="outline" onClick={() => setIsUserSedeEditOpen(false)}>
+                  Cancelar
+                </Button>
+                <Button type="submit">
+                  <Building2 className="mr-2 h-4 w-4" />
+                  Actualizar Sede
+                </Button>
+              </div>
+            </form>
+          </DialogContent>
+        </Dialog>
       </div>
     </div>
   )

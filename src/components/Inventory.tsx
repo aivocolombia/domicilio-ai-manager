@@ -6,43 +6,88 @@ import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Search, Package, Plus, Loader2, AlertCircle } from 'lucide-react';
+import { Search, Package, Plus, Loader2, AlertCircle, RefreshCw } from 'lucide-react';
 import { useMenu } from '@/hooks/useMenu';
 import { useInventoryEvents } from '@/contexts/InventoryContext';
+import { useAuth } from '@/hooks/useAuth';
+import { useSede } from '@/contexts/SedeContext';
 import { toast } from '@/hooks/use-toast';
 import { formatCurrency } from '@/utils/format';
+import { menuService } from '@/services/menuService';
+import { PlatoConSede, BebidaConSede } from '@/types/menu';
+import { debugUtils } from '@/utils/debug';
+import { supabase } from '@/lib/supabase';
 
 export const Inventory: React.FC = () => {
-  const {
-    platos,
-    bebidas,
-    toppings,
-    loading,
-    error,
-    loadInventory,
-    updatePlato,
-    updateBebida,
-    updateTopping,
-    clearError
-  } = useMenu();
+  const { profile } = useAuth();
+  const { currentSedeName } = useSede();
   const { triggerUpdate } = useInventoryEvents();
+  
+  // Estado local para nombre de sede (fallback si contexto no funciona)
+  const [localSedeName, setLocalSedeName] = useState<string | null>(null);
 
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [platosConSede, setPlatosConSede] = useState<PlatoConSede[]>([]);
+  const [bebidasConSede, setBebidasConSede] = useState<BebidaConSede[]>([]);
+
+  // Función para cargar el inventario con información de sede
+  const loadInventoryConSede = async () => {
+    if (!profile?.sede_id) {
+      setError('No se ha asignado una sede al usuario');
+      setLoading(false);
+      return;
+    }
+
+    try {
+      setLoading(true);
+      setError(null);
+      
+      console.log('🔍 Cargando inventario para sede:', profile.sede_id);
+      const menuData = await menuService.getMenuConSede(profile.sede_id);
+      
+      setPlatosConSede(menuData.platos);
+      setBebidasConSede(menuData.bebidas);
+      
+      console.log('✅ Inventario cargado exitosamente');
+    } catch (err) {
+      console.error('❌ Error al cargar inventario:', err);
+      setError(err instanceof Error ? err.message : 'Error desconocido');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Cargar inventario al montar el componente
+  useEffect(() => {
+    loadInventoryConSede();
+  }, [profile?.sede_id]);
+
+  // Cargar nombre de la sede al montar el componente
+  useEffect(() => {
+    loadSedeName();
+  }, [profile?.sede_id]);
 
   // Combinar solo platos y bebidas para mostrar en el inventario (incluyendo inactivos)
   const allProducts = [
-    ...platos.map(plato => ({
+    ...platosConSede.map(plato => ({
       ...plato,
       type: 'plato' as const,
       category: 'Platos Principales',
-      description: plato.description || 'Sin descripción'
+      description: plato.description || 'Sin descripción',
+      available: plato.sede_available,
+      pricing: plato.sede_price,
+      toppings: plato.toppings || [] // Incluir los toppings del plato
     })),
-    ...bebidas.map(bebida => ({
+    ...bebidasConSede.map(bebida => ({
       ...bebida,
       type: 'bebida' as const,
       category: 'Bebidas',
-      description: 'Bebida refrescante'
+      description: 'Bebida refrescante',
+      available: bebida.sede_available,
+      pricing: bebida.sede_price
     }))
   ];
 
@@ -56,39 +101,94 @@ export const Inventory: React.FC = () => {
   });
 
   const toggleProductAvailability = async (productId: number, type: 'plato' | 'bebida') => {
+    console.log('🚀 toggleProductAvailability INICIADO:', { productId, type, profile_sede_id: profile?.sede_id });
+    
+    if (!profile?.sede_id) {
+      toast({
+        title: "Error",
+        description: "No se ha asignado una sede al usuario.",
+        variant: "destructive"
+      });
+      return;
+    }
+
     try {
-      console.log('🔄 Toggleando producto:', { productId, type });
+      console.log('🔄 Toggleando producto:', { productId, type, sedeId: profile.sede_id });
       
-      const product = allProducts.find(item => item.id === productId);
+      const product = allProducts.find(item => item.id === productId && item.type === type);
       if (!product) {
-        console.log('❌ Producto no encontrado:', productId);
+        console.log('❌ Producto no encontrado:', { productId, type, availableProducts: allProducts.map(p => ({ id: p.id, name: p.name, type: p.type })) });
         return;
       }
 
       const isCurrentlyAvailable = product.available;
-      console.log('📊 Estado actual:', { name: product.name, available: isCurrentlyAvailable });
+      console.log('📊 Estado actual:', { 
+        name: product.name, 
+        available: isCurrentlyAvailable,
+        productId: product.id,
+        type: product.type
+      });
+      
+      // Debug específico para Limonada natural
+      if (product.name.toLowerCase().includes('limonada')) {
+        console.log('🍋 Debug Limonada ANTES del toggle:', {
+          product,
+          sedeId: profile.sede_id,
+          isCurrentlyAvailable,
+          toggleTo: !isCurrentlyAvailable,
+          bebidasConSede: bebidasConSede.filter(b => b.name.toLowerCase().includes('limonada'))
+        });
+      }
       
       switch (type) {
         case 'plato':
-          console.log('🍽️ Actualizando plato...');
-          await updatePlato(productId, { available: !isCurrentlyAvailable });
+          console.log('🍽️ Actualizando plato para sede...');
+          await menuService.updatePlatoSedeAvailability(profile.sede_id, productId, !isCurrentlyAvailable);
           break;
         case 'bebida':
-          console.log('🥤 Actualizando bebida...');
-          await updateBebida(productId, { available: !isCurrentlyAvailable });
+          console.log('🥤 Actualizando bebida para sede...');
+          await menuService.updateBebidaSedeAvailability(profile.sede_id, productId, !isCurrentlyAvailable);
           break;
       }
 
       console.log('🔄 Recargando inventario...');
+      
+      // Pequeña pausa para asegurar que la DB se ha actualizado
+      await new Promise(resolve => setTimeout(resolve, 500));
+      
       // Recargar el inventario para actualizar el frontend
-      await loadInventory();
+      await loadInventoryConSede();
+      
+      // Debug específico para Limonada DESPUÉS del reload
+      if (product.name.toLowerCase().includes('limonada')) {
+        console.log('🍋 Debug Limonada INMEDIATAMENTE después del primer reload:', {
+          bebidasConSede_length: bebidasConSede.length,
+          bebidasConSede_limonada: bebidasConSede.filter(b => b.name?.toLowerCase().includes('limonada')),
+          allProducts_length: allProducts.length,
+          allProducts_limonada: allProducts.filter(p => p.name?.toLowerCase().includes('limonada'))
+        });
+        
+        // Force re-fetch después del delay para asegurar que tenemos datos actualizados
+        setTimeout(async () => {
+          console.log('🍋 Haciendo segundo reload...');
+          await loadInventoryConSede();
+          
+          // Verificar el estado después del segundo reload
+          setTimeout(() => {
+            console.log('🍋 Debug Limonada DESPUÉS del segundo reload:', {
+              bebidasConSede_final: bebidasConSede.filter(b => b.name?.toLowerCase().includes('limonada')),
+              allProducts_final: allProducts.filter(p => p.name?.toLowerCase().includes('limonada'))
+            });
+          }, 50);
+        }, 500);
+      }
 
       // Disparar evento de actualización para el StatusBar
       triggerUpdate();
 
       toast({
         title: "Producto actualizado",
-        description: `${product.name} ${isCurrentlyAvailable ? 'desactivado' : 'activado'} correctamente.`,
+        description: `${product.name} ${isCurrentlyAvailable ? 'desactivado' : 'activado'} correctamente para esta sede.`,
       });
     } catch (err) {
       console.error('❌ Error al actualizar producto:', err);
@@ -101,16 +201,50 @@ export const Inventory: React.FC = () => {
   };
 
   const toggleToppingAvailability = async (toppingId: number) => {
+    if (!profile?.sede_id) {
+      toast({
+        title: "Error",
+        description: "No se ha asignado una sede al usuario.",
+        variant: "destructive"
+      });
+      return;
+    }
+
     try {
-      const topping = toppings.find(t => t.id === toppingId);
-      if (!topping) return;
-
-      const isCurrentlyAvailable = topping.available;
+      console.log('🔄 Toggleando topping:', { toppingId, sedeId: profile.sede_id });
       
-      await updateTopping(toppingId, { available: !isCurrentlyAvailable });
+      // Buscar el topping en todos los platos para obtener su estado actual
+      let currentTopping: any = null;
+      let isCurrentlyAvailable = false;
+      
+      for (const plato of platosConSede) {
+        const topping = plato.toppings.find(t => t.id === toppingId);
+        if (topping) {
+          currentTopping = topping;
+          isCurrentlyAvailable = topping.sede_available;
+          break;
+        }
+      }
 
+      if (!currentTopping) {
+        console.log('❌ Topping no encontrado:', toppingId);
+        return;
+      }
+
+      console.log('📊 Estado actual del topping:', { 
+        name: currentTopping.name, 
+        available: isCurrentlyAvailable 
+      });
+      
+      await menuService.updateToppingSedeAvailability(
+        profile.sede_id, 
+        toppingId, 
+        !isCurrentlyAvailable
+      );
+
+      console.log('🔄 Recargando inventario...');
       // Recargar el inventario para actualizar el frontend
-      await loadInventory();
+      await loadInventoryConSede();
 
       // Disparar evento de actualización para el StatusBar
       triggerUpdate();
@@ -131,15 +265,207 @@ export const Inventory: React.FC = () => {
   const availableCount = allProducts.filter(item => item.available).length;
   const unavailableCount = allProducts.filter(item => !item.available).length;
   const totalCount = allProducts.length;
-  
-  // Contar toppings disponibles e inactivos para información adicional
-  const availableToppings = toppings.filter(topping => topping.available).length;
-  const unavailableToppings = toppings.filter(topping => !topping.available).length;
 
-  // Cargar inventario cuando el componente se monta
-  useEffect(() => {
-    loadInventory();
-  }, [loadInventory]);
+  // Función para limpiar errores
+  const clearError = () => {
+    setError(null);
+  };
+
+  // Función de debug para la Limonada natural
+  const debugLimonada = async () => {
+    if (!profile?.sede_id) {
+      toast({
+        title: "Error",
+        description: "No se ha asignado una sede al usuario.",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    try {
+      console.log('🔍 Debug: Iniciando verificación de Limonada natural...');
+      
+      // Verificar estado de la Limonada
+      const limonadaStatus = await debugUtils.checkBebidaStatus('Limonada natural', profile.sede_id);
+      console.log('🍋 Estado de Limonada:', limonadaStatus);
+
+      if (limonadaStatus.error) {
+        toast({
+          title: "Error en debug",
+          description: limonadaStatus.error,
+          variant: "destructive"
+        });
+        return;
+      }
+
+      if (!limonadaStatus.exists) {
+        console.log('➕ Creando registro faltante para Limonada...');
+        const createResult = await debugUtils.createSedeBebidaRecord(
+          profile.sede_id, 
+          limonadaStatus.bebida.id
+        );
+        
+        if (createResult.error) {
+          toast({
+            title: "Error al crear registro",
+            description: createResult.error,
+            variant: "destructive"
+          });
+          return;
+        }
+
+        toast({
+          title: "Registro creado",
+          description: "Se creó el registro faltante para la Limonada natural.",
+        });
+
+        // Recargar inventario
+        await loadInventoryConSede();
+      } else {
+        toast({
+          title: "Registro existe",
+          description: "La Limonada natural ya tiene registro en esta sede.",
+        });
+      }
+    } catch (error) {
+      console.error('❌ Error en debug:', error);
+      toast({
+        title: "Error",
+        description: "Error al verificar la Limonada natural.",
+        variant: "destructive"
+      });
+    }
+  };
+
+  // Función de debug para Toppings
+  const debugToppings = async () => {
+    if (!profile?.sede_id) {
+      toast({
+        title: "Error",
+        description: "No se ha asignado una sede al usuario.",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    try {
+      console.log('🔍 Debug: Iniciando verificación de toppings...');
+      
+      // Verificar todos los toppings en la sede
+      const result = await debugUtils.checkAllToppingsInSede(profile.sede_id);
+      
+      if (result.error) {
+        toast({
+          title: "Error en verificación",
+          description: result.error,
+          variant: "destructive"
+        });
+        return;
+      }
+
+      const toppingsFaltantes = result.data.filter(item => !item.hasRecord);
+      
+      if (toppingsFaltantes.length > 0) {
+        console.log('❌ Toppings faltantes:', toppingsFaltantes);
+        
+        // Crear registros faltantes
+        for (const item of toppingsFaltantes) {
+          const createResult = await debugUtils.createSedeToppingRecord(profile.sede_id, item.topping.id);
+          if (createResult.error) {
+            console.error(`❌ Error al crear registro para ${item.topping.name}:`, createResult.error);
+          }
+        }
+
+        toast({
+          title: "Registros creados",
+          description: `Se crearon ${toppingsFaltantes.length} registros faltantes para toppings.`,
+        });
+
+        // Recargar inventario
+        await loadInventoryConSede();
+      } else {
+        toast({
+          title: "Registros completos",
+          description: "Todos los toppings tienen registros en esta sede.",
+        });
+      }
+    } catch (error) {
+      console.error('❌ Error en debugToppings:', error);
+      toast({
+        title: "Error",
+        description: "Error inesperado al verificar toppings.",
+        variant: "destructive"
+      });
+    }
+  };
+
+  // Función para inicializar productos de la sede
+  const initializeSedeProducts = async () => {
+    if (!profile?.sede_id) {
+      toast({
+        title: "Error",
+        description: "No se ha asignado una sede al usuario.",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    try {
+      console.log('🔄 Inicializando productos para sede:', profile.sede_id);
+      
+      await menuService.initializeSedeProductsForAgent(profile.sede_id);
+      
+      // Recargar inventario
+      await loadInventoryConSede();
+      
+      toast({
+        title: "Productos inicializados",
+        description: "Todos los productos han sido inicializados y activados para esta sede.",
+      });
+      
+    } catch (error) {
+      console.error('❌ Error inicializando productos:', error);
+      toast({
+        title: "Error",
+        description: error instanceof Error ? error.message : "Error al inicializar productos",
+        variant: "destructive"
+      });
+    }
+  };
+
+  // Cargar nombre de la sede como fallback
+  const loadSedeName = async () => {
+    if (!profile?.sede_id) return;
+    
+    try {
+      const { data, error } = await supabase
+        .from('sedes')
+        .select('name')
+        .eq('id', profile.sede_id)
+        .single();
+      
+      if (!error && data) {
+        setLocalSedeName(data.name);
+      }
+    } catch (error) {
+      console.error('❌ Error cargando nombre de sede:', error);
+    }
+  };
+
+  // Mostrar error si no hay sede asignada
+  if (!profile?.sede_id) {
+    return (
+      <div className="p-6">
+        <div className="text-center py-12">
+          <AlertCircle className="h-12 w-12 mx-auto text-destructive mb-4" />
+          <h2 className="text-2xl font-bold mb-4">Sede No Asignada</h2>
+          <p className="text-muted-foreground mb-6">
+            No se ha asignado una sede a tu cuenta. Contacta al administrador para que te asigne una sede.
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   if (error) {
     return (
@@ -159,18 +485,32 @@ export const Inventory: React.FC = () => {
         <div>
           <h1 className="text-3xl font-bold">Inventario</h1>
           <p className="text-muted-foreground">
-            {availableCount} productos disponibles • {unavailableCount} no disponibles • {availableToppings} toppings disponibles
+            {availableCount} productos disponibles • {unavailableCount} no disponibles • Sede: {currentSedeName !== 'Sede Desconocida' ? currentSedeName : (localSedeName || 'Cargando...')}
           </p>
         </div>
-        <Button className="flex items-center gap-2" disabled={loading} onClick={() => {
-          toast({
-            title: "Funcionalidad en desarrollo",
-            description: "La funcionalidad de agregar productos estará disponible pronto.",
-          });
-        }}>
-          <Plus className="h-4 w-4" />
-          Agregar Producto
-        </Button>
+        <div className="flex gap-2">
+          <Button className="flex items-center gap-2" disabled={loading} onClick={() => {
+            toast({
+              title: "Funcionalidad en desarrollo",
+              description: "La funcionalidad de agregar productos estará disponible pronto.",
+            });
+          }}>
+            <Plus className="h-4 w-4" />
+            Agregar Producto
+          </Button>
+          
+          {/* Botón para inicializar productos si hay problemas */}
+          <Button 
+            variant="outline" 
+            size="sm" 
+            onClick={initializeSedeProducts}
+            disabled={loading}
+            title="Inicializar productos si no aparecen o no se pueden activar"
+          >
+            <RefreshCw className="h-4 w-4 mr-1" />
+            Inicializar Productos
+          </Button>
+        </div>
       </div>
 
       {/* Summary Cards */}
@@ -260,7 +600,10 @@ export const Inventory: React.FC = () => {
                   </div>
                   <Switch
                     checked={item.available}
-                    onCheckedChange={() => toggleProductAvailability(item.id, item.type)}
+                    onCheckedChange={() => {
+                      console.log('🖱️ Switch clicked para producto:', item.name, 'ID:', item.id, 'Type:', item.type, 'Loading:', loading);
+                      toggleProductAvailability(item.id, item.type);
+                    }}
                     disabled={loading}
                   />
                 </div>
@@ -281,16 +624,16 @@ export const Inventory: React.FC = () => {
                       <div key={topping.id} className="flex items-center justify-between p-2 bg-muted rounded">
                         <div className="flex items-center gap-2">
                           <span className="text-sm">{topping.name}</span>
-                          {!topping.available && (
+                          {!topping.sede_available && (
                             <Badge variant="secondary" className="text-xs">No disponible</Badge>
                           )}
                         </div>
                         <div className="flex items-center gap-2">
-                          {topping.pricing > 0 && (
-                            <span className="text-sm font-medium">+{formatCurrency(topping.pricing)}</span>
+                          {topping.sede_price > 0 && (
+                            <span className="text-sm font-medium">+{formatCurrency(topping.sede_price)}</span>
                           )}
                           <Switch
-                            checked={topping.available}
+                            checked={topping.sede_available}
                             onCheckedChange={() => toggleToppingAvailability(topping.id)}
                             disabled={loading}
                             size="sm"

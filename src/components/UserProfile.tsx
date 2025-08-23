@@ -7,11 +7,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { User, MapPin, Calendar, UserRound, LogOut } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 
-interface UserProfileProps {
-  // No longer need user prop as we'll get it from auth context
-}
-
-export const UserProfile: React.FC<UserProfileProps> = () => {
+export const UserProfile: React.FC = () => {
   const { profile, signOut } = useAuth();
   
   // Datos mock como fallback si no hay perfil

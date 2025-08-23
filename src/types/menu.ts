@@ -1,38 +1,77 @@
 // Tipos para el menú basados en el esquema de base de datos
 
 export interface Plato {
-  id: number;
-  name: string;
+  id: number; // bigint in DB
+  name: string | null; // nullable in DB
   description: string | null;
-  pricing: number; // Precio en pesos (sin decimales)
-  available: boolean;
+  pricing: number | null; // integer, nullable in DB
   created_at: string;
-  updated_at: string;
+  updated_at: string | null; // nullable in DB
 }
 
 export interface Topping {
-  id: number;
-  name: string;
-  pricing: number; // Precio en pesos (siempre 0 si viene incluido)
-  available: boolean;
+  id: number; // integer in DB
+  name: string | null; // nullable in DB
+  pricing: number | null; // smallint, nullable in DB
   created_at: string;
-  updated_at: string;
+  updated_at: string | null; // nullable in DB
 }
 
 export interface PlatoTopping {
-  id: number;
-  plato_id: number;
-  "topping_Id": number;
+  id: number; // bigint in DB
+  plato_id: number | null; // bigint, nullable in DB
+  topping_id: number | null; // integer, nullable in DB
   created_at: string;
 }
 
 export interface Bebida {
-  id: number;
-  name: string;
-  pricing: number; // Precio en pesos (sin decimales)
-  available: boolean;
+  id: number; // smallint in DB
+  name: string | null; // nullable in DB
+  pricing: number | null; // bigint, nullable in DB
   created_at: string;
-  updated_at: string;
+  updated_at: string | null; // nullable in DB
+}
+
+// Nuevas interfaces para disponibilidad por sede
+export interface SedePlato {
+  sede_id: string; // uuid in DB
+  plato_id: number; // bigint in DB
+  available: boolean | null; // nullable in DB
+  price_override: number | null; // integer, nullable in DB
+  updated_at: string | null; // nullable in DB
+}
+
+export interface SedeBebida {
+  sede_id: string; // uuid in DB
+  bebida_id: number; // smallint in DB
+  available: boolean | null; // nullable in DB
+  price_override: number | null; // integer, nullable in DB
+  updated_at: string | null; // nullable in DB
+}
+
+export interface SedeTopping {
+  sede_id: string; // uuid in DB
+  topping_id: number; // integer in DB
+  available: boolean | null; // nullable in DB
+  price_override: number | null; // integer, nullable in DB
+  updated_at: string | null; // nullable in DB
+}
+
+// Interfaces para productos con información de sede
+export interface PlatoConSede extends Plato {
+  sede_available: boolean;
+  sede_price: number; // Precio final para esta sede
+  toppings: ToppingConSede[];
+}
+
+export interface BebidaConSede extends Bebida {
+  sede_available: boolean;
+  sede_price: number; // Precio final para esta sede
+}
+
+export interface ToppingConSede extends Topping {
+  sede_available: boolean;
+  sede_price: number; // Precio final para esta sede
 }
 
 // Tipos para respuestas de API
@@ -44,6 +83,13 @@ export interface MenuResponse {
   platos: PlatoConToppings[];
   bebidas: Bebida[];
   toppings?: Topping[]; // Opcional para compatibilidad con código existente
+}
+
+// Nueva interfaz para menú con información de sede
+export interface MenuResponseConSede {
+  platos: PlatoConSede[];
+  bebidas: BebidaConSede[];
+  toppings?: ToppingConSede[];
 }
 
 // Tipos para crear/actualizar productos

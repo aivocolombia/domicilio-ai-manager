@@ -6,108 +6,130 @@ import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
-import { Search, Plus, User, Trash2, Phone, History } from 'lucide-react';
-import { DeliveryPerson, Order } from '@/types/delivery';
+import { Search, Plus, User, Phone, History, Loader2, AlertCircle } from 'lucide-react';
+import { useDelivery } from '@/hooks/useDelivery';
 import { toast } from '@/hooks/use-toast';
 import { DeliveryPersonHistory } from './DeliveryPersonHistory';
 
-interface DeliveryPersonnelProps {
-  deliveryPersonnel: DeliveryPerson[];
-  orders: Order[];
-  onUpdateDeliveryPersonnel: (personnel: DeliveryPerson[]) => void;
-}
+export const DeliveryPersonnel: React.FC = () => {
+  const {
+    repartidores,
+    totalOrdenesAsignadas,
+    loading,
+    error,
+    crearRepartidor,
+    cambiarDisponibilidad,
+    clearError
+  } = useDelivery();
 
-export const DeliveryPersonnel: React.FC<DeliveryPersonnelProps> = ({
-  deliveryPersonnel,
-  orders,
-  onUpdateDeliveryPersonnel
-}) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [newPersonName, setNewPersonName] = useState('');
   const [newPersonPhone, setNewPersonPhone] = useState('');
-  const [selectedPerson, setSelectedPerson] = useState<DeliveryPerson | null>(null);
+  const [newPersonPlacas, setNewPersonPlacas] = useState('');
+  const [selectedPerson, setSelectedPerson] = useState<any>(null);
   const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false);
 
-  const filteredPersonnel = deliveryPersonnel.filter(person =>
-    person.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    person.phone.includes(searchTerm)
+  // Debug logs
+  console.log('🔍 DeliveryPersonnel Debug:', {
+    repartidores: repartidores,
+    loading: loading,
+    error: error,
+    repartidoresLength: repartidores.length
+  });
+
+  const filteredPersonnel = repartidores.filter(person =>
+    person.nombre?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    person.telefono?.includes(searchTerm) ||
+    person.placas?.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
-  const activePersonnelCount = deliveryPersonnel.filter(person => person.isActive).length;
-  const totalDeliveries = deliveryPersonnel.reduce((sum, person) => sum + person.totalDeliveries, 0);
+  const activePersonnelCount = repartidores.filter(person => person.disponible).length;
+  const totalDeliveries = repartidores.reduce((sum, person) => sum + (person.entregados || 0), 0);
+  const totalDelivered = repartidores.reduce((sum, person) => sum + (person.total_entregado || 0), 0);
 
-  const handleAddPerson = () => {
+  console.log('📊 Estadísticas:', {
+    filteredPersonnel: filteredPersonnel.length,
+    activePersonnelCount,
+    totalDeliveries,
+    totalOrdenesAsignadas,
+    totalDelivered
+  });
+
+  const handleAddPerson = async () => {
+    console.log('🔄 Intentando crear repartidor...');
+    console.log('📝 Datos del formulario:', {
+      nombre: newPersonName,
+      telefono: newPersonPhone,
+      placas: newPersonPlacas
+    });
+
     if (!newPersonName.trim() || !newPersonPhone.trim()) {
+      console.log('❌ Validación fallida: campos vacíos');
       toast({
         title: "Error",
-        description: "Por favor completa todos los campos.",
+        description: "Por favor completa todos los campos obligatorios.",
         variant: "destructive"
       });
       return;
     }
 
-    const newPerson: DeliveryPerson = {
-      id: `delivery-${Date.now()}`,
-      name: newPersonName.trim(),
-      phone: newPersonPhone.trim(),
-      isActive: true,
-      createdAt: new Date(),
-      totalDeliveries: 0,
-      activeOrders: 0
-    };
-
-    onUpdateDeliveryPersonnel([...deliveryPersonnel, newPerson]);
-    
-    toast({
-      title: "Repartidor agregado",
-      description: `${newPersonName} ha sido agregado correctamente.`,
-    });
-
-    setNewPersonName('');
-    setNewPersonPhone('');
-    setIsAddModalOpen(false);
-  };
-
-  const togglePersonActive = (personId: string) => {
-    const updatedPersonnel = deliveryPersonnel.map(person =>
-      person.id === personId
-        ? { ...person, isActive: !person.isActive }
-        : person
-    );
-    onUpdateDeliveryPersonnel(updatedPersonnel);
-
-    const person = deliveryPersonnel.find(p => p.id === personId);
-    toast({
-      title: "Estado actualizado",
-      description: `${person?.name} ${person?.isActive ? 'desactivado' : 'activado'} correctamente.`,
-    });
-  };
-
-  const deletePerson = (personId: string) => {
-    const person = deliveryPersonnel.find(p => p.id === personId);
-    if (person?.activeOrders && person.activeOrders > 0) {
-      toast({
-        title: "No se puede eliminar",
-        description: "El repartidor tiene pedidos activos asignados.",
-        variant: "destructive"
+    try {
+      console.log('✅ Validación exitosa, creando repartidor...');
+      
+      const nuevoRepartidor = await crearRepartidor({
+        nombre: newPersonName.trim(),
+        telefono: newPersonPhone.trim(),
+        placas: newPersonPlacas.trim() || undefined,
+        disponible: true
       });
-      return;
+
+      console.log('✅ Repartidor creado exitosamente:', nuevoRepartidor);
+
+      // Limpiar formulario
+      setNewPersonName('');
+      setNewPersonPhone('');
+      setNewPersonPlacas('');
+      setIsAddModalOpen(false);
+
+      console.log('✅ Formulario limpiado y modal cerrado');
+    } catch (error) {
+      console.error('❌ Error al crear repartidor:', error);
+      // El error ya se maneja en el hook con toast
     }
-
-    const updatedPersonnel = deliveryPersonnel.filter(p => p.id !== personId);
-    onUpdateDeliveryPersonnel(updatedPersonnel);
-
-    toast({
-      title: "Repartidor eliminado",
-      description: `${person?.name} ha sido eliminado correctamente.`,
-    });
   };
 
-  const handlePersonClick = (person: DeliveryPerson) => {
+  const togglePersonActive = async (personId: number) => {
+    try {
+      const person = repartidores.find(p => p.id === personId);
+      if (!person) return;
+
+      await cambiarDisponibilidad(personId, !person.disponible);
+    } catch (error) {
+      // El error ya se maneja en el hook
+      console.error('Error al cambiar disponibilidad:', error);
+    }
+  };
+
+
+
+  const handlePersonClick = (person: any) => {
     setSelectedPerson(person);
     setIsHistoryModalOpen(true);
   };
+
+  // Manejar error
+  if (error) {
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center gap-2 text-red-600">
+          <AlertCircle className="h-5 w-5" />
+          <span>Error: {error}</span>
+        </div>
+        <Button onClick={clearError}>Reintentar</Button>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -115,7 +137,7 @@ export const DeliveryPersonnel: React.FC<DeliveryPersonnelProps> = ({
         <div>
           <h1 className="text-3xl font-bold">Repartidores</h1>
           <p className="text-muted-foreground">
-            {activePersonnelCount} activos • {deliveryPersonnel.length} total
+            {activePersonnelCount} activos • {repartidores.length} total
           </p>
         </div>
         
@@ -149,11 +171,26 @@ export const DeliveryPersonnel: React.FC<DeliveryPersonnelProps> = ({
                   placeholder="Número de teléfono"
                 />
               </div>
+              <div>
+                <Label htmlFor="placas">Placas (opcional)</Label>
+                <Input
+                  id="placas"
+                  value={newPersonPlacas}
+                  onChange={(e) => setNewPersonPlacas(e.target.value)}
+                  placeholder="Placas del vehículo"
+                />
+              </div>
               <div className="flex gap-3 pt-4">
                 <Button variant="outline" onClick={() => setIsAddModalOpen(false)} className="flex-1">
                   Cancelar
                 </Button>
-                <Button onClick={handleAddPerson} className="flex-1">
+                <Button 
+                  onClick={() => {
+                    console.log('🖱️ Botón Agregar clickeado');
+                    handleAddPerson();
+                  }} 
+                  className="flex-1"
+                >
                   Agregar
                 </Button>
               </div>
@@ -162,7 +199,7 @@ export const DeliveryPersonnel: React.FC<DeliveryPersonnelProps> = ({
         </Dialog>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
         <Card>
           <CardContent className="flex items-center justify-between p-6">
             <div>
@@ -176,7 +213,7 @@ export const DeliveryPersonnel: React.FC<DeliveryPersonnelProps> = ({
         <Card>
           <CardContent className="flex items-center justify-between p-6">
             <div>
-              <p className="text-2xl font-bold">{deliveryPersonnel.length}</p>
+              <p className="text-2xl font-bold">{repartidores.length}</p>
               <p className="text-sm text-muted-foreground">Total</p>
             </div>
             <User className="h-8 w-8 text-blue-600" />
@@ -192,6 +229,28 @@ export const DeliveryPersonnel: React.FC<DeliveryPersonnelProps> = ({
             <User className="h-8 w-8 text-purple-600" />
           </CardContent>
         </Card>
+        
+        <Card>
+          <CardContent className="flex items-center justify-between p-6">
+            <div>
+              <p className="text-2xl font-bold">{totalOrdenesAsignadas}</p>
+              <p className="text-sm text-muted-foreground">Total Asignados</p>
+            </div>
+            <User className="h-8 w-8 text-orange-600" />
+          </CardContent>
+        </Card>
+        
+        <Card>
+          <CardContent className="flex items-center justify-between p-6">
+            <div>
+              <p className="text-2xl font-bold text-green-600">${totalDelivered.toLocaleString()}</p>
+              <p className="text-sm text-muted-foreground">Total Entregado</p>
+            </div>
+            <User className="h-8 w-8 text-green-600" />
+          </CardContent>
+        </Card>
+        
+
       </div>
 
       <Card>
@@ -208,11 +267,31 @@ export const DeliveryPersonnel: React.FC<DeliveryPersonnelProps> = ({
         </CardContent>
       </Card>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {filteredPersonnel.map((person) => (
+      {/* Loading State */}
+      {loading && (
+        <div className="flex items-center justify-center py-8">
+          <Loader2 className="h-8 w-8 animate-spin" />
+          <span className="ml-2">Cargando repartidores...</span>
+        </div>
+      )}
+
+      {/* Products Grid */}
+      {!loading && (
+        <>
+          {filteredPersonnel.length === 0 ? (
+            <div className="text-center py-8">
+              <User className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
+              <h3 className="text-lg font-medium mb-2">No se encontraron repartidores</h3>
+              <p className="text-muted-foreground">
+                {searchTerm ? 'Intenta con otros términos de búsqueda.' : 'No hay repartidores registrados.'}
+              </p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {filteredPersonnel.map((person) => (
           <Card 
             key={person.id} 
-            className={`cursor-pointer transition-all hover:shadow-md ${!person.isActive ? 'opacity-60' : ''}`}
+            className={`cursor-pointer transition-all hover:shadow-md ${!person.disponible ? 'opacity-60' : ''}`}
             onClick={() => handlePersonClick(person)}
           >
             <CardHeader>
@@ -220,35 +299,24 @@ export const DeliveryPersonnel: React.FC<DeliveryPersonnelProps> = ({
                 <div className="flex-1">
                   <CardTitle className="text-lg flex items-center gap-2">
                     <User className="h-5 w-5" />
-                    {person.name}
+                    {person.nombre || 'Sin nombre'}
                     <History className="h-4 w-4 text-muted-foreground ml-auto" />
                   </CardTitle>
                   <div className="flex items-center gap-1 text-sm text-muted-foreground mt-1">
                     <Phone className="h-4 w-4" />
-                    {person.phone}
+                    {person.telefono || 'Sin teléfono'}
                   </div>
                 </div>
                 <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
                   <Switch
-                    checked={person.isActive}
+                    checked={person.disponible}
                     onCheckedChange={() => togglePersonActive(person.id)}
                   />
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      deletePerson(person.id);
-                    }}
-                    className="text-red-600 hover:text-red-700"
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
                 </div>
               </div>
               <div className="flex items-center justify-between">
-                <Badge variant={person.isActive ? "default" : "secondary"}>
-                  {person.isActive ? 'Activo' : 'Inactivo'}
+                <Badge variant={person.disponible ? "default" : "secondary"}>
+                  {person.disponible ? 'Disponible' : 'No Disponible'}
                 </Badge>
               </div>
             </CardHeader>
@@ -256,28 +324,49 @@ export const DeliveryPersonnel: React.FC<DeliveryPersonnelProps> = ({
             <CardContent>
               <div className="space-y-2">
                 <div className="flex justify-between">
-                  <span className="text-sm text-muted-foreground">Entregas totales:</span>
-                  <span className="font-medium">{person.totalDeliveries}</span>
+                  <span className="text-sm text-muted-foreground">Pedidos activos:</span>
+                  <span className="font-medium">{person.pedidos_activos || 0}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-sm text-muted-foreground">Pedidos activos:</span>
-                  <span className="font-medium">{person.activeOrders}</span>
+                  <span className="text-sm text-muted-foreground">Entregados:</span>
+                  <span className="font-medium">{person.entregados || 0}</span>
                 </div>
+                <div className="flex justify-between">
+                  <span className="text-sm text-muted-foreground">Total asignados:</span>
+                  <span className="font-medium">{person.total_asignados || 0}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-sm text-muted-foreground">Total entregado:</span>
+                  <span className="font-medium text-green-600">${(person.total_entregado || 0).toLocaleString()}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-sm text-muted-foreground">Ganado:</span>
+                  <span className="font-medium text-emerald-600">${((person.entregados || 0) * 4000).toLocaleString()}</span>
+                </div>
+                {person.placas && (
+                  <div className="flex justify-between">
+                    <span className="text-sm text-muted-foreground">Placas:</span>
+                    <span className="text-sm font-medium">{person.placas}</span>
+                  </div>
+                )}
                 <div className="flex justify-between">
                   <span className="text-sm text-muted-foreground">Desde:</span>
-                  <span className="text-sm">{person.createdAt.toLocaleDateString()}</span>
+                  <span className="text-sm">{new Date(person.created_at).toLocaleDateString()}</span>
                 </div>
               </div>
             </CardContent>
           </Card>
         ))}
       </div>
+          )}
+        </>
+      )}
 
       <DeliveryPersonHistory
         isOpen={isHistoryModalOpen}
         onClose={() => setIsHistoryModalOpen(false)}
         deliveryPerson={selectedPerson}
-        orders={orders}
+        orders={[]}
       />
     </div>
   );

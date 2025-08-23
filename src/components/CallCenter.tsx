@@ -45,7 +45,7 @@ const CallCenter: React.FC<CallCenterProps> = ({ orders, sedes, settings, onCrea
 
   // Normalize phone number by removing spaces, dashes, and parentheses
   const normalizePhone = (phone: string) => {
-    return phone.replace(/[\s\-\(\)]/g, '');
+    return phone.replace(/[\s\-()]/g, '');
   };
 
   const searchCustomer = () => {
@@ -355,7 +355,7 @@ const CallCenter: React.FC<CallCenterProps> = ({ orders, sedes, settings, onCrea
                           <p className="text-center text-gray-500">Cargando productos...</p>
                         ) : (
                           <>
-                            {platos.filter(item => item.available).map((item) => (
+                            {platos.filter(item => !('available' in item) || (item as any).available !== false).map((item) => (
                               <div key={item.id} className="flex items-center justify-between p-2 border rounded">
                                 <div>
                                   <p className="font-medium">{item.name}</p>
@@ -370,7 +370,7 @@ const CallCenter: React.FC<CallCenterProps> = ({ orders, sedes, settings, onCrea
                                 </Button>
                               </div>
                             ))}
-                            {bebidas.filter(item => item.available).map((item) => (
+                            {bebidas.filter(item => !('available' in item) || (item as any).available !== false).map((item) => (
                               <div key={item.id} className="flex items-center justify-between p-2 border rounded">
                                 <div>
                                   <p className="font-medium">{item.name}</p>
