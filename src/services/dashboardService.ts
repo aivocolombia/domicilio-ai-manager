@@ -23,6 +23,8 @@ export interface DashboardFilters {
   limit?: number;
   offset?: number;
   sede_id?: string | number; // Support both string (UUID) and number
+  fechaInicio?: string; // Fecha de inicio en formato ISO
+  fechaFin?: string;    // Fecha de fin en formato ISO
 }
 
 export class DashboardService {
@@ -63,6 +65,17 @@ export class DashboardService {
         query = query.eq('sede_id', filters.sede_id);
       } else {
         console.log('⚠️ DashboardService: NO SE PROPORCIONÓ SEDE_ID - esto puede causar problemas');
+      }
+
+      // Filtros de fecha
+      if (filters.fechaInicio) {
+        console.log('📅 DashboardService: Filtrando desde fecha:', filters.fechaInicio);
+        query = query.gte('created_at', filters.fechaInicio);
+      }
+      
+      if (filters.fechaFin) {
+        console.log('📅 DashboardService: Filtrando hasta fecha:', filters.fechaFin);
+        query = query.lte('created_at', filters.fechaFin);
       }
 
       if (filters.limit) {
@@ -164,10 +177,11 @@ export class DashboardService {
   }
 
   // Obtener estadísticas del dashboard
-  async getDashboardStats(sede_id?: string | number) {
+  async getDashboardStats(sede_id?: string | number, filters: Omit<DashboardFilters, 'sede_id'> = {}) {
     try {
       console.log('📊 Consultando estadísticas del dashboard...');
       console.log('🏢 Sede ID:', sede_id);
+      console.log('📅 Filtros de fecha:', { fechaInicio: filters.fechaInicio, fechaFin: filters.fechaFin });
 
       // Construir query base para estadísticas
       let query = supabase
@@ -177,6 +191,15 @@ export class DashboardService {
       // Filtrar por sede si se proporciona
       if (sede_id) {
         query = query.eq('sede_id', sede_id);
+      }
+
+      // Aplicar filtros de fecha
+      if (filters.fechaInicio) {
+        query = query.gte('created_at', filters.fechaInicio);
+      }
+      
+      if (filters.fechaFin) {
+        query = query.lte('created_at', filters.fechaFin);
       }
 
       const { data: statusCounts, error: statusError } = await query;

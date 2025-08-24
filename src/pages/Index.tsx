@@ -7,6 +7,7 @@ import CallCenter from '@/components/CallCenter';
 import { UserProfile } from '@/components/UserProfile';
 import { SedeOrders } from '@/components/SedeOrders';
 import { AdminPanel } from '@/components/AdminPanel';
+import { TimeMetricsPage } from '@/components/TimeMetricsPage';
 import { Order, DeliverySettings, OrderSource, DeliveryPerson, PaymentMethod, PaymentStatus, User as UserType, Sede } from '@/types/delivery';
 import { LayoutDashboard, Package, Users, Phone, Store, Settings, Building2, ChevronDown } from 'lucide-react';
 import { StatusBar } from '@/components/StatusBar';
@@ -162,6 +163,7 @@ const generateMockDeliveryPersonnel = (): DeliveryPerson[] => {
 const Index = () => {
   const { profile } = useAuth();
   const [showAdminPanel, setShowAdminPanel] = useState(false);
+  const [showTimeMetrics, setShowTimeMetrics] = useState(false);
   const [orders, setOrders] = useState<Order[]>([]);
   const [deliveryPersonnel, setDeliveryPersonnel] = useState<DeliveryPerson[]>([]);
   const [currentUser] = useState<UserType>(generateMockUser());
@@ -269,7 +271,20 @@ const Index = () => {
 
   // Si showAdminPanel es true, mostrar el AdminPanel
   if (showAdminPanel) {
-    return <AdminPanel onBack={() => setShowAdminPanel(false)} />;
+    return (
+      <AdminPanel 
+        onBack={() => setShowAdminPanel(false)}
+        onNavigateToTimeMetrics={() => {
+          setShowAdminPanel(false);
+          setShowTimeMetrics(true);
+        }}
+      />
+    );
+  }
+
+  // Si showTimeMetrics es true, mostrar las métricas de tiempo
+  if (showTimeMetrics) {
+    return <TimeMetricsPage onBack={() => setShowTimeMetrics(false)} />;
   }
 
   return (

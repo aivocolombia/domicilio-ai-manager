@@ -40,6 +40,45 @@ export interface DashboardMetrics {
   };
 }
 
+// Interfaz para métricas de tiempo por fases
+export interface OrderTimeMetrics {
+  id: number;
+  sede_id: string;
+  created_at: string;
+  status: string;
+  recibidos_at: string | null;
+  cocina_at: string | null;
+  camino_at: string | null;
+  entregado_at: string | null;
+  cancelado_at: string | null;
+  updated_at_final: string | null;
+  min_recibidos_a_cocina: number | null;
+  min_cocina_a_camino: number | null;
+  min_camino_a_fin: number | null;
+  min_total_desde_recibidos: number | null;
+  min_total_desde_creacion: number | null;
+  sede_nombre: string | null;
+}
+
+export interface PhaseTimeStats {
+  avg_recibidos_a_cocina: number;
+  avg_cocina_a_camino: number;
+  avg_camino_a_fin: number;
+  avg_total_desde_recibidos: number;
+  avg_total_desde_creacion: number;
+  total_orders: number;
+  completed_orders: number;
+}
+
+export interface PhaseDistribution {
+  phase: string;
+  avg_minutes: number;
+  min_minutes: number;
+  max_minutes: number;
+  count: number;
+  color: string;
+}
+
 export interface MetricsFilters {
   fecha_inicio: string;
   fecha_fin: string;
@@ -436,6 +475,159 @@ export class MetricsService {
       return resultado;
     } catch (error) {
       console.error('❌ Error en getDashboardMetrics:', error);
+      throw error;
+    }
+  }
+
+  // ========== NUEVAS MÉTRICAS DE TIEMPO POR FASES ==========
+
+  // Obtener métricas de tiempo de órdenes
+  async getOrderTimeMetrics(filters: MetricsFilters): Promise<OrderTimeMetrics[]> {
+    try {
+      console.log('⏱️ MetricsService: Consultando métricas de tiempo de órdenes...');
+      console.log('🔍 MetricsService: Filtros aplicados:', filters);
+
+      // Construir query base - usar el nombre real de la tabla de métricas de tiempo
+      let query = supabase
+        .from('ordenes_duraciones_con_sede')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      // Aplicar filtros
+      if (filters.sede_id) {
+        console.log('🏢 MetricsService: Filtrando por sede_id:', filters.sede_id);
+        query = query.eq('sede_id', filters.sede_id);
+      }
+
+      if (filters.fecha_inicio) {
+        console.log('📅 MetricsService: Filtrando desde fecha:', filters.fecha_inicio);
+        query = query.gte('created_at', `${filters.fecha_inicio}T00:00:00.000Z`);
+      }
+      
+      if (filters.fecha_fin) {
+        console.log('📅 MetricsService: Filtrando hasta fecha:', filters.fecha_fin);
+        query = query.lte('created_at', `${filters.fecha_fin}T23:59:59.999Z`);
+      }
+
+      const { data, error } = await query.limit(500); // Incrementar límite para más datos
+
+      if (error) {
+        console.error('❌ MetricsService: Error al obtener métricas de tiempo:', error);
+        throw new Error(`Error al obtener métricas: ${error.message}`);
+      }
+
+      console.log('✅ MetricsService: Métricas de tiempo obtenidas:', data?.length || 0);
+      return data || [];
+    } catch (error) {
+      console.error('❌ Error en getOrderTimeMetrics:', error);
+      throw error;
+    }
+  }
+
+  // Obtener estadísticas promedio por fase
+  async getPhaseTimeStats(filters: MetricsFilters): Promise<PhaseTimeStats> {
+    try {
+      console.log('📊 MetricsService: Calculando estadísticas por fase...');
+      
+      const data = await this.getOrderTimeMetrics(filters);
+      
+      // Filtrar solo órdenes con datos válidos
+      const validData = data.filter(d => d.min_total_desde_recibidos !== null || d.status === 'Entregados');
+      
+      const calculateAvg = (values: (number | null)[]) => {
+        const validValues = values.filter((v): v is number => v !== null && !isNaN(v));
+        return validValues.length > 0 ? validValues.reduce((sum, val) => sum + val, 0) / validValues.length : 0;
+      };
+
+      const stats: PhaseTimeStats = {
+        avg_recibidos_a_cocina: calculateAvg(validData.map(d => d.min_recibidos_a_cocina)),
+        avg_cocina_a_camino: calculateAvg(validData.map(d => d.min_cocina_a_camino)),
+        avg_camino_a_fin: calculateAvg(validData.map(d => d.min_camino_a_fin)),
+        avg_total_desde_recibidos: calculateAvg(validData.map(d => d.min_total_desde_recibidos)),
+        avg_total_desde_creacion: calculateAvg(validData.map(d => d.min_total_desde_creacion)),
+        total_orders: data.length,
+        completed_orders: data.filter(d => d.status === 'Entregados').length
+      };
+
+      console.log('✅ MetricsService: Estadísticas por fase calculadas:', stats);
+      return stats;
+    } catch (error) {
+      console.error('❌ Error en getPhaseTimeStats:', error);
+      throw error;
+    }
+  }
+
+  // Obtener distribución de tiempos por fase
+  async getPhaseDistribution(filters: MetricsFilters): Promise<PhaseDistribution[]> {
+    try {
+      console.log('📊 MetricsService: Calculando distribución por fases...');
+      
+      const data = await this.getOrderTimeMetrics(filters);
+      
+      const phases = [
+        { key: 'min_recibidos_a_cocina' as keyof OrderTimeMetrics, name: 'Recibidos → Cocina', color: '#FFC107' },
+        { key: 'min_cocina_a_camino' as keyof OrderTimeMetrics, name: 'Cocina → Camino', color: '#2196F3' },
+        { key: 'min_camino_a_fin' as keyof OrderTimeMetrics, name: 'Camino → Entregado', color: '#4CAF50' }
+      ];
+
+      const distribution: PhaseDistribution[] = phases.map(phase => {
+        const values = data
+          .map(d => d[phase.key] as number)
+          .filter(v => v !== null && v !== undefined && !isNaN(v));
+
+        return {
+          phase: phase.name,
+          avg_minutes: values.length > 0 ? Math.round((values.reduce((sum, val) => sum + val, 0) / values.length) * 100) / 100 : 0,
+          min_minutes: values.length > 0 ? Math.min(...values) : 0,
+          max_minutes: values.length > 0 ? Math.max(...values) : 0,
+          count: values.length,
+          color: phase.color
+        };
+      });
+
+      console.log('✅ MetricsService: Distribución por fases calculada:', distribution);
+      return distribution;
+    } catch (error) {
+      console.error('❌ Error en getPhaseDistribution:', error);
+      throw error;
+    }
+  }
+
+  // Obtener tendencias de tiempo por día
+  async getPhaseTimeTrends(filters: MetricsFilters): Promise<{ date: string; avg_total_time: number; order_count: number }[]> {
+    try {
+      console.log('📈 MetricsService: Calculando tendencias de tiempo...');
+      
+      const data = await this.getOrderTimeMetrics(filters);
+      
+      // Agrupar por día
+      const trendMap = new Map<string, { times: number[]; count: number }>();
+      
+      data.forEach(order => {
+        if (order.min_total_desde_recibidos !== null) {
+          const date = new Date(order.created_at).toISOString().split('T')[0];
+          
+          if (trendMap.has(date)) {
+            const existing = trendMap.get(date)!;
+            existing.times.push(order.min_total_desde_recibidos);
+            existing.count += 1;
+          } else {
+            trendMap.set(date, { times: [order.min_total_desde_recibidos], count: 1 });
+          }
+        }
+      });
+
+      // Convertir a array y calcular promedios
+      const trends = Array.from(trendMap.entries()).map(([date, data]) => ({
+        date,
+        avg_total_time: Math.round((data.times.reduce((sum, val) => sum + val, 0) / data.times.length) * 100) / 100,
+        order_count: data.count
+      }));
+
+      console.log('✅ MetricsService: Tendencias calculadas:', trends.length);
+      return trends.sort((a, b) => a.date.localeCompare(b.date));
+    } catch (error) {
+      console.error('❌ Error en getPhaseTimeTrends:', error);
       throw error;
     }
   }

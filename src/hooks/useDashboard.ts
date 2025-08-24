@@ -41,7 +41,7 @@ export const useDashboard = (sede_id?: string | number) => {
 
       const [ordersData, statsData] = await Promise.all([
         dashboardService.getDashboardOrders(filtersWithSede),
-        dashboardService.getDashboardStats(sede_id)
+        dashboardService.getDashboardStats(sede_id, filters)
       ]);
 
       setOrders(ordersData);

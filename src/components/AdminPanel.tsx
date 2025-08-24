@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Plus, Search, Edit, Trash2, Users, Building2, UserCheck, UserX, TrendingUp, DollarSign, Package, Clock, LayoutDashboard, Phone, MapPin, Settings, RefreshCw } from 'lucide-react'
+import { Plus, Search, Edit, Trash2, Users, Building2, UserCheck, UserX, TrendingUp, DollarSign, Package, Clock, LayoutDashboard, Phone, MapPin, Settings, RefreshCw, Cog, ChartLine, Timer, BarChart3 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -27,9 +27,10 @@ type Profile = User
 
 interface AdminPanelProps {
   onBack?: () => void;
+  onNavigateToTimeMetrics?: () => void;
 }
 
-export function AdminPanel({ onBack }: AdminPanelProps) {
+export function AdminPanel({ onBack, onNavigateToTimeMetrics }: AdminPanelProps) {
   const [users, setUsers] = useState<Profile[]>([])
   const [sedes, setSedes] = useState<Sede[]>([])
   const [sedesSimple, setSedesSimple] = useState<Array<{ id: string; name: string }>>([])
@@ -45,6 +46,7 @@ export function AdminPanel({ onBack }: AdminPanelProps) {
   const [userSedeFormData, setUserSedeFormData] = useState({ sede_id: '' })
   const [showMainApp, setShowMainApp] = useState(false)
   const [activeTab, setActiveTab] = useState('users')
+  const [activeSection, setActiveSection] = useState<'config' | 'metrics'>('config')
 
   const { toast } = useToast()
   const { signOut } = useAuth()
@@ -557,332 +559,72 @@ export function AdminPanel({ onBack }: AdminPanelProps) {
       </div>
 
       <div className="p-6 space-y-6">
-        {/* Stats Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Total Usuarios</CardTitle>
-              <Users className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{users.length}</div>
-              <p className="text-xs text-muted-foreground">
-                {users.filter(u => u.is_active).length} activos
-              </p>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Total Sedes</CardTitle>
-              <Building2 className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{sedes.length}</div>
-              <p className="text-xs text-muted-foreground">
-                Todas activas
-              </p>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Administradores</CardTitle>
-              <UserCheck className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">
-                {users.filter(u => u.role === 'admin' && u.is_active).length}
-              </div>
-              <p className="text-xs text-muted-foreground">
-                Usuarios con permisos de administrador
-              </p>
-            </CardContent>
-          </Card>
+        {/* Navegación entre secciones */}
+        <div className="flex gap-2 p-1 bg-muted rounded-lg w-fit">
+          <Button
+            variant={activeSection === 'config' ? 'default' : 'ghost'}
+            onClick={() => setActiveSection('config')}
+            className="flex items-center gap-2"
+          >
+            <Cog className="h-4 w-4" />
+            Configuraciones
+          </Button>
+          <Button
+            variant={activeSection === 'metrics' ? 'default' : 'ghost'}
+            onClick={() => setActiveSection('metrics')}
+            className="flex items-center gap-2"
+          >
+            <ChartLine className="h-4 w-4" />
+            Métricas
+          </Button>
         </div>
 
-        {/* Controles de Filtros */}
-        <Card className="mb-6">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Settings className="h-5 w-5" />
-              Filtros de Métricas
-            </CardTitle>
-            <CardDescription>
-              Selecciona el rango de fechas y sede para ver las métricas
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-end">
-              {/* Selector de Rango de Fechas */}
-              <div className="flex flex-col gap-2">
-                <Label>Rango de Fechas</Label>
-                <div className="flex gap-2">
-                  <Popover>
-                    <PopoverTrigger asChild>
-                      <Button variant="outline" className="w-[140px] justify-start text-left font-normal">
-                        <CalendarIcon className="mr-2 h-4 w-4" />
-                        {format(dateRange.from, 'dd/MM/yyyy', { locale: es })}
-                      </Button>
-                    </PopoverTrigger>
-                    <PopoverContent className="w-auto p-0" align="start">
-                      <Calendar
-                        mode="single"
-                        selected={dateRange.from}
-                        onSelect={(date) => date && setDateRange({ ...dateRange, from: date })}
-                        disabled={(date) => date > new Date() || date < new Date("2024-01-01")}
-                        initialFocus
-                      />
-                    </PopoverContent>
-                  </Popover>
-                  
-                  <span className="flex items-center text-muted-foreground">hasta</span>
-                  
-                  <Popover>
-                    <PopoverTrigger asChild>
-                      <Button variant="outline" className="w-[140px] justify-start text-left font-normal">
-                        <CalendarIcon className="mr-2 h-4 w-4" />
-                        {format(dateRange.to, 'dd/MM/yyyy', { locale: es })}
-                      </Button>
-                    </PopoverTrigger>
-                    <PopoverContent className="w-auto p-0" align="start">
-                      <Calendar
-                        mode="single"
-                        selected={dateRange.to}
-                        onSelect={(date) => date && setDateRange({ ...dateRange, to: date })}
-                        disabled={(date) => date > new Date() || date < dateRange.from}
-                        initialFocus
-                      />
-                    </PopoverContent>
-                  </Popover>
-                </div>
-              </div>
+        {activeSection === 'config' ? (
+          /* ========== SECCIÓN DE CONFIGURACIONES ========== */
+          <div className="space-y-6">
+            {/* Stats Cards de Configuración */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              <Card>
+                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                  <CardTitle className="text-sm font-medium">Total Usuarios</CardTitle>
+                  <Users className="h-4 w-4 text-muted-foreground" />
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold">{users.length}</div>
+                  <p className="text-xs text-muted-foreground">
+                    {users.filter(u => u.is_active).length} activos
+                  </p>
+                </CardContent>
+              </Card>
 
-              {/* Selector de Sede */}
-              <div className="flex flex-col gap-2">
-                <Label>Filtrar por Sede</Label>
-                <Select value={selectedSedeFilter} onValueChange={setSelectedSedeFilter}>
-                  <SelectTrigger className="w-[200px]">
-                    <SelectValue placeholder="Seleccionar sede" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">🌐 Todas las sedes</SelectItem>
-                    {sedesSimple.map((sede) => (
-                      <SelectItem key={sede.id} value={sede.id}>
-                        📍 {sede.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
+              <Card>
+                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                  <CardTitle className="text-sm font-medium">Total Sedes</CardTitle>
+                  <Building2 className="h-4 w-4 text-muted-foreground" />
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold">{sedes.length}</div>
+                  <p className="text-xs text-muted-foreground">
+                    Todas activas
+                  </p>
+                </CardContent>
+              </Card>
 
-              {/* Botón de Actualizar */}
-              <Button 
-                onClick={loadMetrics} 
-                disabled={metricsLoading}
-                className="w-[120px]"
-              >
-                {metricsLoading ? (
-                  <RefreshCw className="h-4 w-4 animate-spin mr-2" />
-                ) : (
-                  <RefreshCw className="h-4 w-4 mr-2" />
-                )}
-                Actualizar
-              </Button>
+              <Card>
+                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                  <CardTitle className="text-sm font-medium">Administradores</CardTitle>
+                  <UserCheck className="h-4 w-4 text-muted-foreground" />
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold">
+                    {users.filter(u => u.role === 'admin' && u.is_active).length}
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Usuarios con permisos de administrador
+                  </p>
+                </CardContent>
+              </Card>
             </div>
-
-            {/* Resumen de filtros aplicados */}
-            <div className="mt-4 p-3 bg-muted/30 rounded-lg">
-              <div className="text-sm text-muted-foreground">
-                📊 Mostrando datos del{' '}
-                <span className="font-medium">{format(dateRange.from, 'dd/MM/yyyy', { locale: es })}</span>
-                {' '}al{' '}
-                <span className="font-medium">{format(dateRange.to, 'dd/MM/yyyy', { locale: es })}</span>
-                {selectedSedeFilter !== 'all' && (
-                  <>
-                    {' '}para la sede{' '}
-                    <span className="font-medium">
-                      {sedesSimple.find(s => s.id === selectedSedeFilter)?.name || 'Desconocida'}
-                    </span>
-                  </>
-                )}
-              </div>
-              {metricsData && (
-                <div className="mt-2 text-sm font-medium">
-                  📈 Total: {metricsData.totalGeneral.pedidos} pedidos • 
-                  💰 ${metricsData.totalGeneral.ingresos.toLocaleString()} • 
-                  📊 Promedio: ${Math.round(metricsData.totalGeneral.promedio).toLocaleString()}/pedido
-                </div>
-              )}
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Métricas de Negocio */}
-        {metricsLoading ? (
-          <Card className="mb-6">
-            <CardContent className="flex items-center justify-center py-12">
-              <div className="flex items-center gap-2 text-muted-foreground">
-                <RefreshCw className="h-5 w-5 animate-spin" />
-                Cargando métricas...
-              </div>
-            </CardContent>
-          </Card>
-        ) : !metricsData ? (
-          <Card className="mb-6">
-            <CardContent className="flex items-center justify-center py-12">
-              <div className="text-muted-foreground">
-                No hay datos disponibles para el rango seleccionado
-              </div>
-            </CardContent>
-          </Card>
-        ) : (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* Domicilios por Día */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <TrendingUp className="h-5 w-5" />
-                Domicilios por Día (Última Semana)
-              </CardTitle>
-              <CardDescription>
-                Tendencia de domicilios y ganancias diarias
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-4">
-                {metricsData.metricasPorDia.map((item, index) => (
-                  <div key={index} className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
-                    <div className="flex items-center gap-3">
-                      <div className="w-3 h-3 bg-primary rounded-full"></div>
-                      <span className="font-medium">{format(new Date(item.fecha), 'dd/MM', { locale: es })}</span>
-                    </div>
-                    <div className="text-right">
-                      <div className="font-bold text-lg">{item.total_pedidos} pedidos</div>
-                      <div className="text-sm text-muted-foreground">
-                        ${(item.total_ingresos / 1000).toFixed(0)}k ingresos
-                      </div>
-                    </div>
-                  </div>
-                ))}
-                {metricsData.metricasPorDia.length === 0 && (
-                  <div className="text-center py-8 text-muted-foreground">
-                    No hay datos para el período seleccionado
-                  </div>
-                )}
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Productos Más Vendidos */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Package className="h-5 w-5" />
-                Productos Más Vendidos
-              </CardTitle>
-              <CardDescription>
-                Distribución de ventas por producto
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-4">
-                {metricsData.productosMasVendidos.slice(0, 5).map((item, index) => (
-                  <div key={index} className="flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <div 
-                        className="w-4 h-4 rounded-full"
-                        style={{ backgroundColor: `hsl(${index * 60}, 70%, 50%)` }}
-                      ></div>
-                      <span className="font-medium">{item.producto_nombre}</span>
-                    </div>
-                    <div className="text-right">
-                      <div className="font-bold">{item.total_vendido} vendidos</div>
-                      <div className="text-sm text-muted-foreground">{item.porcentaje_ventas.toFixed(1)}%</div>
-                    </div>
-                  </div>
-                ))}
-                {metricsData.productosMasVendidos.length === 0 && (
-                  <div className="text-center py-8 text-muted-foreground">
-                    No hay datos de productos para el período seleccionado
-                  </div>
-                )}
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Ganancias por Sede */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <DollarSign className="h-5 w-5" />
-                Ganancias por Sede
-              </CardTitle>
-              <CardDescription>
-                Comparación de rendimiento por ubicación
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-4">
-                {metricsData.metricasPorSede.map((item, index) => (
-                  <div key={index} className="flex items-center justify-between p-3 bg-muted/30 rounded-lg">
-                    <div className="flex items-center gap-3">
-                      <div 
-                        className="w-4 h-4 rounded-full"
-                        style={{ backgroundColor: `hsl(${index * 90}, 70%, 50%)` }}
-                      ></div>
-                      <span className="font-medium">{item.sede_nombre}</span>
-                    </div>
-                    <div className="text-right">
-                      <div className="font-bold text-lg">${(item.total_ingresos / 1000).toFixed(0)}k</div>
-                      <div className="text-sm text-muted-foreground">{item.total_pedidos} pedidos</div>
-                      {item.pedidos_activos > 0 && (
-                        <div className="text-xs text-orange-600">
-                          {item.pedidos_activos} activos
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                ))}
-                {metricsData.metricasPorSede.length === 0 && (
-                  <div className="text-center py-8 text-muted-foreground">
-                    No hay datos de sedes para el período seleccionado
-                  </div>
-                )}
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Horarios Pico */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Clock className="h-5 w-5" />
-                Horarios de Mayor Demanda
-              </CardTitle>
-              <CardDescription>
-                Distribución de domicilios por hora del día
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-3 gap-2">
-                {metricsData.metricasPorHora.filter(item => item.cantidad_pedidos > 0).map((item, index) => (
-                  <div key={index} className="text-center p-2 bg-muted/30 rounded">
-                    <div className="text-xs text-muted-foreground">{item.hora}</div>
-                    <div className="font-bold text-lg">{item.cantidad_pedidos}</div>
-                    <div className="text-xs">pedidos</div>
-                  </div>
-                ))}
-                {metricsData.metricasPorHora.filter(item => item.cantidad_pedidos > 0).length === 0 && (
-                  <div className="col-span-3 text-center py-8 text-muted-foreground">
-                    No hay datos de horarios para el período seleccionado
-                  </div>
-                )}
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-        )}
 
         {/* Tabs para Gestión */}
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
@@ -1286,6 +1028,249 @@ export function AdminPanel({ onBack }: AdminPanelProps) {
             </Card>
           </TabsContent>
         </Tabs>
+          </div>
+        ) : (
+          /* ========== SECCIÓN DE MÉTRICAS ========== */
+          <div className="space-y-6">
+            {/* Métricas de Negocio */}
+            {metricsLoading ? (
+              <Card>
+                <CardContent className="flex items-center justify-center py-12">
+                  <div className="flex items-center gap-2 text-muted-foreground">
+                    <RefreshCw className="h-5 w-5 animate-spin" />
+                    Cargando métricas...
+                  </div>
+                </CardContent>
+              </Card>
+            ) : !metricsData ? (
+              <Card>
+                <CardContent className="flex items-center justify-center py-12">
+                  <div className="text-muted-foreground">
+                    No hay datos disponibles para el rango seleccionado
+                  </div>
+                </CardContent>
+              </Card>
+            ) : (
+              <div className="space-y-6">
+                {/* Controles de Filtros */}
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                      <Settings className="h-5 w-5" />
+                      Configuración de Métricas
+                    </CardTitle>
+                    <CardDescription>
+                      Selecciona el rango de fechas y sede para ver las métricas
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-end">
+                      {/* Selector de Rango de Fechas */}
+                      <div className="flex flex-col gap-2">
+                        <Label>Rango de Fechas</Label>
+                        <div className="flex gap-2">
+                          <Popover>
+                            <PopoverTrigger asChild>
+                              <Button variant="outline" className="w-[140px] justify-start text-left font-normal">
+                                <CalendarIcon className="mr-2 h-4 w-4" />
+                                {format(dateRange.from, 'dd/MM/yyyy', { locale: es })}
+                              </Button>
+                            </PopoverTrigger>
+                            <PopoverContent className="w-auto p-0" align="start">
+                              <Calendar
+                                mode="single"
+                                selected={dateRange.from}
+                                onSelect={(date) => date && setDateRange({ ...dateRange, from: date })}
+                                disabled={(date) => date > new Date() || date < new Date("2024-01-01")}
+                                initialFocus
+                              />
+                            </PopoverContent>
+                          </Popover>
+                          
+                          <span className="flex items-center text-muted-foreground">hasta</span>
+                          
+                          <Popover>
+                            <PopoverTrigger asChild>
+                              <Button variant="outline" className="w-[140px] justify-start text-left font-normal">
+                                <CalendarIcon className="mr-2 h-4 w-4" />
+                                {format(dateRange.to, 'dd/MM/yyyy', { locale: es })}
+                              </Button>
+                            </PopoverTrigger>
+                            <PopoverContent className="w-auto p-0" align="start">
+                              <Calendar
+                                mode="single"
+                                selected={dateRange.to}
+                                onSelect={(date) => date && setDateRange({ ...dateRange, to: date })}
+                                disabled={(date) => date > new Date() || date < dateRange.from}
+                                initialFocus
+                              />
+                            </PopoverContent>
+                          </Popover>
+                        </div>
+                      </div>
+
+                      {/* Selector de Sede */}
+                      <div className="flex flex-col gap-2">
+                        <Label>Filtrar por Sede</Label>
+                        <Select value={selectedSedeFilter} onValueChange={setSelectedSedeFilter}>
+                          <SelectTrigger className="w-[200px]">
+                            <SelectValue placeholder="Seleccionar sede" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="all">🌐 Todas las sedes</SelectItem>
+                            {sedesSimple.map((sede) => (
+                              <SelectItem key={sede.id} value={sede.id}>
+                                📍 {sede.name}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                      {/* Botón de Actualizar */}
+                      <Button 
+                        onClick={loadMetrics} 
+                        disabled={metricsLoading}
+                        className="w-[120px]"
+                      >
+                        {metricsLoading ? (
+                          <RefreshCw className="h-4 w-4 animate-spin mr-2" />
+                        ) : (
+                          <RefreshCw className="h-4 w-4 mr-2" />
+                        )}
+                        Actualizar
+                      </Button>
+                    </div>
+
+                    {/* Resumen de filtros aplicados */}
+                    <div className="mt-4 p-3 bg-muted/30 rounded-lg">
+                      <div className="text-sm text-muted-foreground">
+                        📊 Mostrando datos del{' '}
+                        <span className="font-medium">{format(dateRange.from, 'dd/MM/yyyy', { locale: es })}</span>
+                        {' '}al{' '}
+                        <span className="font-medium">{format(dateRange.to, 'dd/MM/yyyy', { locale: es })}</span>
+                        {selectedSedeFilter !== 'all' && (
+                          <>
+                            {' '}para la sede{' '}
+                            <span className="font-medium">
+                              {sedesSimple.find(s => s.id === selectedSedeFilter)?.name || 'Desconocida'}
+                            </span>
+                          </>
+                        )}
+                      </div>
+                      {metricsData && (
+                        <div className="mt-2 text-sm font-medium">
+                          📈 Total: {metricsData.totalGeneral.pedidos} pedidos • 
+                          💰 ${metricsData.totalGeneral.ingresos.toLocaleString()} • 
+                          📊 Promedio: ${Math.round(metricsData.totalGeneral.promedio).toLocaleString()}/pedido
+                        </div>
+                      )}
+                    </div>
+                  </CardContent>
+                </Card>
+
+                {/* Gráficas de métricas */}
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                  {/* Domicilios por Día */}
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="flex items-center gap-2">
+                        <TrendingUp className="h-5 w-5" />
+                        Domicilios por Día
+                      </CardTitle>
+                      <CardDescription>
+                        Tendencia de domicilios y ganancias diarias
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="space-y-4">
+                        {metricsData.metricasPorDia.map((item, index) => (
+                          <div key={index} className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
+                            <div className="flex items-center gap-3">
+                              <div className="w-3 h-3 bg-primary rounded-full"></div>
+                              <span className="font-medium">{format(new Date(item.fecha), 'dd/MM', { locale: es })}</span>
+                            </div>
+                            <div className="text-right">
+                              <div className="font-bold text-lg">{item.total_pedidos} pedidos</div>
+                              <div className="text-sm text-muted-foreground">
+                                ${(item.total_ingresos / 1000).toFixed(0)}k ingresos
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                        {metricsData.metricasPorDia.length === 0 && (
+                          <div className="text-center py-8 text-muted-foreground">
+                            No hay datos para el período seleccionado
+                          </div>
+                        )}
+                      </div>
+                    </CardContent>
+                  </Card>
+
+                  {/* Productos Más Vendidos */}
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="flex items-center gap-2">
+                        <Package className="h-5 w-5" />
+                        Productos Más Vendidos
+                      </CardTitle>
+                      <CardDescription>
+                        Distribución de ventas por producto
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="space-y-4">
+                        {metricsData.productosMasVendidos.slice(0, 5).map((item, index) => (
+                          <div key={index} className="flex items-center justify-between">
+                            <div className="flex items-center gap-3">
+                              <div 
+                                className="w-4 h-4 rounded-full"
+                                style={{ backgroundColor: `hsl(${index * 60}, 70%, 50%)` }}
+                              ></div>
+                              <span className="font-medium">{item.producto_nombre}</span>
+                            </div>
+                            <div className="text-right">
+                              <div className="font-bold">{item.total_vendido} vendidos</div>
+                              <div className="text-sm text-muted-foreground">{item.porcentaje_ventas.toFixed(1)}%</div>
+                            </div>
+                          </div>
+                        ))}
+                        {metricsData.productosMasVendidos.length === 0 && (
+                          <div className="text-center py-8 text-muted-foreground">
+                            No hay datos de productos para el período seleccionado
+                          </div>
+                        )}
+                      </div>
+                    </CardContent>
+                  </Card>
+                </div>
+              </div>
+            )}
+
+            {/* Acceso a Métricas de Tiempo */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Timer className="h-5 w-5" />
+                  Análisis de Tiempos por Fases
+                </CardTitle>
+                <CardDescription>
+                  Accede al análisis detallado de tiempos de procesamiento de pedidos por fase
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <Button 
+                  onClick={onNavigateToTimeMetrics}
+                  className="flex items-center gap-2"
+                  variant="outline"
+                >
+                  <BarChart3 className="h-4 w-4" />
+                  Abrir Métricas de Tiempo
+                </Button>
+              </CardContent>
+            </Card>
+          </div>
+        )}
 
         {/* Dialog para editar sede */}
         <Dialog open={isEditSedeOpen} onOpenChange={setIsEditSedeOpen}>

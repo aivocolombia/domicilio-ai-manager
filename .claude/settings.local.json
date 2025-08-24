@@ -1,10 +1,11 @@
 {
   "permissions": {
+    "allow": [
+      "Bash(npm run:*)",
+      "Bash(git checkout:*)"
+    ],
     "additionalDirectories": [
       "C:\\c\\Users\\USER\\Documents\\GitHub"
-    ],
-    "allow": [
-      "Bash(npm run:*)"
     ]
   }
 }

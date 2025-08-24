@@ -21,8 +21,14 @@ import {
   Building2,
   User,
   RefreshCw,
-  AlertCircle
+  AlertCircle,
+  Calendar,
+  Filter
 } from 'lucide-react';
+import { Calendar as CalendarComponent } from '@/components/ui/calendar';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { format } from 'date-fns';
+import { es } from 'date-fns/locale';
 import { Order, OrderStatus, OrderSource, DeliverySettings, DeliveryPerson, PaymentMethod } from '@/types/delivery';
 import { OrderConfigModal } from './OrderConfigModal';
 import { cn } from '@/lib/utils';
@@ -49,6 +55,14 @@ export const Dashboard: React.FC<DashboardProps> = ({
   const [isConfigModalOpen, setIsConfigModalOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
+  
+  // Estados para filtros de fecha
+  const [dateFilter, setDateFilter] = useState<'today' | 'custom'>('today'); // Default: Solo hoy
+  const [dateRange, setDateRange] = useState<{ from: Date | undefined; to: Date | undefined }>({
+    from: new Date(), // Hoy por defecto
+    to: new Date()    // Hoy por defecto
+  });
+  const [isDatePickerOpen, setIsDatePickerOpen] = useState(false);
 
   // Obtener datos del usuario autenticado
   const { user, profile } = useAuth();
@@ -65,6 +79,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
     stats, 
     loading, 
     error, 
+    loadDashboardOrders,
     filterOrdersByStatus, 
     refreshData 
   } = useDashboard(profile?.sede_id);
@@ -72,6 +87,46 @@ export const Dashboard: React.FC<DashboardProps> = ({
   // Usar SOLO datos reales - NUNCA datos legacy para evitar mostrar datos dummy
   // Una sede nueva debe mostrar dashboard vacío, no datos dummy
   const orders = realOrders;
+
+  // Función para aplicar filtros de fecha
+  const applyDateFilter = async () => {
+    let filters: any = {};
+    
+    if (dateFilter === 'today') {
+      // Filtrar solo hoy (por defecto)
+      const today = new Date();
+      const startOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+      const endOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate() + 1);
+      
+      filters.fechaInicio = startOfDay.toISOString();
+      filters.fechaFin = endOfDay.toISOString();
+      
+      console.log('📅 Aplicando filtro "Solo Hoy":', { fechaInicio: filters.fechaInicio, fechaFin: filters.fechaFin });
+    } else if (dateFilter === 'custom' && dateRange.from && dateRange.to) {
+      // Filtro personalizado con rango de fechas
+      const startOfDay = new Date(dateRange.from.getFullYear(), dateRange.from.getMonth(), dateRange.from.getDate());
+      const endOfDay = new Date(dateRange.to.getFullYear(), dateRange.to.getMonth(), dateRange.to.getDate() + 1);
+      
+      filters.fechaInicio = startOfDay.toISOString();
+      filters.fechaFin = endOfDay.toISOString();
+      
+      console.log('📅 Aplicando filtro personalizado:', { fechaInicio: filters.fechaInicio, fechaFin: filters.fechaFin });
+    }
+    
+    // Aplicar también el filtro de estado actual si existe
+    if (statusFilter && statusFilter !== 'all') {
+      filters.estado = statusFilter;
+    }
+    
+    await loadDashboardOrders(filters);
+  };
+
+  // Aplicar filtro de fecha cuando cambie el tipo de filtro
+  useEffect(() => {
+    if (profile?.sede_id) {
+      applyDateFilter();
+    }
+  }, [dateFilter, dateRange, profile?.sede_id, statusFilter, loadDashboardOrders]);
 
   const filteredOrders = orders.filter(order => {
     // Solo datos reales - no más datos legacy/dummy
@@ -289,35 +344,124 @@ export const Dashboard: React.FC<DashboardProps> = ({
       {/* Filters */}
       <Card>
         <CardContent className="p-4">
-          <div className="flex flex-col md:flex-row gap-4">
-            <div className="flex-1">
-              <Input
-                placeholder="Buscar por nombre, teléfono, ID o dirección..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-              />
+          <div className="flex flex-col gap-4">
+            {/* Filtros de fecha */}
+            <div className="flex flex-wrap gap-3 items-center">
+              <div className="flex items-center gap-2">
+                <Calendar className="h-4 w-4 text-muted-foreground" />
+                <span className="text-sm font-medium">Filtros de fecha:</span>
+              </div>
+              
+              {/* Botón "Solo Hoy" (por defecto) */}
+              <Button
+                variant={dateFilter === 'today' ? "default" : "outline"}
+                size="sm"
+                onClick={() => setDateFilter('today')}
+                className="flex items-center gap-2"
+              >
+                <Clock className="h-4 w-4" />
+                Solo Hoy
+              </Button>
+              
+              {/* Selector de rango personalizado */}
+              <Popover open={isDatePickerOpen} onOpenChange={setIsDatePickerOpen}>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant={dateFilter === 'custom' ? "default" : "outline"}
+                    size="sm"
+                    className="flex items-center gap-2"
+                    onClick={() => {
+                      if (dateFilter !== 'custom') {
+                        setDateFilter('custom');
+                      }
+                    }}
+                  >
+                    <Filter className="h-4 w-4" />
+                    {dateFilter === 'custom' && dateRange.from && dateRange.to
+                      ? `${format(dateRange.from, 'dd/MM', { locale: es })} - ${format(dateRange.to, 'dd/MM', { locale: es })}`
+                      : 'Rango Personalizado'
+                    }
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0" align="start">
+                  <div className="p-3 space-y-3">
+                    <h4 className="font-medium text-sm">Seleccionar fechas</h4>
+                    <CalendarComponent
+                      initialFocus
+                      mode="range"
+                      defaultMonth={dateRange.from}
+                      selected={{
+                        from: dateRange.from,
+                        to: dateRange.to
+                      }}
+                      onSelect={(range) => {
+                        if (range?.from && range?.to) {
+                          setDateRange({ from: range.from, to: range.to });
+                          setDateFilter('custom');
+                        } else if (range?.from) {
+                          setDateRange({ from: range.from, to: range.from });
+                          setDateFilter('custom');
+                        }
+                      }}
+                      numberOfMonths={2}
+                      locale={es}
+                    />
+                    <div className="flex gap-2">
+                      <Button
+                        size="sm"
+                        className="flex-1"
+                        onClick={() => setIsDatePickerOpen(false)}
+                      >
+                        Aplicar
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => {
+                          setDateFilter('today');
+                          setIsDatePickerOpen(false);
+                        }}
+                      >
+                        Volver a Hoy
+                      </Button>
+                    </div>
+                  </div>
+                </PopoverContent>
+              </Popover>
             </div>
-            <div className="flex gap-2">
-              {[
-                { value: 'all', label: 'Todos' },
-                { value: 'Recibidos', label: 'Recibidos' },
-                { value: 'Cocina', label: 'Cocina' },
-                { value: 'Camino', label: 'Camino' },
-                { value: 'Entregados', label: 'Entregados' },
-                { value: 'Cancelado', label: 'Cancelados' }
-              ].map(({ value, label }) => (
-                <Button
-                  key={value}
-                  variant={statusFilter === value ? "default" : "outline"}
-                  size="sm"
-                  onClick={() => {
-                    setStatusFilter(value);
-                    filterOrdersByStatus(value === 'all' ? null : value);
-                  }}
-                >
-                  {label}
-                </Button>
-              ))}
+
+            {/* Filtros existentes */}
+            <div className="flex flex-col md:flex-row gap-4">
+              <div className="flex-1">
+                <Input
+                  placeholder="Buscar por nombre, teléfono, ID o dirección..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                />
+              </div>
+              <div className="flex gap-2">
+                {[
+                  { value: 'all', label: 'Todos' },
+                  { value: 'Recibidos', label: 'Recibidos' },
+                  { value: 'Cocina', label: 'Cocina' },
+                  { value: 'Camino', label: 'Camino' },
+                  { value: 'Entregados', label: 'Entregados' },
+                  { value: 'Cancelado', label: 'Cancelados' }
+                ].map(({ value, label }) => (
+                  <Button
+                    key={value}
+                    variant={statusFilter === value ? "default" : "outline"}
+                    size="sm"
+                    onClick={async () => {
+                      setStatusFilter(value);
+                      // Aplicar filtro combinado (fecha + estado)
+                      await applyDateFilter();
+                    }}
+                  >
+                    {label}
+                  </Button>
+                ))}
+              </div>
             </div>
           </div>
         </CardContent>
