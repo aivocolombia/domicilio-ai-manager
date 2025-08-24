@@ -1,7 +1,6 @@
 import React, { createContext, useContext, useEffect, useState } from 'react'
 import { User as SupabaseUser } from '@supabase/supabase-js'
 import { supabase, type Database } from '@/lib/supabase'
-import { debugEnv } from '@/utils/debug'
 
 type Profile = Database['public']['Tables']['profiles']['Row'] & {
   sede_name?: string; // Campo adicional para el nombre de la sede
@@ -214,7 +213,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     console.log('🚀 AuthProvider iniciando...')
-    debugEnv()
     
     // Get initial session
     supabase.auth.getSession().then(async ({ data: { session } }) => {
@@ -242,6 +240,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setUser(null)
         setProfile(null)
         setLoading(false)
+        // Limpiar localStorage de vista activa
+        localStorage.removeItem('ajiaco-active-tab')
+        localStorage.removeItem('ajiaco-admin-active-tab')
+        console.log('🧹 Vistas activas limpiadas del localStorage (SIGNED_OUT)')
         return
       }
       
@@ -304,6 +306,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       
       // Limpiar estado inmediatamente para evitar llamadas adicionales
       setProfile(null)
+      
+      // Limpiar localStorage de vista activa
+      localStorage.removeItem('ajiaco-active-tab')
+      localStorage.removeItem('ajiaco-admin-active-tab')
+      console.log('🧹 Vistas activas limpiadas del localStorage')
       
       // Cerrar sesión en Supabase
       const { error } = await supabase.auth.signOut()

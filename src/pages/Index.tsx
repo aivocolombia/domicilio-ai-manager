@@ -14,6 +14,8 @@ import { StatusBar } from '@/components/StatusBar';
 import { InventoryProvider } from '@/contexts/InventoryContext';
 import { SedeProvider } from '@/contexts/SedeContext';
 import { useAuth } from '@/hooks/useAuth';
+import { useActiveTab } from '@/hooks/useActiveTab';
+import { useAppState } from '@/hooks/useAppState';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { supabase } from '@/lib/supabase';
@@ -162,13 +164,14 @@ const generateMockDeliveryPersonnel = (): DeliveryPerson[] => {
 
 const Index = () => {
   const { profile } = useAuth();
-  const [showAdminPanel, setShowAdminPanel] = useState(false);
-  const [showTimeMetrics, setShowTimeMetrics] = useState(false);
+  const { activeTab, setActiveTab, resetToDashboard } = useActiveTab();
+  const { showAdminPanel, showTimeMetrics, navigateToAdmin, navigateToTimeMetrics, navigateToMain } = useAppState();
   const [orders, setOrders] = useState<Order[]>([]);
   const [deliveryPersonnel, setDeliveryPersonnel] = useState<DeliveryPerson[]>([]);
   const [currentUser] = useState<UserType>(generateMockUser());
   const [sedes, setSedes] = useState<Sede[]>([]);
   const [sedesLoading, setSedesLoading] = useState(false);
+
   
   // Estado para sede seleccionada por admin (solo para admins)
   const [selectedSedeId, setSelectedSedeId] = useState<string>(() => {
@@ -248,12 +251,14 @@ const Index = () => {
     }
   }, [profile?.role]);
 
+
+
   const handleCreateOrder = (orderData: Omit<Order, 'id' | 'createdAt' | 'estimatedDeliveryTime'>) => {
     const newOrder: Order = {
       ...orderData,
       id: `ORD-${Date.now()}`,
       createdAt: new Date(),
-      estimatedDeliveryTime: new Date(Date.now() + 30 * 60 * 1000) // 30 minutes from now
+      estimatedDeliveryTime: new Date(Date.now() + 90 * 60 * 1000) // 90 minutes from now
     };
     
     setOrders(prevOrders => [newOrder, ...prevOrders]);
@@ -273,18 +278,15 @@ const Index = () => {
   if (showAdminPanel) {
     return (
       <AdminPanel 
-        onBack={() => setShowAdminPanel(false)}
-        onNavigateToTimeMetrics={() => {
-          setShowAdminPanel(false);
-          setShowTimeMetrics(true);
-        }}
+        onBack={navigateToMain}
+        onNavigateToTimeMetrics={navigateToTimeMetrics}
       />
     );
   }
 
   // Si showTimeMetrics es true, mostrar las métricas de tiempo
   if (showTimeMetrics) {
-    return <TimeMetricsPage onBack={() => setShowTimeMetrics(false)} />;
+    return <TimeMetricsPage onBack={navigateToMain} />;
   }
 
   return (
@@ -331,11 +333,24 @@ const Index = () => {
                 {profile?.role === 'admin' && (
                   <Button
                     variant="outline"
-                    onClick={() => setShowAdminPanel(true)}
+                    onClick={navigateToAdmin}
                     className="flex items-center gap-2 bg-brand-secondary text-white border-brand-secondary hover:bg-brand-primary"
                   >
                     <Settings className="h-4 w-4" />
                     Admin Panel
+                  </Button>
+                )}
+                
+                {/* Botón de Inicio - Solo visible si no estamos en dashboard */}
+                {activeTab !== 'dashboard' && (
+                  <Button
+                    variant="outline"
+                    onClick={resetToDashboard}
+                    className="flex items-center gap-2 bg-brand-secondary text-white border-brand-secondary hover:bg-brand-primary"
+                    title="Volver al Dashboard"
+                  >
+                    <LayoutDashboard className="h-4 w-4" />
+                    Inicio
                   </Button>
                 )}
                 
@@ -350,7 +365,7 @@ const Index = () => {
         <StatusBar orders={orders} currentSede={currentUser.sede} />
 
         <div className="container mx-auto p-6">
-        <Tabs defaultValue="dashboard" className="space-y-6">
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
           <TabsList className="grid w-full grid-cols-5 lg:w-auto lg:grid-cols-5 bg-brand-secondary">
             <TabsTrigger value="dashboard" className="flex items-center gap-2 data-[state=active]:bg-brand-primary data-[state=active]:text-white">
               <LayoutDashboard className="h-4 w-4" />
@@ -379,6 +394,8 @@ const Index = () => {
               orders={orders}
               settings={settings}
               deliveryPersonnel={deliveryPersonnel}
+              effectiveSedeId={effectiveSedeId}
+              currentSedeName={currentSedeName}
               onUpdateOrders={setOrders}
               onUpdateSettings={setSettings}
             />

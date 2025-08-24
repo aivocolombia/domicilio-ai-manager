@@ -20,6 +20,7 @@ interface OrderConfigModalProps {
   onUpdateOrders?: (orders: Order[]) => void;
   onClearSelection: () => void;
   onRefreshData?: () => void;
+  currentSedeId?: string; // Nueva prop para filtrar repartidores por sede
 }
 
 export const OrderConfigModal: React.FC<OrderConfigModalProps> = ({
@@ -30,7 +31,8 @@ export const OrderConfigModal: React.FC<OrderConfigModalProps> = ({
   deliveryPersonnel,
   onUpdateOrders,
   onClearSelection,
-  onRefreshData
+  onRefreshData,
+  currentSedeId
 }) => {
   const [extraTime, setExtraTime] = useState<number>(0);
   const [extraTimeReason, setExtraTimeReason] = useState('');
@@ -49,19 +51,19 @@ export const OrderConfigModal: React.FC<OrderConfigModalProps> = ({
   const [isUpdating, setIsUpdating] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
 
-  // Cargar datos cuando se abre el modal
+  // Cargar datos cuando se abre el modal o cambia la sede
   useEffect(() => {
     if (isOpen) {
       loadModalData();
     }
-  }, [isOpen]);
+  }, [isOpen, currentSedeId]);
 
   const loadModalData = async () => {
     try {
       setIsLoading(true);
       
-      // Cargar repartidores disponibles
-      const personnel = await orderStatusService.getAvailableDeliveryPersonnel();
+      // Cargar repartidores disponibles (filtrado por sede)
+      const personnel = await orderStatusService.getAvailableDeliveryPersonnel(currentSedeId);
       setAvailableDeliveryPersonnel(personnel);
       
       // Cargar estados válidos

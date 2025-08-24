@@ -157,7 +157,7 @@ export class OrderStatusService {
     ordenes_activas: number;
   }>> {
     try {
-      console.log('👥 Obteniendo repartidores disponibles...');
+      console.log('👥 Obteniendo repartidores disponibles para sede:', sede_id);
 
       let query = supabase
         .from('repartidores')
@@ -165,12 +165,16 @@ export class OrderStatusService {
           id,
           nombre,
           telefono,
-          disponible
+          disponible,
+          sede_id
         `)
         .eq('disponible', true);
 
-      // Si se proporciona sede_id, filtrar por sede (si existe esa relación)
-      // Por ahora asumimos que todos los repartidores activos están disponibles
+      // Si se proporciona sede_id, filtrar por sede
+      if (sede_id) {
+        query = query.eq('sede_id', sede_id);
+        console.log('🏢 Filtrando repartidores por sede:', sede_id);
+      }
 
       const { data, error } = await query;
 

@@ -23,7 +23,8 @@ import {
   RefreshCw,
   AlertCircle,
   Calendar,
-  Filter
+  Filter,
+  Download
 } from 'lucide-react';
 import { Calendar as CalendarComponent } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
@@ -35,11 +36,14 @@ import { cn } from '@/lib/utils';
 import { useDashboard } from '@/hooks/useDashboard';
 import { DashboardOrder } from '@/services/dashboardService';
 import { useAuth } from '@/hooks/useAuth';
+import { toast } from '@/hooks/use-toast';
 
 interface DashboardProps {
   orders: Order[];
   settings: DeliverySettings;
   deliveryPersonnel: DeliveryPerson[];
+  effectiveSedeId?: string;
+  currentSedeName?: string;
   onUpdateOrders: (orders: Order[]) => void;
   onUpdateSettings: (settings: DeliverySettings) => void;
 }
@@ -47,6 +51,8 @@ interface DashboardProps {
 export const Dashboard: React.FC<DashboardProps> = ({
   orders: legacyOrders,
   settings,
+  effectiveSedeId,
+  currentSedeName,
   deliveryPersonnel,
   onUpdateOrders,
   onUpdateSettings
@@ -74,6 +80,63 @@ export const Dashboard: React.FC<DashboardProps> = ({
   console.log('🏷️ Dashboard: Tipo de sede_id:', typeof profile?.sede_id);
 
   // Hook para datos reales del dashboard
+  // Usar effectiveSedeId cuando esté disponible (admin) o sede_id del usuario (agente)
+  const sedeIdToUse = effectiveSedeId || profile?.sede_id;
+  
+  // Debug: Log sede information
+  console.log('🏢 Dashboard: Effective Sede ID (Admin):', effectiveSedeId);
+  console.log('🏢 Dashboard: Sede ID del usuario:', profile?.sede_id);
+  console.log('🎯 Dashboard: Sede ID a usar:', sedeIdToUse);
+
+  // Función para descargar órdenes como CSV (solo admins)
+  const downloadOrdersAsCSV = () => {
+    if (!orders || orders.length === 0) {
+      toast({
+        title: "No hay datos",
+        description: "No hay órdenes disponibles para descargar",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    // Preparar datos para CSV
+    const csvData = orders.map(order => ({
+      'ID': order.id,
+      'Cliente': order.nombre_cliente || '',
+      'Teléfono': order.telefono_cliente || '',
+      'Dirección': order.direccion || '',
+      'Estado': order.status || '',
+      'Total': order.total || 0,
+      'Método de Pago': order.metodo_pago || '',
+      'Fuente': order.fuente || '',
+      'Sede': currentSedeName || '',
+      'Fecha Creación': order.created_at ? new Date(order.created_at).toLocaleDateString('es-ES') : '',
+      'Fecha Entrega': order.entregado_at ? new Date(order.entregado_at).toLocaleDateString('es-ES') : '',
+      'Tiempo Total (min)': order.min_total_desde_recibidos || '',
+      'Repartidor': order.repartidor_nombre || ''
+    }));
+
+    // Convertir a CSV
+    const csvHeaders = Object.keys(csvData[0]).join(',');
+    const csvRows = csvData.map(row => Object.values(row).map(val => `"${val}"`).join(','));
+    const csvContent = [csvHeaders, ...csvRows].join('\n');
+
+    // Descargar archivo
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    const url = URL.createObjectURL(blob);
+    link.setAttribute('href', url);
+    link.setAttribute('download', `ordenes_${currentSedeName || 'sede'}_${format(new Date(), 'yyyy-MM-dd')}.csv`);
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+
+    toast({
+      title: "Descarga completada",
+      description: `Se descargaron ${orders.length} órdenes en formato CSV`,
+    });
+  };
   const { 
     orders: realOrders, 
     stats, 
@@ -82,7 +145,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
     loadDashboardOrders,
     filterOrdersByStatus, 
     refreshData 
-  } = useDashboard(profile?.sede_id);
+  } = useDashboard(sedeIdToUse);
 
   // Usar SOLO datos reales - NUNCA datos legacy para evitar mostrar datos dummy
   // Una sede nueva debe mostrar dashboard vacío, no datos dummy
@@ -290,6 +353,20 @@ export const Dashboard: React.FC<DashboardProps> = ({
             <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
             {loading ? 'Cargando...' : 'Recargar'}
           </Button>
+          
+          {/* Botón de descarga CSV - Solo para administradores */}
+          {profile?.role === 'admin' && (
+            <Button
+              onClick={downloadOrdersAsCSV}
+              disabled={loading || !orders || orders.length === 0}
+              variant="outline"
+              className="flex items-center gap-2"
+              title={`Descargar ${orders?.length || 0} órdenes como CSV`}
+            >
+              <Download className="h-4 w-4" />
+              Descargar CSV ({orders?.length || 0})
+            </Button>
+          )}
           
           <Button
             onClick={toggleAcceptingOrders}
@@ -600,6 +677,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
         onUpdateOrders={onUpdateOrders}
         onClearSelection={() => setSelectedOrders([])}
         onRefreshData={refreshData}
+        currentSedeId={profile?.sede_id}
       />
     </div>
   );

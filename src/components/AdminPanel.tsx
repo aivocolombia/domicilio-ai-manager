@@ -13,6 +13,8 @@ import { Switch } from '@/components/ui/switch'
 import { useToast } from '@/hooks/use-toast'
 import { supabase, type Database } from '@/lib/supabase'
 import { useAuth } from '@/hooks/useAuth'
+import { useAdminTab } from '@/hooks/useAdminTab'
+import { useAdminSection } from '@/hooks/useAdminSection'
 import { adminService, CreateUserData, User, CreateSedeData, UpdateSedeData, Sede } from '@/services/adminService'
 import { metricsService, DashboardMetrics, MetricsFilters } from '@/services/metricsService'
 import { Calendar } from '@/components/ui/calendar'
@@ -45,8 +47,8 @@ export function AdminPanel({ onBack, onNavigateToTimeMetrics }: AdminPanelProps)
   const [selectedSede, setSelectedSede] = useState<Sede | null>(null)
   const [userSedeFormData, setUserSedeFormData] = useState({ sede_id: '' })
   const [showMainApp, setShowMainApp] = useState(false)
-  const [activeTab, setActiveTab] = useState('users')
-  const [activeSection, setActiveSection] = useState<'config' | 'metrics'>('config')
+  const { activeTab, setActiveTab, resetToUsers } = useAdminTab()
+  const { activeSection, setActiveSection } = useAdminSection()
 
   const { toast } = useToast()
   const { signOut } = useAuth()
@@ -65,7 +67,6 @@ export function AdminPanel({ onBack, onNavigateToTimeMetrics }: AdminPanelProps)
     name: '',
     address: '',
     phone: '',
-    max_capacity: 10,
     is_active: true
   })
 
@@ -275,7 +276,6 @@ export function AdminPanel({ onBack, onNavigateToTimeMetrics }: AdminPanelProps)
         name: sedeFormData.name,
         address: sedeFormData.address,
         phone: sedeFormData.phone,
-        max_capacity: sedeFormData.max_capacity,
         is_active: sedeFormData.is_active
       }
 
@@ -290,7 +290,6 @@ export function AdminPanel({ onBack, onNavigateToTimeMetrics }: AdminPanelProps)
         name: '',
         address: '',
         phone: '',
-        max_capacity: 10,
         is_active: true
       })
       setIsCreateSedeOpen(false)
@@ -318,7 +317,6 @@ export function AdminPanel({ onBack, onNavigateToTimeMetrics }: AdminPanelProps)
         name: sedeFormData.name,
         address: sedeFormData.address,
         phone: sedeFormData.phone,
-        max_capacity: sedeFormData.max_capacity,
         is_active: sedeFormData.is_active
       }
 
@@ -333,7 +331,6 @@ export function AdminPanel({ onBack, onNavigateToTimeMetrics }: AdminPanelProps)
         name: '',
         address: '',
         phone: '',
-        max_capacity: 10,
         is_active: true
       })
       setIsEditSedeOpen(false)
@@ -383,7 +380,6 @@ export function AdminPanel({ onBack, onNavigateToTimeMetrics }: AdminPanelProps)
       name: sede.name,
       address: sede.address,
       phone: sede.phone,
-      max_capacity: sede.max_capacity,
       is_active: sede.is_active
     })
     setIsEditSedeOpen(true)
@@ -537,20 +533,33 @@ export function AdminPanel({ onBack, onNavigateToTimeMetrics }: AdminPanelProps)
             <h1 className="text-xl font-semibold">Panel de Administración</h1>
           </div>
           <div className="flex items-center space-x-2">
-                         <Button
-               variant="outline"
-               onClick={() => {
-                 if (onBack) {
-                   onBack();
-                 } else {
-                   setShowMainApp(true);
-                 }
-               }}
-               className="flex items-center gap-2"
-             >
-               <LayoutDashboard className="h-4 w-4" />
-               Ir a Aplicación
-             </Button>
+            {/* Botón de Inicio - Solo visible si no estamos en la vista de usuarios */}
+            {activeTab !== 'users' && (
+              <Button
+                variant="outline"
+                onClick={resetToUsers}
+                className="flex items-center gap-2"
+                title="Volver a Usuarios"
+              >
+                <Users className="h-4 w-4" />
+                Inicio
+              </Button>
+            )}
+            
+            <Button
+              variant="outline"
+              onClick={() => {
+                if (onBack) {
+                  onBack();
+                } else {
+                  setShowMainApp(true);
+                }
+              }}
+              className="flex items-center gap-2"
+            >
+              <LayoutDashboard className="h-4 w-4" />
+              Ir a Aplicación
+            </Button>
             <Button variant="outline" onClick={signOut}>
               Cerrar Sesión
             </Button>
@@ -892,17 +901,6 @@ export function AdminPanel({ onBack, onNavigateToTimeMetrics }: AdminPanelProps)
                             required
                           />
                         </div>
-                        <div className="space-y-2">
-                          <Label htmlFor="sede-capacity">Capacidad Máxima</Label>
-                          <Input
-                            id="sede-capacity"
-                            type="number"
-                            min="1"
-                            value={sedeFormData.max_capacity}
-                            onChange={(e) => setSedeFormData({ ...sedeFormData, max_capacity: parseInt(e.target.value) || 10 })}
-                            required
-                          />
-                        </div>
                         <div className="flex items-center space-x-2">
                           <Switch
                             id="sede-active"
@@ -946,7 +944,7 @@ export function AdminPanel({ onBack, onNavigateToTimeMetrics }: AdminPanelProps)
                           <TableHead>Sede</TableHead>
                           <TableHead>Dirección</TableHead>
                           <TableHead>Teléfono</TableHead>
-                          <TableHead>Capacidad</TableHead>
+                          <TableHead>Órdenes Activas</TableHead>
                           <TableHead>Estado</TableHead>
                           <TableHead>Acciones</TableHead>
                         </TableRow>
@@ -980,7 +978,6 @@ export function AdminPanel({ onBack, onNavigateToTimeMetrics }: AdminPanelProps)
                             <TableCell>
                               <div className="text-sm">
                                 <span className="font-medium">{sede.current_capacity}</span>
-                                <span className="text-muted-foreground"> / {sede.max_capacity}</span>
                               </div>
                             </TableCell>
                             <TableCell>
@@ -1307,17 +1304,6 @@ export function AdminPanel({ onBack, onNavigateToTimeMetrics }: AdminPanelProps)
                   type="tel"
                   value={sedeFormData.phone}
                   onChange={(e) => setSedeFormData({ ...sedeFormData, phone: e.target.value })}
-                  required
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="edit-sede-capacity">Capacidad Máxima</Label>
-                <Input
-                  id="edit-sede-capacity"
-                  type="number"
-                  min="1"
-                  value={sedeFormData.max_capacity}
-                  onChange={(e) => setSedeFormData({ ...sedeFormData, max_capacity: parseInt(e.target.value) || 10 })}
                   required
                 />
               </div>

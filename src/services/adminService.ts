@@ -24,7 +24,6 @@ export interface CreateSedeData {
   name: string;
   address: string;
   phone: string;
-  max_capacity: number;
   is_active: boolean;
 }
 
@@ -33,7 +32,6 @@ export interface UpdateSedeData {
   address?: string;
   phone?: string;
   current_capacity?: number;
-  max_capacity?: number;
   is_active?: boolean;
 }
 
@@ -371,7 +369,6 @@ export class AdminService {
           address: sedeData.address,
           phone: sedeData.phone,
           current_capacity: 0, // Inicia en 0
-          max_capacity: sedeData.max_capacity,
           is_active: sedeData.is_active
         })
         .select()
