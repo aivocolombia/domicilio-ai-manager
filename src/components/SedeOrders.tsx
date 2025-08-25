@@ -169,11 +169,15 @@ export const SedeOrders: React.FC<SedeOrdersProps> = ({
   };
 
   const calculateTotal = () => {
-    return newOrder.items.reduce((total, item) => {
+    const itemsTotal = newOrder.items.reduce((total, item) => {
       const product = platos.find(p => p.id.toString() === item.productId) || 
                      bebidas.find(b => b.id.toString() === item.productId);
       return total + (product ? product.pricing * item.quantity : 0);
     }, 0);
+    
+    // Add delivery fee of 6000 for delivery orders
+    const deliveryFee = newOrder.deliveryType === 'delivery' ? 6000 : 0;
+    return itemsTotal + deliveryFee;
   };
 
   const handleCreateOrder = async () => {

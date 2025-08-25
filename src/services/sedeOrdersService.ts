@@ -385,7 +385,7 @@ class SedeOrdersService {
       }
 
       // Paso 2: Calcular total
-      const total = await this.calculateOrderTotal(orderData.items);
+      const total = await this.calculateOrderTotal(orderData.items, orderData.tipo_entrega);
 
       // Paso 3: Crear pago
       const { data: pago, error: pagoError } = await supabase
@@ -445,7 +445,7 @@ class SedeOrdersService {
   }
 
   // Función auxiliar para calcular el total del pedido
-  private async calculateOrderTotal(items: CreateOrderData['items']): Promise<number> {
+  private async calculateOrderTotal(items: CreateOrderData['items'], tipoEntrega: 'delivery' | 'pickup'): Promise<number> {
     let total = 0;
 
     for (const item of items) {
@@ -470,6 +470,12 @@ class SedeOrdersService {
           total += data.pricing * item.cantidad;
         }
       }
+    }
+
+    // Add delivery fee of 6000 for delivery orders
+    if (tipoEntrega === 'delivery') {
+      total += 6000;
+      console.log('✅ Delivery fee of 6000 added to order total');
     }
 
     return total;

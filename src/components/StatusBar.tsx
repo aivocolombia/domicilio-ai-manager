@@ -166,7 +166,7 @@ export const StatusBar: React.FC<StatusBarProps> = ({ orders, currentSede = 'Niz
   const unavailableBebidas = bebidas.filter(bebida => !bebida.sede_available);
   const unavailableToppings = toppings.filter(topping => !topping.sede_available);
 
-  // Contar pedidos en curso (received, kitchen, delivery)
+  // Contar pedidos en curso (received, kitchen, delivery) - excluye delivered y cancelled
   const activeOrders = orders.filter(order => 
     ['received', 'kitchen', 'delivery'].includes(order.status)
   );
@@ -192,7 +192,9 @@ export const StatusBar: React.FC<StatusBarProps> = ({ orders, currentSede = 'Niz
     unavailableBebidas: unavailableBebidas.length,
     unavailableToppings: unavailableToppings.length,
     totalUnavailable,
-    activeOrders: activeOrders.length
+    activeOrders: activeOrders.length,
+    allOrdersCount: orders.length,
+    orderStatuses: orders.map(o => o.status)
   });
 
   // Debug detallado de productos
@@ -295,9 +297,14 @@ export const StatusBar: React.FC<StatusBarProps> = ({ orders, currentSede = 'Niz
                         </Badge>
                       </div>
                       <div className="text-xs text-green-600">
-                        {activeOrders.filter(o => o.status === 'received').length} recibidos • 
-                        {activeOrders.filter(o => o.status === 'kitchen').length} en cocina • 
-                        {activeOrders.filter(o => o.status === 'delivery').length} en entrega
+                        {(() => {
+                          const received = activeOrders.filter(o => o.status === 'received').length;
+                          const kitchen = activeOrders.filter(o => o.status === 'kitchen').length;
+                          const delivery = activeOrders.filter(o => o.status === 'delivery').length;
+                          const total = received + kitchen + delivery;
+                          console.log('📊 Order breakdown:', { received, kitchen, delivery, total, activeOrdersLength: activeOrders.length });
+                          return `${received} recibidos • ${kitchen} en cocina • ${delivery} en entrega`;
+                        })()}
                       </div>
                     </div>
                   </div>

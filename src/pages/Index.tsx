@@ -341,18 +341,6 @@ const Index = () => {
                   </Button>
                 )}
                 
-                {/* Botón de Inicio - Solo visible si no estamos en dashboard */}
-                {activeTab !== 'dashboard' && (
-                  <Button
-                    variant="outline"
-                    onClick={resetToDashboard}
-                    className="flex items-center gap-2 bg-brand-secondary text-white border-brand-secondary hover:bg-brand-primary"
-                    title="Volver al Dashboard"
-                  >
-                    <LayoutDashboard className="h-4 w-4" />
-                    Inicio
-                  </Button>
-                )}
                 
                 {/* User Profile Button */}
                 <UserProfile />

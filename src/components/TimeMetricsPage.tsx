@@ -923,7 +923,7 @@ export const TimeMetricsPage: React.FC<TimeMetricsPageProps> = ({ onBack }) => {
                   No hay datos disponibles para el rango seleccionado
                 </div>
               ) : (
-                <div className="h-[400px]">
+                <div className="h-[450px] p-4">
                   <ChartContainer config={chartConfig}>
                     <RechartsLineChart data={prepareChartData()}>
                       <CartesianGrid strokeDasharray="3 3" />
