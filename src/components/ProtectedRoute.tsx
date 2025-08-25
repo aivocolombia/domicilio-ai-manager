@@ -12,15 +12,20 @@ interface ProtectedRouteProps {
 export function ProtectedRoute({ children, requiredRole }: ProtectedRouteProps) {
   const { user, profile, loading } = useAuth()
 
-  console.log('🛡️ ProtectedRoute renderizando:', {
-    user: user?.email,
-    profile: profile?.name,
-    loading,
-    requiredRole
-  })
+  // Reducir logs excesivos en producción
+  if (process.env.NODE_ENV === 'development') {
+    console.log('🛡️ ProtectedRoute renderizando:', {
+      user: user?.email,
+      profile: profile?.name,
+      loading,
+      requiredRole
+    })
+  }
 
   if (loading) {
-    console.log('⏳ Mostrando pantalla de carga...')
+    if (process.env.NODE_ENV === 'development') {
+      console.log('⏳ Mostrando pantalla de carga...')
+    }
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
         <div className="text-center space-y-4">

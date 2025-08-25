@@ -44,6 +44,8 @@ import { useAuth } from '@/hooks/useAuth';
 import { toast } from '@/hooks/use-toast';
 import { sedeOrdersService } from '@/services/sedeOrdersService';
 import { supabase } from '@/lib/supabase';
+import { useDebouncedCallback } from '@/hooks/useDebounce';
+import { useAgentDebug } from '@/hooks/useAgentDebug';
 
 interface DashboardProps {
   orders: Order[];
@@ -91,12 +93,17 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
   // Obtener datos del usuario autenticado
   const { user, profile } = useAuth();
-
-  // Debug: Log user information
-  console.log('🏠 Dashboard: Usuario autenticado:', user);
-  console.log('👤 Dashboard: Perfil del usuario:', profile);
-  console.log('🏢 Dashboard: Sede ID del usuario:', profile?.sede_id);
-  console.log('🏷️ Dashboard: Tipo de sede_id:', typeof profile?.sede_id);
+  
+  // Debug para agentes
+  const agentDebug = useAgentDebug();
+  
+  // Debug: Log user information (solo en desarrollo)
+  if (process.env.NODE_ENV === 'development') {
+    console.log('🏠 Dashboard: Usuario autenticado:', user);
+    console.log('👤 Dashboard: Perfil del usuario:', profile);
+    console.log('🏢 Dashboard: Sede ID del usuario:', profile?.sede_id);
+    console.log('🏷️ Dashboard: Tipo de sede_id:', typeof profile?.sede_id);
+  }
 
   // Hook para datos reales del dashboard
   // Usar effectiveSedeId cuando esté disponible (admin) o sede_id del usuario (agente)
@@ -414,6 +421,9 @@ export const Dashboard: React.FC<DashboardProps> = ({
   // Una sede nueva debe mostrar dashboard vacío, no datos dummy
   const orders = realOrders;
 
+  // Función debounced para aplicar filtros y evitar llamadas excesivas
+  const debouncedLoadOrders = useDebouncedCallback(loadDashboardOrders, 500);
+
   // Función para aplicar filtros de fecha
   const applyDateFilter = async () => {
     let filters: any = {};
@@ -457,15 +467,40 @@ export const Dashboard: React.FC<DashboardProps> = ({
       filters.estado = statusFilter;
     }
     
-    await loadDashboardOrders(filters);
+    // Llamar directamente a loadDashboardOrders con timeout
+    setTimeout(() => {
+      if (sedeIdToUse) {
+        loadDashboardOrders(filters);
+      }
+    }, 0);
   };
 
-  // Aplicar filtro de fecha cuando cambie el tipo de filtro
+  // Aplicar filtro de fecha cuando cambie el tipo de filtro (con timeout para evitar bucles)
   useEffect(() => {
-    if (profile?.sede_id) {
-      applyDateFilter();
-    }
-  }, [dateFilter, dateRange, profile?.sede_id, statusFilter, loadDashboardOrders]);
+    let isMounted = true;
+    let timeoutId: NodeJS.Timeout;
+    
+    const applyFilters = () => {
+      // Debounce de 300ms para evitar llamadas excesivas
+      clearTimeout(timeoutId);
+      timeoutId = setTimeout(async () => {
+        if (profile?.sede_id && isMounted) {
+          try {
+            await applyDateFilter();
+          } catch (error) {
+            console.error('❌ Error aplicando filtros:', error);
+          }
+        }
+      }, 300);
+    };
+    
+    applyFilters();
+    
+    return () => {
+      isMounted = false;
+      clearTimeout(timeoutId);
+    };
+  }, [dateFilter, dateRange, profile?.sede_id, statusFilter]);
 
   const filteredOrders = orders.filter(order => {
     // Solo datos reales - no más datos legacy/dummy

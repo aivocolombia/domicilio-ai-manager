@@ -131,9 +131,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         return null
       }
       
-      // Crear un timeout más largo para evitar errores innecesarios
+      // Timeout más corto para producción
       const timeoutPromise = new Promise<never>((_, reject) => {
-        setTimeout(() => reject(new Error('Timeout')), 60000) // 60 segundos
+        setTimeout(() => reject(new Error('Timeout')), 10000) // 10 segundos
       })
       
       const fetchPromise = supabase
@@ -157,12 +157,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           return tempProfile
         }
         
-              // Para otros errores (timeouts, conexión, etc), intentar crear perfil temporal
-      console.log('⚠️ Error temporal de conexión/timeout, creando perfil temporal...')
-      const userEmail = user?.email || '';
-      const tempProfile = await createTempProfile(userId, userEmail, user);
-      console.log('✅ Perfil temporal creado por error de conexión:', tempProfile)
-      return tempProfile
+        // Para otros errores, no crear perfil temporal automáticamente
+        console.warn('⚠️ Error de conexión/timeout, manteniendo perfil actual:', error)
+        return null
       }
 
       console.log('✅ Perfil obtenido desde base de datos:', data)
@@ -178,7 +175,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       console.error('❌ Error fetching profile:', error)
       
       // Solo crear perfil temporal si es un error específico de "perfil no encontrado"
-      // Para errores de red/timeout, mantener estado actual
       if (error instanceof Error && (
         error.message.includes('not found') || 
         error.message.includes('PGRST116') ||
@@ -191,12 +187,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         return tempProfile
       }
       
-      // Para errores de timeout/red, crear perfil temporal para mantener funcionalidad
-      console.log('⚠️ Error de conexión/timeout, creando perfil temporal...')
-      const userEmail = user?.email || '';
-      const tempProfile = await createTempProfile(userId, userEmail, user);
-      console.log('✅ Perfil temporal creado por error de timeout:', tempProfile)
-      return tempProfile
+      // Para errores de timeout/red, retornar null en lugar de crear perfil temporal
+      console.warn('⚠️ Error de conexión/timeout, no creando perfil temporal:', error)
+      return null
     }
   }
 

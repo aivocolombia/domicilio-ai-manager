@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { dashboardService, DashboardOrder, DashboardFilters } from '@/services/dashboardService';
 import { useToast } from '@/hooks/use-toast';
 import { useRealtimeOrders } from '@/hooks/useRealtimeOrders';
@@ -25,23 +25,46 @@ export const useDashboard = (sede_id?: string | number) => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const { toast } = useToast();
+  const loadingRef = useRef(false);
+  const sedeIdRef = useRef(sede_id);
+  
+  // Actualizar ref cuando sede_id cambie
+  useEffect(() => {
+    sedeIdRef.current = sede_id;
+  }, [sede_id]);
 
-  // Cargar órdenes del dashboard
+  // Cargar órdenes del dashboard con protección contra cargas concurrentes
   const loadDashboardOrders = useCallback(async (filters: DashboardFilters = {}) => {
+    // Prevenir cargas concurrentes
+    if (loadingRef.current) {
+      console.log('🔄 Ya hay una carga en progreso, saltando...');
+      return;
+    }
+
     try {
+      loadingRef.current = true;
       setLoading(true);
       setError(null);
       console.log('🔄 Cargando órdenes del dashboard...');
       console.log('🏢 UseDashboard Sede ID:', sede_id);
       console.log('🔍 UseDashboard Filtros:', filters);
 
+      // Usar la referencia actualizada de sede_id
+      const currentSedeId = sedeIdRef.current;
+      
+      // Verificar que tenemos sede_id antes de proceder
+      if (!currentSedeId) {
+        console.warn('⚠️ No hay sede_id, saltando carga de dashboard');
+        return;
+      }
+
       // Agregar sede_id a los filtros si existe
-      const filtersWithSede = sede_id ? { ...filters, sede_id } : filters;
+      const filtersWithSede = { ...filters, sede_id: currentSedeId };
       console.log('🔍 UseDashboard Filtros finales:', filtersWithSede);
 
       const [ordersData, statsData] = await Promise.all([
         dashboardService.getDashboardOrders(filtersWithSede),
-        dashboardService.getDashboardStats(sede_id, filters)
+        dashboardService.getDashboardStats(currentSedeId, filters)
       ]);
 
       setOrders(ordersData);
@@ -67,16 +90,32 @@ export const useDashboard = (sede_id?: string | number) => {
         variant: "destructive"
       });
     } finally {
+      loadingRef.current = false;
       setLoading(false);
     }
-  }, [toast, sede_id]);
+  }, [toast]); // Removemos sede_id de las dependencias para evitar re-creaciones
 
-  // Cargar datos al montar el componente
+  // Cargar datos al montar el componente con protección contra bucles
   useEffect(() => {
-    if (sede_id) {
-      loadDashboardOrders();
-    }
-  }, [loadDashboardOrders, sede_id]);
+    let timeoutId: NodeJS.Timeout;
+    
+    const loadInitialData = () => {
+      // Pequeno delay para evitar bucles en el render inicial
+      timeoutId = setTimeout(() => {
+        const currentSedeId = sedeIdRef.current;
+        if (currentSedeId && !loadingRef.current) {
+          console.log('🔄 UseDashboard: Cargando datos iniciales para sede:', currentSedeId);
+          loadDashboardOrders();
+        }
+      }, 100);
+    };
+    
+    loadInitialData();
+    
+    return () => {
+      clearTimeout(timeoutId);
+    };
+  }, [sede_id]); // Solo dependemos de sede_id, no de loadDashboardOrders
 
   // Filtrar órdenes por estado
   const filterOrdersByStatus = useCallback(async (status: string | null) => {
@@ -121,10 +160,13 @@ export const useDashboard = (sede_id?: string | number) => {
 
   // Configurar suscripción en tiempo real
   useRealtimeOrders({
-    sedeId: sede_id?.toString(),
+    sedeId: sedeIdRef.current?.toString(),
     onOrderUpdated: () => {
       console.log('🔄 Dashboard: Orden actualizada, recargando datos...');
-      loadDashboardOrders();
+      // Verificar que no estemos ya cargando
+      if (!loadingRef.current) {
+        loadDashboardOrders();
+      }
     },
     onNewOrder: (order) => {
       console.log('📝 Dashboard: Nueva orden recibida:', order);

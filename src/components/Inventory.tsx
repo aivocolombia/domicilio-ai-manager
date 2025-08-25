@@ -52,12 +52,25 @@ export const Inventory: React.FC<InventoryProps> = ({
       return;
     }
 
+    // Evitar cargas concurrentes
+    if (loading) {
+      console.log('🔄 Ya hay una carga de inventario en progreso, saltando...');
+      return;
+    }
+
     try {
       setLoading(true);
       setError(null);
       
       console.log('🔍 Cargando inventario para sede:', effectiveSedeId);
-      const menuData = await menuService.getMenuConSede(effectiveSedeId);
+      
+      // Timeout para evitar cuelgues
+      const timeoutPromise = new Promise<never>((_, reject) => {
+        setTimeout(() => reject(new Error('Timeout cargando inventario')), 15000);
+      });
+      
+      const menuPromise = menuService.getMenuConSede(effectiveSedeId);
+      const menuData = await Promise.race([menuPromise, timeoutPromise]);
       
       setPlatosConSede(menuData.platos);
       setBebidasConSede(menuData.bebidas);
