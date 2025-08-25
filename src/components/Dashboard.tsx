@@ -83,6 +83,12 @@ export const Dashboard: React.FC<DashboardProps> = ({
   const [isTransferModalOpen, setIsTransferModalOpen] = useState(false);
   const [sedes, setSedes] = useState<Array<{ id: string; name: string }>>([]);
 
+  // Estados para cancelar pedido
+  const [cancelOrderId, setCancelOrderId] = useState<string | null>(null);
+  const [cancelReason, setCancelReason] = useState('');
+  const [isCancelModalOpen, setIsCancelModalOpen] = useState(false);
+  const [isCancelling, setIsCancelling] = useState(false);
+
   // Obtener datos del usuario autenticado
   const { user, profile } = useAuth();
 
@@ -173,6 +179,174 @@ export const Dashboard: React.FC<DashboardProps> = ({
         description: error instanceof Error ? error.message : "No se pudo transferir el pedido",
         variant: "destructive"
       });
+    }
+  };
+
+  // Función para abrir modal de cancelación
+  const handleCancelOrder = (orderId: string) => {
+    setCancelOrderId(orderId);
+    setCancelReason('');
+    setIsCancelModalOpen(true);
+  };
+
+  // Función para confirmar cancelación de pedido
+  const handleConfirmCancel = async () => {
+    if (!cancelOrderId || !cancelReason.trim()) {
+      toast({
+        title: "Error",
+        description: "Debe ingresar un motivo de cancelación",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    try {
+      setIsCancelling(true);
+      
+      console.log('🔍 DEBUG: Cancelando pedido:', {
+        orderId: cancelOrderId,
+        orderIdType: typeof cancelOrderId,
+        reason: cancelReason.trim()
+      });
+
+      // Convertir orderId a número si es necesario
+      const orderIdNumber = parseInt(cancelOrderId, 10);
+      
+      if (isNaN(orderIdNumber)) {
+        throw new Error('ID de pedido inválido');
+      }
+
+      console.log('🔍 DEBUG: Order ID convertido:', orderIdNumber);
+      
+      // Primero verificar si la orden existe y obtener su estructura
+      console.log('🔍 DEBUG: Verificando orden antes de actualizar...');
+      const { data: orderCheck, error: checkError } = await supabase
+        .from('ordenes')
+        .select('id, status, created_at')
+        .eq('id', orderIdNumber)
+        .single();
+
+      if (checkError) {
+        console.error('❌ Error verificando orden:', checkError);
+        throw new Error('No se pudo verificar la orden');
+      }
+
+      if (!orderCheck) {
+        throw new Error('Orden no encontrada');
+      }
+
+      console.log('✅ Orden encontrada:', orderCheck);
+      
+      // Primero verificar qué valores válidos tiene el campo status
+      console.log('🔍 DEBUG: Verificando valores válidos para status...');
+      
+      // Verificar valores existentes en la tabla
+      const { data: existingOrders, error: existingError } = await supabase
+        .from('ordenes')
+        .select('status')
+        .limit(10);
+      
+      if (existingError) {
+        console.log('❌ Error obteniendo status existentes:', existingError);
+      } else {
+        console.log('✅ Status existentes en la tabla:', existingOrders?.map(o => o.status));
+        
+        // Verificar si hay algún status que contenga "Cancelado"
+        const cancelStatuses = existingOrders?.filter(o => 
+          o.status && o.status.includes('Cancelado')
+        );
+        console.log('🔍 Status que contienen "Cancelado":', cancelStatuses);
+      }
+      
+      let statusUpdated = false;
+      
+      // Intentar actualizar el status a 'Cancelado'
+      console.log(`🔍 Intentando actualizar status a: "Cancelado"`);
+      
+      const { error: statusError } = await supabase
+        .from('ordenes')
+        .update({ status: 'Cancelado' })
+        .eq('id', orderIdNumber);
+      
+      if (statusError) {
+        console.log(`❌ Status "Cancelado" falló:`, statusError.message);
+        console.log(`🔍 Detalles del error:`, statusError);
+        throw statusError;
+      } else {
+        console.log(`✅ Status actualizado exitosamente a: "Cancelado"`);
+        statusUpdated = true;
+      }
+      
+      if (!statusUpdated) {
+        console.error('❌ No se pudo actualizar el status con ningún valor válido');
+        throw lastError || new Error('No se pudo actualizar el status');
+      }
+
+      console.log('✅ Status actualizado exitosamente');
+
+      // Ahora intentar actualizar los campos adicionales
+      console.log('🔍 DEBUG: Intentando actualizar campos adicionales...');
+      
+      const additionalData: any = {};
+      
+      // Verificar si el campo motivo_cancelacion existe
+      try {
+        const { error: motivoError } = await supabase
+          .from('ordenes')
+          .update({ motivo_cancelacion: cancelReason.trim() })
+          .eq('id', orderIdNumber);
+        
+        if (motivoError) {
+          console.warn('⚠️ Campo motivo_cancelacion no disponible:', motivoError.message);
+        } else {
+          console.log('✅ Motivo de cancelación guardado');
+        }
+      } catch (e) {
+        console.warn('⚠️ No se pudo guardar motivo de cancelación:', e);
+      }
+
+      // Verificar si el campo cancelado_at existe
+      try {
+        const { error: canceladoError } = await supabase
+          .from('ordenes')
+          .update({ cancelado_at: new Date().toISOString() })
+          .eq('id', orderIdNumber);
+        
+        if (canceladoError) {
+          console.warn('⚠️ Campo cancelado_at no disponible:', canceladoError.message);
+        } else {
+          console.log('✅ Timestamp de cancelación guardado');
+        }
+      } catch (e) {
+        console.warn('⚠️ No se pudo guardar timestamp de cancelación:', e);
+      }
+
+      // La actualización se completó exitosamente
+      console.log('✅ Cancelación completada');
+
+      toast({
+        title: "Pedido cancelado",
+        description: `Pedido #${cancelOrderId} cancelado exitosamente`,
+      });
+
+      // Limpiar formulario y cerrar modal
+      setCancelOrderId(null);
+      setCancelReason('');
+      setIsCancelModalOpen(false);
+
+      // Recargar datos del dashboard
+      if (sedeIdToUse) {
+        loadDashboardOrders();
+      }
+    } catch (error) {
+      console.error('Error cancelando pedido:', error);
+      toast({
+        title: "Error",
+        description: error instanceof Error ? error.message : "No se pudo cancelar el pedido",
+        variant: "destructive"
+      });
+    } finally {
+      setIsCancelling(false);
     }
   };
 
@@ -708,15 +882,13 @@ export const Dashboard: React.FC<DashboardProps> = ({
                   <th className="text-left p-2">Total</th>
                   <th className="text-left p-2">Entrega</th>
                   <th className="text-left p-2">Creado</th>
-                  {profile?.role === 'admin' && (
-                    <th className="text-left p-2">Acciones</th>
-                  )}
+                  <th className="text-left p-2">Acciones</th>
                 </tr>
               </thead>
               <tbody>
                 {loading ? (
                   <tr>
-                    <td colSpan={profile?.role === 'admin' ? 13 : 12} className="p-8 text-center text-muted-foreground">
+                    <td colSpan={13} className="p-8 text-center text-muted-foreground">
                       <div className="flex items-center justify-center gap-2">
                         <RefreshCw className="h-4 w-4 animate-spin" />
                         Cargando órdenes...
@@ -725,7 +897,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                   </tr>
                 ) : filteredOrders.length === 0 ? (
                   <tr>
-                    <td colSpan={profile?.role === 'admin' ? 13 : 12} className="p-8 text-center text-muted-foreground">
+                    <td colSpan={13} className="p-8 text-center text-muted-foreground">
                       No se encontraron órdenes
                     </td>
                   </tr>
@@ -795,19 +967,35 @@ export const Dashboard: React.FC<DashboardProps> = ({
                         <td className="p-2 text-sm text-muted-foreground">
                           {realOrder.creado_hora}
                         </td>
-                        {profile?.role === 'admin' && (
-                          <td className="p-2">
-                            <Button
-                              variant="destructive"
-                              size="sm"
-                              onClick={() => handleDeleteOrder(realOrder.orden_id, realOrder.id_display)}
-                              className="h-8 w-8 p-0"
-                              title={`Eliminar orden ${realOrder.id_display}`}
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
-                          </td>
-                        )}
+                        <td className="p-2">
+                          <div className="flex items-center gap-1">
+                            {/* Botón de cancelar - solo para pedidos que no estén cancelados o entregados */}
+                            {realOrder.estado !== 'Cancelado' && realOrder.estado !== 'Entregados' && (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => handleCancelOrder(realOrder.orden_id.toString())}
+                                className="h-8 w-8 p-0 border-red-300 text-red-600 hover:bg-red-50"
+                                title={`Cancelar orden ${realOrder.id_display}`}
+                              >
+                                <AlertCircle className="h-4 w-4" />
+                              </Button>
+                            )}
+                            
+                            {/* Botón de eliminar - solo para admins */}
+                            {profile?.role === 'admin' && (
+                              <Button
+                                variant="destructive"
+                                size="sm"
+                                onClick={() => handleDeleteOrder(realOrder.orden_id, realOrder.id_display)}
+                                className="h-8 w-8 p-0"
+                                title={`Eliminar orden ${realOrder.id_display}`}
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            )}
+                          </div>
+                        </td>
                       </tr>
                     );
                   })
@@ -880,6 +1068,61 @@ export const Dashboard: React.FC<DashboardProps> = ({
               >
                 <Building2 className="h-4 w-4" />
                 Transferir
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Modal para Cancelar Pedido */}
+      <Dialog open={isCancelModalOpen} onOpenChange={setIsCancelModalOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Cancelar Pedido</DialogTitle>
+            <DialogDescription>
+              ¿Está seguro que desea cancelar este pedido? Esta acción no se puede deshacer.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="cancel-reason">Motivo de Cancelación *</Label>
+              <textarea
+                id="cancel-reason"
+                className="w-full min-h-[100px] p-3 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent"
+                placeholder="Ingrese el motivo de la cancelación (obligatorio)"
+                value={cancelReason}
+                onChange={(e) => setCancelReason(e.target.value)}
+                required
+              />
+            </div>
+            <div className="flex justify-end space-x-2">
+              <Button 
+                variant="outline" 
+                onClick={() => {
+                  setIsCancelModalOpen(false);
+                  setCancelReason('');
+                  setCancelOrderId(null);
+                }}
+              >
+                Cancelar
+              </Button>
+              <Button 
+                variant="destructive"
+                onClick={handleConfirmCancel}
+                disabled={!cancelReason.trim() || isCancelling}
+                className="flex items-center gap-2"
+              >
+                {isCancelling ? (
+                  <>
+                    <RefreshCw className="h-4 w-4 animate-spin" />
+                    Cancelando...
+                  </>
+                ) : (
+                  <>
+                    <AlertCircle className="h-4 w-4" />
+                    Confirmar Cancelación
+                  </>
+                )}
               </Button>
             </div>
           </div>

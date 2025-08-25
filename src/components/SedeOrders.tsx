@@ -148,26 +148,62 @@ export const SedeOrders: React.FC<SedeOrdersProps> = ({
     setShowCreateDialog(true);
   };
 
-  const addItemToOrder = (productId: string) => {
-    const existingItem = newOrder.items.find(item => item.productId === productId);
+  const addItemToOrder = (productId: string, productType: 'plato' | 'bebida') => {
+    console.log('🔍 DEBUG: addItemToOrder llamado con productId:', productId, 'tipo:', productType);
+    
+    // Debug completo de los arrays
+    console.log('🔍 DEBUG: Arrays completos:');
+    console.log('📋 Platos:', platos.map(p => ({ id: p.id, name: p.name })));
+    console.log('🥤 Bebidas:', bebidas.map(b => ({ id: b.id, name: b.name })));
+    
+    // Buscar el producto en platos y bebidas para debug
+    const plato = platos.find(p => p.id.toString() === productId);
+    const bebida = bebidas.find(b => b.id.toString() === productId);
+    
+    console.log('🔍 DEBUG: Producto encontrado:', {
+      productId,
+      productType,
+      plato: plato ? { id: plato.id, name: plato.name, type: 'plato' } : null,
+      bebida: bebida ? { id: bebida.id, name: bebida.name, type: 'bebida' } : null,
+      totalPlatos: platos.length,
+      totalBebidas: bebidas.length
+    });
+    
+    // Crear un ID único que incluya el tipo
+    const uniqueProductId = `${productType}_${productId}`;
+    
+    const existingItem = newOrder.items.find(item => item.productId === uniqueProductId);
     if (existingItem) {
+      console.log('🔍 DEBUG: Incrementando cantidad de item existente:', existingItem);
       setNewOrder({
         ...newOrder,
         items: newOrder.items.map(item =>
-          item.productId === productId
+          item.productId === uniqueProductId
             ? { ...item, quantity: item.quantity + 1 }
             : item
         )
       });
     } else {
+      console.log('🔍 DEBUG: Agregando nuevo item:', { uniqueProductId, quantity: 1, productType });
       setNewOrder({
         ...newOrder,
-        items: [...newOrder.items, { productId, quantity: 1, toppings: [] }]
+        items: [...newOrder.items, { 
+          productId: uniqueProductId, 
+          quantity: 1, 
+          toppings: [],
+          productType: productType // Agregar tipo al item
+        }]
       });
     }
+    
+    // Debug del estado después del cambio
+    setTimeout(() => {
+      console.log('🔍 DEBUG: Estado actual de items:', newOrder.items);
+    }, 0);
   };
 
   const removeItemFromOrder = (productId: string) => {
+    console.log('🔍 DEBUG: Removiendo item:', productId);
     setNewOrder({
       ...newOrder,
       items: newOrder.items.filter(item => item.productId !== productId)
@@ -176,8 +212,24 @@ export const SedeOrders: React.FC<SedeOrdersProps> = ({
 
   const calculateTotal = () => {
     const itemsTotal = newOrder.items.reduce((total, item) => {
-      const product = platos.find(p => p.id.toString() === item.productId) || 
-                     bebidas.find(b => b.id.toString() === item.productId);
+      // Extraer el ID real y tipo del productId único
+      const [productType, realProductId] = item.productId.split('_');
+      
+      let product = null;
+      if (productType === 'plato') {
+        product = platos.find(p => p.id.toString() === realProductId);
+      } else if (productType === 'bebida') {
+        product = bebidas.find(b => b.id.toString() === realProductId);
+      }
+      
+      console.log('🔍 DEBUG: calculateTotal - item:', {
+        itemId: item.productId,
+        realProductId,
+        productType,
+        quantity: item.quantity,
+        productFound: product ? { id: product.id, name: product.name, pricing: product.pricing } : null
+      });
+      
       return total + (product ? product.pricing * item.quantity : 0);
     }, 0);
     
@@ -587,7 +639,10 @@ export const SedeOrders: React.FC<SedeOrdersProps> = ({
                               </div>
                               <Button
                                 size="sm"
-                                onClick={() => addItemToOrder(item.id.toString())}
+                                onClick={() => {
+                                  console.log('🔍 DEBUG: Clic en plato:', { id: item.id, name: item.name });
+                                  addItemToOrder(item.id.toString(), 'plato');
+                                }}
                                 className="bg-brand-primary hover:bg-brand-primary/90"
                               >
                                 <Plus className="h-4 w-4" />
@@ -602,7 +657,10 @@ export const SedeOrders: React.FC<SedeOrdersProps> = ({
                               </div>
                               <Button
                                 size="sm"
-                                onClick={() => addItemToOrder(item.id.toString())}
+                                onClick={() => {
+                                  console.log('🔍 DEBUG: Clic en bebida:', { id: item.id, name: item.name });
+                                  addItemToOrder(item.id.toString(), 'bebida');
+                                }}
                                 className="bg-brand-primary hover:bg-brand-primary/90"
                               >
                                 <Plus className="h-4 w-4" />
@@ -619,8 +677,23 @@ export const SedeOrders: React.FC<SedeOrdersProps> = ({
                       <Label>Productos Seleccionados</Label>
                       <div className="space-y-2 border rounded p-2">
                         {newOrder.items.map((item) => {
-                          const product = platos.find(p => p.id.toString() === item.productId) || 
-                                         bebidas.find(b => b.id.toString() === item.productId);
+                          // Extraer el ID real y tipo del productId único
+                          const [productType, realProductId] = item.productId.split('_');
+                          
+                          let product = null;
+                          if (productType === 'plato') {
+                            product = platos.find(p => p.id.toString() === realProductId);
+                          } else if (productType === 'bebida') {
+                            product = bebidas.find(b => b.id.toString() === realProductId);
+                          }
+                          
+                          console.log('🔍 DEBUG: Mostrando item seleccionado:', {
+                            itemId: item.productId,
+                            realProductId,
+                            productType,
+                            productFound: product ? { id: product.id, name: product.name } : null
+                          });
+                          
                           return (
                             <div key={item.productId} className="flex items-center justify-between p-2 bg-gray-50 rounded">
                               <div>
