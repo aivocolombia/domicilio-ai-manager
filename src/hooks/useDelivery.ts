@@ -3,8 +3,11 @@ import { deliveryService, Repartidor, RepartidorConEstadisticas } from '@/servic
 import { toast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/useAuth';
 
-export const useDelivery = () => {
+export const useDelivery = (sedeId?: string) => {
   const { profile } = useAuth();
+  
+  // Usar la sede pasada como parámetro o la del profile
+  const effectiveSedeId = sedeId || profile?.sede_id;
   const [repartidores, setRepartidores] = useState<RepartidorConEstadisticas[]>([]);
   const [totalOrdenesAsignadas, setTotalOrdenesAsignadas] = useState<number>(0);
   const [loading, setLoading] = useState(true);
@@ -15,11 +18,11 @@ export const useDelivery = () => {
     try {
       setLoading(true);
       setError(null);
-      console.log('🔄 Cargando repartidores para sede:', profile?.sede_id);
+      console.log('🔄 Cargando repartidores para sede:', effectiveSedeId);
 
       // Solo cargar si hay sede asignada
-      if (!profile?.sede_id) {
-        console.log('⚠️ No hay sede asignada, no se cargan repartidores');
+      if (!effectiveSedeId) {
+        console.log('⚠️ No hay sede seleccionada, no se cargan repartidores');
         setRepartidores([]);
         setTotalOrdenesAsignadas(0);
         setLoading(false);
@@ -30,8 +33,8 @@ export const useDelivery = () => {
       await deliveryService.testData();
 
       const [data, totalAsignadas] = await Promise.all([
-        deliveryService.getRepartidoresConEstadisticas(profile.sede_id),
-        deliveryService.getTotalOrdenesAsignadasPendientes(profile.sede_id)
+        deliveryService.getRepartidoresConEstadisticas(effectiveSedeId),
+        deliveryService.getTotalOrdenesAsignadasPendientes(effectiveSedeId)
       ]);
       
       setRepartidores(data);
@@ -52,7 +55,7 @@ export const useDelivery = () => {
     } finally {
       setLoading(false);
     }
-  }, [profile?.sede_id]);
+  }, [effectiveSedeId]);
 
   // Crear nuevo repartidor
   const crearRepartidor = useCallback(async (repartidorData: {
@@ -62,18 +65,18 @@ export const useDelivery = () => {
     disponible?: boolean;
   }) => {
     try {
-      if (!profile?.sede_id) {
-        throw new Error('No se puede crear repartidor sin sede asignada');
+      if (!effectiveSedeId) {
+        throw new Error('No se puede crear repartidor sin sede seleccionada');
       }
 
-      console.log('➕ Hook: Creando repartidor para sede:', profile.sede_id, repartidorData);
+      console.log('➕ Hook: Creando repartidor para sede:', effectiveSedeId, repartidorData);
       
       const nuevoRepartidor = await deliveryService.crearRepartidor({
         nombre: repartidorData.nombre,
         telefono: repartidorData.telefono,
         placas: repartidorData.placas || null,
         disponible: repartidorData.disponible ?? true,
-        sede_id: profile.sede_id
+        sede_id: effectiveSedeId
       });
 
       // Recargar la lista de repartidores

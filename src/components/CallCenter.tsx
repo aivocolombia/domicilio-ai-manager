@@ -19,6 +19,8 @@ interface CallCenterProps {
   orders: Order[];
   sedes: Sede[];
   settings: DeliverySettings;
+  effectiveSedeId: string;
+  currentSedeName: string;
   onCreateOrder: (order: Omit<Order, 'id' | 'createdAt' | 'estimatedDeliveryTime'>) => void;
 }
 
@@ -28,7 +30,14 @@ interface CustomerData {
   orderHistory: Order[];
 }
 
-const CallCenter: React.FC<CallCenterProps> = ({ orders, sedes, settings, onCreateOrder }) => {
+const CallCenter: React.FC<CallCenterProps> = ({ 
+  orders, 
+  sedes, 
+  settings, 
+  effectiveSedeId, 
+  currentSedeName, 
+  onCreateOrder 
+}) => {
   const { platos, bebidas, loading: menuLoading } = useMenu();
   const [searchPhone, setSearchPhone] = useState('');
   const [customer, setCustomer] = useState<CustomerData | null>(null);

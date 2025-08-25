@@ -1,4 +1,5 @@
 import { supabase } from '@/lib/supabase';
+import { formatDateTimeForDisplay } from '@/utils/dateUtils';
 
 export interface UpdateOrderStatusData {
   order_id: number;
@@ -221,8 +222,8 @@ export class OrderStatusService {
       { value: 'Recibidos', label: 'Recibido' },
       { value: 'Cocina', label: 'En Cocina' },
       { value: 'Camino', label: 'En Camino' },
-      { value: 'Entregados', label: 'Entregado' },
-      { value: 'Cancelado', label: 'Cancelado' }
+      { value: 'Entregados', label: 'Entregado' }
+      // NOTA: 'Cancelado' no está permitido por el constraint de BD
     ];
   }
 

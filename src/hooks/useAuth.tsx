@@ -133,7 +133,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       
       // Crear un timeout más largo para evitar errores innecesarios
       const timeoutPromise = new Promise<never>((_, reject) => {
-        setTimeout(() => reject(new Error('Timeout')), 10000) // 10 segundos
+        setTimeout(() => reject(new Error('Timeout')), 60000) // 60 segundos
       })
       
       const fetchPromise = supabase
@@ -157,10 +157,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           return tempProfile
         }
         
-        // Para otros errores (timeouts, conexión, etc), retornar null y mantener estado actual
-        // IMPORTANTE: NO crear perfil temporal para errores de red/timeout
-        console.log('⚠️ Error temporal de conexión/timeout, manteniendo estado actual')
-        return null
+              // Para otros errores (timeouts, conexión, etc), intentar crear perfil temporal
+      console.log('⚠️ Error temporal de conexión/timeout, creando perfil temporal...')
+      const userEmail = user?.email || '';
+      const tempProfile = await createTempProfile(userId, userEmail, user);
+      console.log('✅ Perfil temporal creado por error de conexión:', tempProfile)
+      return tempProfile
       }
 
       console.log('✅ Perfil obtenido desde base de datos:', data)
@@ -189,9 +191,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         return tempProfile
       }
       
-      // Para errores de timeout/red, NO crear perfil temporal - mantener estado actual
-      console.log('⚠️ Error de conexión/timeout, NO creando perfil temporal')
-      return null
+      // Para errores de timeout/red, crear perfil temporal para mantener funcionalidad
+      console.log('⚠️ Error de conexión/timeout, creando perfil temporal...')
+      const userEmail = user?.email || '';
+      const tempProfile = await createTempProfile(userId, userEmail, user);
+      console.log('✅ Perfil temporal creado por error de timeout:', tempProfile)
+      return tempProfile
     }
   }
 

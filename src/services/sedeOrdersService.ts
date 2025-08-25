@@ -50,6 +50,8 @@ export interface CreateOrderData {
     cantidad: number;
   }[];
   sede_id: string;
+  // Tiempo de entrega en minutos (opcional, por defecto 90)
+  delivery_time_minutes?: number;
   // Datos para actualización de cliente
   update_customer_data?: {
     nombre: string;
@@ -404,7 +406,13 @@ class SedeOrdersService {
 
       console.log('✅ Pago creado:', pago.id);
 
-      // Paso 4: Crear orden
+      // Paso 4: Crear orden con hora_entrega personalizable
+      const now = new Date();
+      const deliveryMinutes = orderData.delivery_time_minutes || 90; // Por defecto 90 minutos
+      const horaEntrega = new Date(now.getTime() + deliveryMinutes * 60 * 1000); // Convertir minutos a milisegundos
+      
+      console.log(`⏰ Tiempo de entrega configurado: ${deliveryMinutes} minutos - Entrega programada: ${horaEntrega.toLocaleString('es-CO')}`);
+
       const { data: orden, error: ordenError } = await supabase
         .from('ordenes')
         .insert({
@@ -413,6 +421,7 @@ class SedeOrdersService {
           status: 'Recibidos',
           sede_id: orderData.sede_id,
           observaciones: orderData.instrucciones,
+          hora_entrega: horaEntrega.toISOString(),
           // TODO: Agregar campos adicionales como tipo_entrega, sede_recogida cuando estén disponibles
         })
         .select('id')

@@ -47,6 +47,17 @@ export interface Sede {
   updated_at: string;
 }
 
+export interface Repartidor {
+  id: number;
+  nombre: string;
+  telefono: string;
+  placas?: string;
+  sede_id: string | null;
+  sede_name?: string;
+  disponible: boolean;
+  created_at: string;
+}
+
 export class AdminService {
   // Obtener todos los usuarios
   async getUsers(): Promise<User[]> {
@@ -663,6 +674,196 @@ export class AdminService {
       console.log('✅ Productos inicializados para sede existente exitosamente');
     } catch (error) {
       console.error('❌ Error en initializeExistingSedeProducts:', error);
+      throw error;
+    }
+  }
+
+  // ======= MÉTODOS PARA REPARTIDORES =======
+
+  // Obtener todos los repartidores
+  async getRepartidores(): Promise<Repartidor[]> {
+    try {
+      console.log('🚚 Consultando repartidores...');
+
+      const { data, error } = await supabase
+        .from('repartidores')
+        .select(`
+          id,
+          nombre,
+          telefono,
+          placas,
+          sede_id,
+          disponible,
+          created_at,
+          sedes!left(name)
+        `)
+        .order('nombre');
+
+      if (error) {
+        console.error('❌ Error al obtener repartidores:', error);
+        throw new Error(`Error al obtener repartidores: ${error.message}`);
+      }
+
+      const repartidores = (data || []).map(item => ({
+        id: item.id,
+        nombre: item.nombre,
+        telefono: item.telefono,
+        placas: item.placas,
+        sede_id: item.sede_id,
+        sede_name: item.sedes?.name || null,
+        disponible: item.disponible,
+        created_at: item.created_at
+      }));
+
+      console.log('✅ Repartidores obtenidos:', repartidores.length);
+      return repartidores;
+    } catch (error) {
+      console.error('❌ Error en getRepartidores:', error);
+      throw error;
+    }
+  }
+
+  // Actualizar sede de repartidor
+  async updateRepartidorSede(repartidorId: number, sedeId: string | null): Promise<void> {
+    try {
+      console.log('🔄 Actualizando sede de repartidor:', { repartidorId, sedeId });
+
+      const { error } = await supabase
+        .from('repartidores')
+        .update({ 
+          sede_id: sedeId,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', repartidorId);
+
+      if (error) {
+        console.error('❌ Error al actualizar sede de repartidor:', error);
+        throw new Error(`Error al actualizar repartidor: ${error.message}`);
+      }
+
+      console.log('✅ Sede de repartidor actualizada exitosamente');
+    } catch (error) {
+      console.error('❌ Error en updateRepartidorSede:', error);
+      throw error;
+    }
+  }
+
+  // Actualizar estado de repartidor
+  async updateRepartidorStatus(repartidorId: number, isActive: boolean): Promise<void> {
+    try {
+      console.log('🔄 Actualizando estado de repartidor:', { repartidorId, isActive });
+
+      const { error } = await supabase
+        .from('repartidores')
+        .update({ 
+          disponible: isActive,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', repartidorId);
+
+      if (error) {
+        console.error('❌ Error al actualizar estado de repartidor:', error);
+        throw new Error(`Error al actualizar estado: ${error.message}`);
+      }
+
+      console.log('✅ Estado de repartidor actualizado exitosamente');
+    } catch (error) {
+      console.error('❌ Error en updateRepartidorStatus:', error);
+      throw error;
+    }
+  }
+
+  // Crear nuevo repartidor
+  async createRepartidor(repartidorData: {
+    nombre: string;
+    telefono: string;
+    placas?: string;
+    sede_id?: string | null;
+  }): Promise<Repartidor> {
+    try {
+      console.log('🚚 Creando nuevo repartidor:', repartidorData);
+
+      const { data, error } = await supabase
+        .from('repartidores')
+        .insert({
+          nombre: repartidorData.nombre,
+          telefono: repartidorData.telefono,
+          placas: repartidorData.placas || null,
+          sede_id: repartidorData.sede_id || null,
+          disponible: true,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        })
+        .select(`
+          id,
+          nombre,
+          telefono,
+          placas,
+          sede_id,
+          disponible,
+          created_at,
+          sedes!left(name)
+        `)
+        .single();
+
+      if (error) {
+        console.error('❌ Error al crear repartidor:', error);
+        throw new Error(`Error al crear repartidor: ${error.message}`);
+      }
+
+      const repartidor: Repartidor = {
+        id: data.id,
+        nombre: data.nombre,
+        telefono: data.telefono,
+        placas: data.placas,
+        sede_id: data.sede_id,
+        sede_name: data.sedes?.name || null,
+        disponible: data.disponible,
+        created_at: data.created_at
+      };
+
+      console.log('✅ Repartidor creado exitosamente:', repartidor);
+      return repartidor;
+    } catch (error) {
+      console.error('❌ Error en createRepartidor:', error);
+      throw error;
+    }
+  }
+
+  // Eliminar repartidor
+  async deleteRepartidor(repartidorId: number): Promise<void> {
+    try {
+      console.log('🗑️ Eliminando repartidor:', repartidorId);
+
+      // Verificar si el repartidor tiene órdenes activas
+      const { data: activeOrders, error: checkError } = await supabase
+        .from('ordenes')
+        .select('id')
+        .eq('repartidor_id', repartidorId)
+        .in('status', ['En camino', 'Asignado']);
+
+      if (checkError) {
+        console.error('❌ Error al verificar órdenes activas:', checkError);
+        throw new Error(`Error al verificar órdenes activas: ${checkError.message}`);
+      }
+
+      if (activeOrders && activeOrders.length > 0) {
+        throw new Error('No se puede eliminar el repartidor porque tiene órdenes activas asignadas');
+      }
+
+      const { error } = await supabase
+        .from('repartidores')
+        .delete()
+        .eq('id', repartidorId);
+
+      if (error) {
+        console.error('❌ Error al eliminar repartidor:', error);
+        throw new Error(`Error al eliminar repartidor: ${error.message}`);
+      }
+
+      console.log('✅ Repartidor eliminado exitosamente');
+    } catch (error) {
+      console.error('❌ Error en deleteRepartidor:', error);
       throw error;
     }
   }

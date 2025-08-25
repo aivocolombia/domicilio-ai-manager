@@ -8,7 +8,7 @@ import { UserProfile } from '@/components/UserProfile';
 import { SedeOrders } from '@/components/SedeOrders';
 import { AdminPanel } from '@/components/AdminPanel';
 import { TimeMetricsPage } from '@/components/TimeMetricsPage';
-import { Order, DeliverySettings, OrderSource, DeliveryPerson, PaymentMethod, PaymentStatus, User as UserType, Sede } from '@/types/delivery';
+import { Order, DeliverySettings, OrderSource, DeliveryPerson, PaymentMethod, PaymentStatus, User as UserType, Sede, OrderStatus, DeliveryType } from '@/types/delivery';
 import { LayoutDashboard, Package, Users, Phone, Store, Settings, Building2, ChevronDown } from 'lucide-react';
 import { StatusBar } from '@/components/StatusBar';
 import { InventoryProvider } from '@/contexts/InventoryContext';
@@ -238,11 +238,98 @@ const Index = () => {
     }
   };
 
+  // Cargar órdenes reales desde la base de datos
+  const loadOrders = async () => {
+    if (!effectiveSedeId) {
+      console.log('⚠️ No hay sede efectiva para cargar órdenes');
+      return;
+    }
+
+    try {
+      console.log('📦 Cargando órdenes desde base de datos para sede:', effectiveSedeId);
+      
+      // Primero verificar qué columnas existen en la tabla ordenes
+      console.log('🔍 Verificando esquema de tabla ordenes...');
+      const { data: schemaData, error: schemaError } = await supabase
+        .from('ordenes')
+        .select('*')
+        .limit(1);
+
+      if (schemaError) {
+        console.error('❌ Error verificando esquema:', schemaError);
+      } else if (schemaData && schemaData.length > 0) {
+        console.log('📋 Columnas disponibles en ordenes:', Object.keys(schemaData[0]));
+      }
+
+      const { data: ordersData, error } = await supabase
+        .from('ordenes')
+        .select(`
+          id,
+          cliente_id,
+          status,
+          created_at,
+          hora_entrega,
+          repartidor_id,
+          sede_id,
+          clientes!left(nombre, telefono),
+          pagos!left(type, status, total_pago),
+          repartidores!left(nombre),
+          sedes!left(name)
+        `)
+        .eq('sede_id', effectiveSedeId)
+        .order('created_at', { ascending: false });
+
+      if (error) {
+        console.error('❌ Error cargando órdenes:', error);
+        return;
+      }
+
+      // Mapear al formato esperado por la aplicación
+      const mappedOrders: Order[] = (ordersData || []).map(order => ({
+        id: order.id.toString(),
+        customerName: (order.clientes as any)?.nombre || 'Cliente Desconocido',
+        customerPhone: (order.clientes as any)?.telefono || 'N/A',
+        address: 'Dirección del cliente', // TODO: Agregar campo de dirección
+        items: [], // TODO: Cargar items de la orden
+        status: order.status as OrderStatus,
+        totalAmount: (order.pagos as any)?.total_pago || 0,
+        estimatedDeliveryTime: order.hora_entrega ? new Date(order.hora_entrega) : new Date(),
+        createdAt: new Date(order.created_at),
+        source: 'call_center' as OrderSource, // TODO: Agregar campo de origen
+        specialInstructions: undefined,
+        paymentMethod: (order.pagos as any)?.type || 'cash' as PaymentMethod,
+        paymentStatus: (order.pagos as any)?.status || 'paid' as PaymentStatus,
+        originSede: (order.sedes as any)?.name,
+        assignedSede: (order.sedes as any)?.name,
+        assignedDeliveryPersonId: order.repartidor_id?.toString(),
+        deliveryType: 'delivery' as DeliveryType,
+        pickupSede: undefined
+      }));
+
+      console.log('✅ Órdenes cargadas:', mappedOrders.length);
+      setOrders(mappedOrders);
+    } catch (error) {
+      console.error('❌ Error al cargar órdenes:', error);
+    }
+  };
+
   useEffect(() => {
-    // Initialize with mock data (temporary until API is ready)
-    setOrders(generateMockOrders());
-    setDeliveryPersonnel(generateMockDeliveryPersonnel());
-  }, []);
+    // Solo cargar órdenes si NO estamos en AdminPanel o TimeMetrics
+    if (!showAdminPanel && !showTimeMetrics) {
+      console.log('📊 Index: Cargando datos del dashboard principal...');
+      // Cargar órdenes reales si hay sede efectiva
+      if (effectiveSedeId) {
+        loadOrders();
+      } else {
+        // Fallback a datos mock solo si no hay sede
+        console.log('⚠️ Usando datos mock por falta de sede efectiva');
+        setOrders(generateMockOrders());
+      }
+      setDeliveryPersonnel(generateMockDeliveryPersonnel());
+    } else {
+      console.log('🚫 Index: Saltando carga de dashboard - AdminPanel/TimeMetrics activo');
+    }
+  }, [effectiveSedeId, showAdminPanel, showTimeMetrics]);
 
   // Cargar sedes cuando el perfil esté disponible (solo para admins)
   useEffect(() => {
@@ -390,11 +477,17 @@ const Index = () => {
           </TabsContent>
 
           <TabsContent value="inventory">
-            <Inventory />
+            <Inventory 
+              effectiveSedeId={effectiveSedeId}
+              currentSedeName={currentSedeName}
+            />
           </TabsContent>
 
           <TabsContent value="personnel">
-            <DeliveryPersonnel />
+            <DeliveryPersonnel 
+              effectiveSedeId={effectiveSedeId}
+              currentSedeName={currentSedeName}
+            />
           </TabsContent>
 
           <TabsContent value="callcenter">
@@ -402,6 +495,8 @@ const Index = () => {
               orders={orders}
               sedes={sedes}
               settings={settings}
+              effectiveSedeId={effectiveSedeId}
+              currentSedeName={currentSedeName}
               onCreateOrder={handleCreateOrder}
             />
           </TabsContent>
@@ -412,6 +507,8 @@ const Index = () => {
               sedes={sedes}
               currentUser={currentUser}
               settings={settings}
+              effectiveSedeId={effectiveSedeId}
+              currentSedeName={currentSedeName}
               onCreateOrder={handleCreateOrder}
               onTransferOrder={handleTransferOrder}
             />

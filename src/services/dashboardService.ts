@@ -1,4 +1,5 @@
 import { supabase } from '@/lib/supabase';
+import { auditAndFixDateFilters } from '@/utils/timezoneAudit';
 
 export interface DashboardOrder {
   id_display: string;
@@ -33,6 +34,12 @@ export class DashboardService {
     try {
       console.log('📊 DashboardService: Consultando órdenes del dashboard...');
       console.log('🔍 DashboardService: Filtros aplicados:', filters);
+      
+      // Auditar y corregir fechas si es necesario
+      const correctedFilters = auditAndFixDateFilters(filters);
+      if (JSON.stringify(filters) !== JSON.stringify(correctedFilters)) {
+        console.log('🔧 DashboardService: Filtros de fecha corregidos');
+      }
 
       // Construir la query base
       let query = supabase
@@ -67,15 +74,15 @@ export class DashboardService {
         console.log('⚠️ DashboardService: NO SE PROPORCIONÓ SEDE_ID - esto puede causar problemas');
       }
 
-      // Filtros de fecha
-      if (filters.fechaInicio) {
-        console.log('📅 DashboardService: Filtrando desde fecha:', filters.fechaInicio);
-        query = query.gte('created_at', filters.fechaInicio);
+      // Filtros de fecha (usando filtros corregidos)
+      if (correctedFilters.fechaInicio) {
+        console.log('📅 DashboardService: Filtrando desde fecha:', correctedFilters.fechaInicio);
+        query = query.gte('created_at', correctedFilters.fechaInicio);
       }
       
-      if (filters.fechaFin) {
-        console.log('📅 DashboardService: Filtrando hasta fecha:', filters.fechaFin);
-        query = query.lte('created_at', filters.fechaFin);
+      if (correctedFilters.fechaFin) {
+        console.log('📅 DashboardService: Filtrando hasta fecha:', correctedFilters.fechaFin);
+        query = query.lte('created_at', correctedFilters.fechaFin);
       }
 
       if (filters.limit) {
@@ -97,6 +104,15 @@ export class DashboardService {
 
       console.log('✅ DashboardService: Query exitosa');
       console.log('📊 DashboardService: Datos recibidos:', data?.length || 0, 'órdenes');
+      
+      // Debug: Mostrar las fechas de las órdenes encontradas
+      if (data && data.length > 0) {
+        console.log('🔍 DashboardService: Fechas de órdenes encontradas:');
+        data.forEach((order, index) => {
+          const createdAt = new Date(order.created_at);
+          console.log(`  ${index + 1}. ID: ${order.id}, Created: ${createdAt.toLocaleDateString('es-CO')} ${createdAt.toLocaleTimeString('es-CO')}, Status: ${order.status}`);
+        });
+      }
 
       if (!data || data.length === 0) {
         console.log('ℹ️ DashboardService: No hay órdenes para mostrar');
@@ -176,12 +192,92 @@ export class DashboardService {
     }
   }
 
+  // Eliminar orden (solo para admins)
+  async deleteOrder(orderId: number): Promise<void> {
+    try {
+      console.log('🗑️ DashboardService: Eliminando orden:', orderId);
+
+      // Primero obtener la orden para verificar que existe
+      const { data: orderData, error: orderError } = await supabase
+        .from('ordenes')
+        .select('id, payment_id')
+        .eq('id', orderId)
+        .single();
+
+      if (orderError) {
+        console.error('❌ DashboardService: Error encontrando orden:', orderError);
+        throw new Error(`Orden no encontrada: ${orderError.message}`);
+      }
+
+      if (!orderData) {
+        throw new Error('Orden no encontrada');
+      }
+
+      // Eliminar items de la orden primero
+      console.log('🗑️ Eliminando items de platos...');
+      const { error: platosError } = await supabase
+        .from('ordenes_platos')
+        .delete()
+        .eq('orden_id', orderId);
+
+      if (platosError) {
+        console.error('⚠️ Error eliminando platos (continuando):', platosError);
+      }
+
+      console.log('🗑️ Eliminando items de bebidas...');
+      const { error: bebidasError } = await supabase
+        .from('ordenes_bebidas')
+        .delete()
+        .eq('orden_id', orderId);
+
+      if (bebidasError) {
+        console.error('⚠️ Error eliminando bebidas (continuando):', bebidasError);
+      }
+
+      // Eliminar la orden
+      console.log('🗑️ Eliminando orden...');
+      const { error: deleteOrderError } = await supabase
+        .from('ordenes')
+        .delete()
+        .eq('id', orderId);
+
+      if (deleteOrderError) {
+        console.error('❌ DashboardService: Error eliminando orden:', deleteOrderError);
+        throw new Error(`Error eliminando orden: ${deleteOrderError.message}`);
+      }
+
+      // Eliminar el pago si existe
+      if (orderData.payment_id) {
+        console.log('🗑️ Eliminando pago...');
+        const { error: deletePaymentError } = await supabase
+          .from('pagos')
+          .delete()
+          .eq('id', orderData.payment_id);
+
+        if (deletePaymentError) {
+          console.error('⚠️ Error eliminando pago (continuando):', deletePaymentError);
+        }
+      }
+
+      console.log('✅ Orden eliminada exitosamente:', orderId);
+    } catch (error) {
+      console.error('❌ Error en deleteOrder:', error);
+      throw error;
+    }
+  }
+
   // Obtener estadísticas del dashboard
   async getDashboardStats(sede_id?: string | number, filters: Omit<DashboardFilters, 'sede_id'> = {}) {
     try {
       console.log('📊 Consultando estadísticas del dashboard...');
       console.log('🏢 Sede ID:', sede_id);
       console.log('📅 Filtros de fecha:', { fechaInicio: filters.fechaInicio, fechaFin: filters.fechaFin });
+
+      // Auditar y corregir fechas si es necesario
+      const correctedFilters = auditAndFixDateFilters(filters);
+      if (JSON.stringify(filters) !== JSON.stringify(correctedFilters)) {
+        console.log('🔧 DashboardStats: Filtros de fecha corregidos');
+      }
 
       // Construir query base para estadísticas
       let query = supabase
@@ -193,13 +289,13 @@ export class DashboardService {
         query = query.eq('sede_id', sede_id);
       }
 
-      // Aplicar filtros de fecha
-      if (filters.fechaInicio) {
-        query = query.gte('created_at', filters.fechaInicio);
+      // Aplicar filtros de fecha (usando filtros corregidos)
+      if (correctedFilters.fechaInicio) {
+        query = query.gte('created_at', correctedFilters.fechaInicio);
       }
       
-      if (filters.fechaFin) {
-        query = query.lte('created_at', filters.fechaFin);
+      if (correctedFilters.fechaFin) {
+        query = query.lte('created_at', correctedFilters.fechaFin);
       }
 
       const { data: statusCounts, error: statusError } = await query;

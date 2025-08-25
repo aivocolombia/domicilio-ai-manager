@@ -18,10 +18,21 @@ import { PlatoConSede, BebidaConSede } from '@/types/menu';
 import { debugUtils } from '@/utils/debug';
 import { supabase } from '@/lib/supabase';
 
-export const Inventory: React.FC = () => {
+interface InventoryProps {
+  effectiveSedeId: string;
+  currentSedeName: string;
+}
+
+export const Inventory: React.FC<InventoryProps> = ({ 
+  effectiveSedeId, 
+  currentSedeName: propCurrentSedeName 
+}) => {
   const { profile } = useAuth();
-  const { currentSedeName } = useSede();
+  const { currentSedeName: contextSedeName } = useSede();
   const { triggerUpdate } = useInventoryEvents();
+  
+  // Usar la sede efectiva (la seleccionada por admin o la asignada al agente)
+  const currentSedeName = propCurrentSedeName || contextSedeName;
   
   // Estado local para nombre de sede (fallback si contexto no funciona)
   const [localSedeName, setLocalSedeName] = useState<string | null>(null);
@@ -35,8 +46,8 @@ export const Inventory: React.FC = () => {
 
   // Función para cargar el inventario con información de sede
   const loadInventoryConSede = async () => {
-    if (!profile?.sede_id) {
-      setError('No se ha asignado una sede al usuario');
+    if (!effectiveSedeId) {
+      setError('No se ha seleccionado una sede');
       setLoading(false);
       return;
     }
@@ -45,8 +56,8 @@ export const Inventory: React.FC = () => {
       setLoading(true);
       setError(null);
       
-      console.log('🔍 Cargando inventario para sede:', profile.sede_id);
-      const menuData = await menuService.getMenuConSede(profile.sede_id);
+      console.log('🔍 Cargando inventario para sede:', effectiveSedeId);
+      const menuData = await menuService.getMenuConSede(effectiveSedeId);
       
       setPlatosConSede(menuData.platos);
       setBebidasConSede(menuData.bebidas);
@@ -63,12 +74,12 @@ export const Inventory: React.FC = () => {
   // Cargar inventario al montar el componente
   useEffect(() => {
     loadInventoryConSede();
-  }, [profile?.sede_id]);
+  }, [effectiveSedeId]);
 
   // Cargar nombre de la sede al montar el componente
   useEffect(() => {
     loadSedeName();
-  }, [profile?.sede_id]);
+  }, [effectiveSedeId]);
 
   // Combinar solo platos y bebidas para mostrar en el inventario (incluyendo inactivos)
   const allProducts = [
@@ -435,13 +446,13 @@ export const Inventory: React.FC = () => {
 
   // Cargar nombre de la sede como fallback
   const loadSedeName = async () => {
-    if (!profile?.sede_id) return;
+    if (!effectiveSedeId) return;
     
     try {
       const { data, error } = await supabase
         .from('sedes')
         .select('name')
-        .eq('id', profile.sede_id)
+        .eq('id', effectiveSedeId)
         .single();
       
       if (!error && data) {
@@ -452,15 +463,18 @@ export const Inventory: React.FC = () => {
     }
   };
 
-  // Mostrar error si no hay sede asignada
-  if (!profile?.sede_id) {
+  // Mostrar error si no hay sede seleccionada
+  if (!effectiveSedeId) {
     return (
       <div className="p-6">
         <div className="text-center py-12">
           <AlertCircle className="h-12 w-12 mx-auto text-destructive mb-4" />
-          <h2 className="text-2xl font-bold mb-4">Sede No Asignada</h2>
+          <h2 className="text-2xl font-bold mb-4">Sede No Seleccionada</h2>
           <p className="text-muted-foreground mb-6">
-            No se ha asignado una sede a tu cuenta. Contacta al administrador para que te asigne una sede.
+            {profile?.role === 'admin' 
+              ? 'Selecciona una sede desde el selector en la parte superior.'
+              : 'No se ha asignado una sede a tu cuenta. Contacta al administrador para que te asigne una sede.'
+            }
           </p>
         </div>
       </div>

@@ -11,7 +11,15 @@ import { useDelivery } from '@/hooks/useDelivery';
 import { toast } from '@/hooks/use-toast';
 import { DeliveryPersonHistory } from './DeliveryPersonHistory';
 
-export const DeliveryPersonnel: React.FC = () => {
+interface DeliveryPersonnelProps {
+  effectiveSedeId: string;
+  currentSedeName: string;
+}
+
+export const DeliveryPersonnel: React.FC<DeliveryPersonnelProps> = ({
+  effectiveSedeId,
+  currentSedeName
+}) => {
   const {
     repartidores,
     totalOrdenesAsignadas,
@@ -20,7 +28,7 @@ export const DeliveryPersonnel: React.FC = () => {
     crearRepartidor,
     cambiarDisponibilidad,
     clearError
-  } = useDelivery();
+  } = useDelivery(effectiveSedeId);
 
   const [searchTerm, setSearchTerm] = useState('');
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);

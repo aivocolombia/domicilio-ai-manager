@@ -25,7 +25,8 @@ import {
   Pause,
   Package,
   ShoppingCart,
-  RefreshCw
+  RefreshCw,
+  Building2
 } from 'lucide-react';
 import { Order, Sede, User as UserType, PaymentMethod, DeliveryType, DeliverySettings } from '@/types/delivery';
 import { useMenu } from '@/hooks/useMenu';
@@ -38,6 +39,8 @@ interface SedeOrdersProps {
   sedes: Sede[];
   currentUser: UserType;
   settings: DeliverySettings;
+  effectiveSedeId: string;
+  currentSedeName: string;
   onCreateOrder: (order: Omit<Order, 'id' | 'createdAt' | 'estimatedDeliveryTime'>) => void;
   onTransferOrder: (orderId: string, targetSedeId: string) => void;
 }
@@ -47,6 +50,8 @@ export const SedeOrders: React.FC<SedeOrdersProps> = ({
   sedes, 
   currentUser, 
   settings,
+  effectiveSedeId,
+  currentSedeName,
   onCreateOrder, 
   onTransferOrder 
 }) => {
@@ -64,7 +69,7 @@ export const SedeOrders: React.FC<SedeOrdersProps> = ({
     createOrder,
     transferOrder: transferRealOrder,
     clearCustomer
-  } = useSedeOrders(profile?.sede_id);
+  } = useSedeOrders(effectiveSedeId);
 
   const [searchPhone, setSearchPhone] = useState('');
   const [showCreateDialog, setShowCreateDialog] = useState(false);
@@ -82,10 +87,11 @@ export const SedeOrders: React.FC<SedeOrdersProps> = ({
     pickupSede: '',
     // Campos adicionales para recogida en tienda
     pickupCustomerName: '',
-    pickupCustomerPhone: ''
+    pickupCustomerPhone: '',
+    // Tiempo de entrega en minutos (por defecto 90)
+    deliveryTimeMinutes: 90
   });
-  const [transferOrderId, setTransferOrderId] = useState('');
-  const [transferSedeId, setTransferSedeId] = useState('');
+
 
   // Usar SOLO pedidos reales - NUNCA legacy/dummy
   const orders = realOrders;
@@ -207,6 +213,7 @@ export const SedeOrders: React.FC<SedeOrdersProps> = ({
                    newOrder.paymentMethod === 'card' ? 'tarjeta' :
                    newOrder.paymentMethod === 'nequi' ? 'nequi' : 'transferencia',
         instrucciones: newOrder.specialInstructions || undefined,
+        delivery_time_minutes: newOrder.deliveryTimeMinutes,
         items: newOrder.items.map(item => {
           const product = platos.find(p => p.id.toString() === item.productId);
           if (product) {
@@ -249,7 +256,8 @@ export const SedeOrders: React.FC<SedeOrdersProps> = ({
         deliveryType: 'delivery',
         pickupSede: '',
         pickupCustomerName: '',
-        pickupCustomerPhone: ''
+        pickupCustomerPhone: '',
+        deliveryTimeMinutes: 90
       });
       setCustomerData({
         name: '',
@@ -269,26 +277,7 @@ export const SedeOrders: React.FC<SedeOrdersProps> = ({
     }
   };
 
-  const handleTransferOrder = async () => {
-    if (!transferOrderId || !transferSedeId) return;
-    
-    try {
-      // Intentar usar el servicio real primero
-      const orderId = parseInt(transferOrderId);
-      if (!isNaN(orderId)) {
-        await transferRealOrder(orderId, transferSedeId);
-      } else {
-        // Fallback a la función legacy
-        onTransferOrder(transferOrderId, transferSedeId);
-      }
-      
-      setTransferOrderId('');
-      setTransferSedeId('');
-    } catch (error) {
-      console.error('Error transfiriendo pedido:', error);
-      // El error ya se maneja en el hook useSedeOrders
-    }
-  };
+
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -413,7 +402,8 @@ export const SedeOrders: React.FC<SedeOrdersProps> = ({
                   deliveryType: 'delivery',
                   pickupSede: '',
                   pickupCustomerName: '',
-                  pickupCustomerPhone: ''
+                  pickupCustomerPhone: '',
+                  deliveryTimeMinutes: 90
                 });
                 setCustomerData({
                   name: '',
@@ -657,6 +647,23 @@ export const SedeOrders: React.FC<SedeOrdersProps> = ({
                   )}
 
                   <div>
+                    <Label htmlFor="deliveryTime">Tiempo de Entrega</Label>
+                    <Select 
+                      value={newOrder.deliveryTimeMinutes.toString()} 
+                      onValueChange={(value) => setNewOrder({ ...newOrder, deliveryTimeMinutes: parseInt(value) })}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Seleccionar tiempo de entrega" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="60">🚀 Rápido - 60 minutos</SelectItem>
+                        <SelectItem value="75">⏰ Estándar - 75 minutos</SelectItem>
+                        <SelectItem value="90">🕒 Normal - 90 minutos</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div>
                     <Label htmlFor="instructions">Instrucciones Especiales</Label>
                     <Textarea
                       id="instructions"
@@ -687,33 +694,26 @@ export const SedeOrders: React.FC<SedeOrdersProps> = ({
 
             <Separator />
 
-            <div>
-              <Label htmlFor="transferOrder">Transferir Pedido</Label>
-              <div className="flex gap-2">
-                <Input
-                  type="text"
-                  placeholder="ID del pedido"
-                  value={transferOrderId}
-                  onChange={(e) => setTransferOrderId(e.target.value)}
-                />
-                <Select value={transferSedeId} onValueChange={setTransferSedeId}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Seleccionar Sede" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {sedes
-                      .filter((sede) => sede.id !== currentUser.sede)
-                      .map((sede) => (
-                        <SelectItem key={sede.id} value={sede.id}>
-                          {sede.name}
-                        </SelectItem>
-                      ))}
-                  </SelectContent>
-                </Select>
-                <Button onClick={handleTransferOrder} variant="outline">
-                  Transferir
-                </Button>
+            <div className="p-4 bg-blue-50 rounded-lg">
+              <div className="flex items-center gap-2 mb-2">
+                <Building2 className="h-4 w-4 text-blue-600" />
+                <span className="font-medium text-blue-900">Transferir Pedido</span>
               </div>
+              <p className="text-sm text-blue-700 mb-3">
+                La funcionalidad de transferir pedido se ha movido al Dashboard. 
+                Ve a la pestaña "Dashboard" y usa el botón "Transferir Pedido" para mover pedidos entre sedes.
+              </p>
+              <Button 
+                variant="outline" 
+                size="sm"
+                onClick={() => {
+                  // Aquí podríamos navegar al dashboard si fuera necesario
+                  console.log('Ir al dashboard para transferir pedido');
+                }}
+                className="text-blue-600 border-blue-300 hover:bg-blue-100"
+              >
+                Ir al Dashboard
+              </Button>
             </div>
           </CardContent>
         </Card>

@@ -1,4 +1,4 @@
-# Configuración de Email en Supabase
+ordenes_duraciones_min# Configuración de Email en Supabase
 
 ## Desactivar Confirmación de Email para Usuarios Creados por Admin
 

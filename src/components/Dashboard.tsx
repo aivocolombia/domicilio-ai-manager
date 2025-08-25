@@ -24,12 +24,17 @@ import {
   AlertCircle,
   Calendar,
   Filter,
-  Download
+  Download,
+  Trash2
 } from 'lucide-react';
 import { Calendar as CalendarComponent } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
+import { Label } from '@/components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
+import { createDateRangeForQuery, formatDateTimeForDisplay, debugTodayFilter } from '@/utils/dateUtils';
 import { Order, OrderStatus, OrderSource, DeliverySettings, DeliveryPerson, PaymentMethod } from '@/types/delivery';
 import { OrderConfigModal } from './OrderConfigModal';
 import { cn } from '@/lib/utils';
@@ -37,6 +42,8 @@ import { useDashboard } from '@/hooks/useDashboard';
 import { DashboardOrder } from '@/services/dashboardService';
 import { useAuth } from '@/hooks/useAuth';
 import { toast } from '@/hooks/use-toast';
+import { sedeOrdersService } from '@/services/sedeOrdersService';
+import { supabase } from '@/lib/supabase';
 
 interface DashboardProps {
   orders: Order[];
@@ -69,6 +76,12 @@ export const Dashboard: React.FC<DashboardProps> = ({
     to: new Date()    // Hoy por defecto
   });
   const [isDatePickerOpen, setIsDatePickerOpen] = useState(false);
+  
+  // Estados para transferir pedido
+  const [transferOrderId, setTransferOrderId] = useState('');
+  const [transferSedeId, setTransferSedeId] = useState('');
+  const [isTransferModalOpen, setIsTransferModalOpen] = useState(false);
+  const [sedes, setSedes] = useState<Array<{ id: string; name: string }>>([]);
 
   // Obtener datos del usuario autenticado
   const { user, profile } = useAuth();
@@ -82,11 +95,86 @@ export const Dashboard: React.FC<DashboardProps> = ({
   // Hook para datos reales del dashboard
   // Usar effectiveSedeId cuando esté disponible (admin) o sede_id del usuario (agente)
   const sedeIdToUse = effectiveSedeId || profile?.sede_id;
+
+  // Cargar sedes cuando se abra el modal de transferencia
+  useEffect(() => {
+    if (isTransferModalOpen) {
+      loadSedes();
+    }
+  }, [isTransferModalOpen]);
   
   // Debug: Log sede information
   console.log('🏢 Dashboard: Effective Sede ID (Admin):', effectiveSedeId);
   console.log('🏢 Dashboard: Sede ID del usuario:', profile?.sede_id);
   console.log('🎯 Dashboard: Sede ID a usar:', sedeIdToUse);
+
+  // Cargar sedes disponibles
+  const loadSedes = async () => {
+    try {
+      const { data: sedesData, error } = await supabase
+        .from('sedes')
+        .select('id, name')
+        .eq('is_active', true)
+        .order('name');
+
+      if (error) {
+        console.error('❌ Error cargando sedes:', error);
+        return;
+      }
+
+      setSedes(sedesData || []);
+    } catch (error) {
+      console.error('❌ Error al cargar sedes:', error);
+    }
+  };
+
+  // Función para transferir pedido
+  const handleTransferOrder = async () => {
+    if (!transferOrderId || !transferSedeId) {
+      toast({
+        title: "Error",
+        description: "Por favor completa todos los campos",
+        variant: "destructive"
+      });
+      return;
+    }
+    
+    try {
+      const orderId = parseInt(transferOrderId);
+      if (isNaN(orderId)) {
+        toast({
+          title: "Error",
+          description: "ID de pedido inválido",
+          variant: "destructive"
+        });
+        return;
+      }
+
+      await sedeOrdersService.transferOrder(orderId, transferSedeId);
+      
+      toast({
+        title: "Pedido transferido",
+        description: `Pedido #${orderId} transferido exitosamente`,
+      });
+
+      // Limpiar formulario y cerrar modal
+      setTransferOrderId('');
+      setTransferSedeId('');
+      setIsTransferModalOpen(false);
+
+      // Recargar datos del dashboard
+      if (sedeIdToUse) {
+        loadDashboardOrders();
+      }
+    } catch (error) {
+      console.error('Error transfiriendo pedido:', error);
+      toast({
+        title: "Error",
+        description: error instanceof Error ? error.message : "No se pudo transferir el pedido",
+        variant: "destructive"
+      });
+    }
+  };
 
   // Función para descargar órdenes como CSV (solo admins)
   const downloadOrdersAsCSV = () => {
@@ -144,7 +232,8 @@ export const Dashboard: React.FC<DashboardProps> = ({
     error, 
     loadDashboardOrders,
     filterOrdersByStatus, 
-    refreshData 
+    refreshData,
+    deleteOrder
   } = useDashboard(sedeIdToUse);
 
   // Usar SOLO datos reales - NUNCA datos legacy para evitar mostrar datos dummy
@@ -156,24 +245,37 @@ export const Dashboard: React.FC<DashboardProps> = ({
     let filters: any = {};
     
     if (dateFilter === 'today') {
-      // Filtrar solo hoy (por defecto)
+      // Ejecutar diagnóstico completo
+      console.log('🔍 DASHBOARD: Iniciando diagnóstico de filtro "hoy"');
+      debugTodayFilter();
+      
+      // Filtrar solo hoy usando zona horaria local
       const today = new Date();
-      const startOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate());
-      const endOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate() + 1);
+      console.log('🕐 Fecha actual del sistema:', {
+        fecha: today.toLocaleDateString('es-CO'),
+        hora: today.toLocaleTimeString('es-CO'),
+        timestamp: today.toISOString(),
+        timezone: today.getTimezoneOffset()
+      });
       
-      filters.fechaInicio = startOfDay.toISOString();
-      filters.fechaFin = endOfDay.toISOString();
+      const dateRange = createDateRangeForQuery(today, today);
       
-      console.log('📅 Aplicando filtro "Solo Hoy":', { fechaInicio: filters.fechaInicio, fechaFin: filters.fechaFin });
+      filters.fechaInicio = dateRange.fechaInicio;
+      filters.fechaFin = dateRange.fechaFin;
+      
+      console.log('📅 DASHBOARD: Filtros finales aplicados:', { 
+        fechaInicio: filters.fechaInicio, 
+        fechaFin: filters.fechaFin,
+        fechaSistema: today.toLocaleDateString('es-CO')
+      });
     } else if (dateFilter === 'custom' && dateRange.from && dateRange.to) {
-      // Filtro personalizado con rango de fechas
-      const startOfDay = new Date(dateRange.from.getFullYear(), dateRange.from.getMonth(), dateRange.from.getDate());
-      const endOfDay = new Date(dateRange.to.getFullYear(), dateRange.to.getMonth(), dateRange.to.getDate() + 1);
+      // Filtro personalizado con rango de fechas usando zona horaria local
+      const rangeQuery = createDateRangeForQuery(dateRange.from, dateRange.to);
       
-      filters.fechaInicio = startOfDay.toISOString();
-      filters.fechaFin = endOfDay.toISOString();
+      filters.fechaInicio = rangeQuery.fechaInicio;
+      filters.fechaFin = rangeQuery.fechaFin;
       
-      console.log('📅 Aplicando filtro personalizado:', { fechaInicio: filters.fechaInicio, fechaFin: filters.fechaFin });
+      console.log('📅 Aplicando filtro personalizado (Colombia):', { fechaInicio: filters.fechaInicio, fechaFin: filters.fechaFin });
     }
     
     // Aplicar también el filtro de estado actual si existe
@@ -290,6 +392,29 @@ export const Dashboard: React.FC<DashboardProps> = ({
     });
   };
 
+  // Handler para eliminar orden (solo admin)
+  const handleDeleteOrder = async (orderId: number, orderDisplay: string) => {
+    if (!profile || profile.role !== 'admin') {
+      toast({
+        title: "Acceso denegado",
+        description: "Solo los administradores pueden eliminar órdenes",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    if (!confirm(`¿Estás seguro de que deseas eliminar la orden ${orderDisplay}? Esta acción no se puede deshacer.`)) {
+      return;
+    }
+
+    try {
+      await deleteOrder(orderId);
+    } catch (error) {
+      // El error ya se maneja en el hook useDashboard
+      console.error('Error eliminando orden:', error);
+    }
+  };
+
   const formatTime = (date: Date) => {
     return date.toLocaleTimeString('es-ES', { 
       hour: '2-digit', 
@@ -392,6 +517,15 @@ export const Dashboard: React.FC<DashboardProps> = ({
               Configurar ({selectedOrders.length})
             </Button>
           )}
+          
+          <Button
+            onClick={() => setIsTransferModalOpen(true)}
+            variant="outline"
+            className="flex items-center gap-2"
+          >
+            <Building2 className="h-4 w-4" />
+            Transferir Pedido
+          </Button>
         </div>
       </div>
 
@@ -574,12 +708,15 @@ export const Dashboard: React.FC<DashboardProps> = ({
                   <th className="text-left p-2">Total</th>
                   <th className="text-left p-2">Entrega</th>
                   <th className="text-left p-2">Creado</th>
+                  {profile?.role === 'admin' && (
+                    <th className="text-left p-2">Acciones</th>
+                  )}
                 </tr>
               </thead>
               <tbody>
                 {loading ? (
                   <tr>
-                    <td colSpan={12} className="p-8 text-center text-muted-foreground">
+                    <td colSpan={profile?.role === 'admin' ? 13 : 12} className="p-8 text-center text-muted-foreground">
                       <div className="flex items-center justify-center gap-2">
                         <RefreshCw className="h-4 w-4 animate-spin" />
                         Cargando órdenes...
@@ -588,7 +725,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                   </tr>
                 ) : filteredOrders.length === 0 ? (
                   <tr>
-                    <td colSpan={12} className="p-8 text-center text-muted-foreground">
+                    <td colSpan={profile?.role === 'admin' ? 13 : 12} className="p-8 text-center text-muted-foreground">
                       No se encontraron órdenes
                     </td>
                   </tr>
@@ -658,6 +795,19 @@ export const Dashboard: React.FC<DashboardProps> = ({
                         <td className="p-2 text-sm text-muted-foreground">
                           {realOrder.creado_hora}
                         </td>
+                        {profile?.role === 'admin' && (
+                          <td className="p-2">
+                            <Button
+                              variant="destructive"
+                              size="sm"
+                              onClick={() => handleDeleteOrder(realOrder.orden_id, realOrder.id_display)}
+                              className="h-8 w-8 p-0"
+                              title={`Eliminar orden ${realOrder.id_display}`}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </td>
+                        )}
                       </tr>
                     );
                   })
@@ -679,6 +829,62 @@ export const Dashboard: React.FC<DashboardProps> = ({
         onRefreshData={refreshData}
         currentSedeId={profile?.sede_id}
       />
+
+      {/* Modal para Transferir Pedido */}
+      <Dialog open={isTransferModalOpen} onOpenChange={setIsTransferModalOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Transferir Pedido</DialogTitle>
+            <DialogDescription>
+              Transfiere un pedido a otra sede del sistema
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="transfer-order-id">ID del Pedido</Label>
+              <Input
+                id="transfer-order-id"
+                type="text"
+                placeholder="Ingresa el ID del pedido"
+                value={transferOrderId}
+                onChange={(e) => setTransferOrderId(e.target.value)}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="transfer-sede">Seleccionar Sede</Label>
+              <Select value={transferSedeId} onValueChange={setTransferSedeId}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Selecciona la sede destino" />
+                </SelectTrigger>
+                <SelectContent>
+                  {sedes
+                    .filter(sede => sede.id !== sedeIdToUse) // Excluir la sede actual
+                    .map(sede => (
+                      <SelectItem key={sede.id} value={sede.id}>
+                        {sede.name}
+                      </SelectItem>
+                    ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="flex justify-end space-x-2">
+              <Button 
+                variant="outline" 
+                onClick={() => setIsTransferModalOpen(false)}
+              >
+                Cancelar
+              </Button>
+              <Button 
+                onClick={handleTransferOrder}
+                className="flex items-center gap-2"
+              >
+                <Building2 className="h-4 w-4" />
+                Transferir
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

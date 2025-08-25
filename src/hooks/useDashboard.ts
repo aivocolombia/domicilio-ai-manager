@@ -92,6 +92,33 @@ export const useDashboard = (sede_id?: string | number) => {
     loadDashboardOrders();
   }, [loadDashboardOrders]);
 
+  // Eliminar orden (solo para admins)
+  const deleteOrder = useCallback(async (orderId: number) => {
+    try {
+      await dashboardService.deleteOrder(orderId);
+      
+      // Actualizar el estado local removiendo la orden
+      setOrders(prevOrders => prevOrders.filter(order => order.orden_id !== orderId));
+      
+      toast({
+        title: "Orden eliminada",
+        description: `Orden #${orderId} eliminada exitosamente`,
+      });
+      
+      // Recargar datos para asegurar consistencia
+      loadDashboardOrders();
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Error desconocido';
+      console.error('❌ Error eliminando orden:', error);
+      toast({
+        title: "Error",
+        description: errorMessage,
+        variant: "destructive"
+      });
+      throw error;
+    }
+  }, [toast, loadDashboardOrders]);
+
   // Configurar suscripción en tiempo real
   useRealtimeOrders({
     sedeId: sede_id?.toString(),
@@ -122,6 +149,7 @@ export const useDashboard = (sede_id?: string | number) => {
     error,
     loadDashboardOrders,
     filterOrdersByStatus,
-    refreshData
+    refreshData,
+    deleteOrder
   };
 }; 

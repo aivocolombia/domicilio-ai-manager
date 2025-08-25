@@ -1,4 +1,5 @@
 import { supabase } from '@/lib/supabase';
+import { formatDateForQuery } from '@/utils/dateUtils';
 
 export interface MetricsByDay {
   fecha: string;
@@ -91,95 +92,95 @@ export class MetricsService {
     try {
       console.log('📊 Obteniendo métricas por día:', filters);
 
-      // Primero verificar órdenes entregadas sin filtro de pago para debug
-      const { data: debugData, error: debugError } = await supabase
-        .from('ordenes')
+      // Convertir fechas del filtro a rangos UTC correctos
+      const startDate = new Date(`${filters.fecha_inicio}T00:00:00`);
+      const endDate = new Date(`${filters.fecha_fin}T23:59:59`);
+      
+      const startQuery = formatDateForQuery(startDate, false);
+      const endQuery = formatDateForQuery(endDate, true);
+      
+      console.log('📅 MetricsService: Fechas de consulta convertidas:', {
+        original: { inicio: filters.fecha_inicio, fin: filters.fecha_fin },
+        converted: { inicio: startQuery, fin: endQuery }
+      });
+
+      // Query principal usando ordenes_duraciones_con_sede que tiene los datos completos
+      let query = supabase
+        .from('ordenes_duraciones_con_sede')
         .select(`
           id,
           created_at,
           status,
-          payment_id,
-          cliente_id,
-          sede_id
+          sede_id,
+          sede_nombre
         `)
-        .gte('created_at', `${filters.fecha_inicio}T00:00:00.000Z`)
-        .lte('created_at', `${filters.fecha_fin}T23:59:59.999Z`)
-        .eq('status', 'Entregados')
-        .order('created_at', { ascending: false });
-
-      if (debugError) {
-        console.error('❌ Error en query debug:', debugError);
-      } else {
-        console.log('🔍 DEBUG - Órdenes entregadas encontradas:', debugData?.length || 0);
-        debugData?.forEach((orden, index) => {
-          console.log(`🔍 Orden ${index + 1}:`, {
-            id: orden.id,
-            created_at: orden.created_at,
-            payment_id: orden.payment_id,
-            cliente_id: orden.cliente_id,
-            sede_id: orden.sede_id
-          });
-        });
-      }
-
-      // Query principal con LEFT JOIN para no perder órdenes sin pago
-      let query = supabase
-        .from('ordenes')
-        .select(`
-          id,
-          created_at,
-          cliente_id,
-          pagos!left(total_pago),
-          sede_id
-        `)
-        .gte('created_at', `${filters.fecha_inicio}T00:00:00.000Z`)
-        .lte('created_at', `${filters.fecha_fin}T23:59:59.999Z`)
-        .eq('status', 'Entregados'); // Solo pedidos completados
+        .gte('created_at', startQuery)
+        .lte('created_at', endQuery);
 
       if (filters.sede_id) {
         query = query.eq('sede_id', filters.sede_id);
       }
 
-      const { data, error } = await query;
+      const { data: ordenesData, error } = await query;
 
       if (error) {
         console.error('❌ Error obteniendo métricas por día:', error);
         throw new Error(`Error obteniendo métricas: ${error.message}`);
       }
 
-      console.log('🔍 DEBUG - Datos obtenidos para métricas:', data?.length || 0);
-      data?.forEach((orden, index) => {
-        console.log(`🔍 Métrica ${index + 1}:`, {
-          id: orden.id,
-          created_at: orden.created_at,
-          cliente_id: orden.cliente_id,
-          total_pago: orden.pagos?.total_pago || 0,
-          sede_id: orden.sede_id
-        });
+      console.log('✅ Órdenes obtenidas para métricas:', ordenesData?.length || 0);
+      console.log('🔍 DEBUG getMetricsByDay - Rango aplicado:', {
+        fecha_inicio: `${filters.fecha_inicio}T00:00:00`,
+        fecha_fin: `${filters.fecha_fin}T23:59:59`
+      });
+      if (ordenesData && ordenesData.length > 0) {
+        console.log('📅 DEBUG - Fechas de órdenes encontradas:', ordenesData.map(o => ({
+          id: o.id,
+          fecha: o.created_at,
+          fecha_solo: new Date(o.created_at).toISOString().split('T')[0]
+        })));
+      }
+
+      // Obtener pagos por separado
+      let pagosData: any[] = [];
+      if (ordenesData && ordenesData.length > 0) {
+        const ordenIds = ordenesData.map(o => o.id);
+        const { data: pagosResult, error: pagosError } = await supabase
+          .from('ordenes')
+          .select(`
+            id,
+            pagos!left(total_pago)
+          `)
+          .in('id', ordenIds);
+
+        if (pagosError) {
+          console.error('⚠️ Error obteniendo pagos:', pagosError);
+        } else {
+          pagosData = pagosResult || [];
+        }
+      }
+
+      // Crear mapa de pagos por orden_id
+      const pagosMap = new Map();
+      pagosData.forEach(orden => {
+        if (orden.pagos) {
+          pagosMap.set(orden.id, orden.pagos.total_pago);
+        }
       });
 
       // Procesar datos para agrupar por día
       const metricasPorDia = new Map<string, { pedidos: number; ingresos: number }>();
 
-      data?.forEach((orden, index) => {
+      ordenesData?.forEach((orden) => {
         const fecha = new Date(orden.created_at).toISOString().split('T')[0];
-        const ingresos = orden.pagos?.total_pago || 0;
-
-        console.log(`🔍 Procesando orden ${index + 1} - ID: ${orden.id}:`, {
-          fecha,
-          ingresos,
-          cliente_id: orden.cliente_id,
-          existing_in_map: metricasPorDia.has(fecha)
-        });
+        const ingresos = pagosMap.get(orden.id) || 0;
 
         if (metricasPorDia.has(fecha)) {
           const existing = metricasPorDia.get(fecha)!;
           existing.pedidos += 1;
           existing.ingresos += ingresos;
-          console.log(`🔄 Actualizando fecha ${fecha}:`, existing);
         } else {
           metricasPorDia.set(fecha, { pedidos: 1, ingresos });
-          console.log(`➕ Nueva fecha ${fecha}:`, { pedidos: 1, ingresos });
         }
       });
 
@@ -191,8 +192,7 @@ export class MetricsService {
         promedio_por_pedido: datos.pedidos > 0 ? datos.ingresos / datos.pedidos : 0
       }));
 
-      console.log('✅ Métricas por día obtenidas:', resultado.length);
-      console.log('📊 Resultado final:', resultado);
+      console.log('✅ Métricas por día calculadas:', resultado.length, 'días');
       return resultado.sort((a, b) => a.fecha.localeCompare(b.fecha));
     } catch (error) {
       console.error('❌ Error en getMetricsByDay:', error);
@@ -208,18 +208,18 @@ export class MetricsService {
       let query = supabase
         .from('ordenes')
         .select(`
+          id,
+          created_at,
+          sede_id,
           ordenes_platos(
             platos(id, name, pricing)
           ),
           ordenes_bebidas(
             bebidas(id, name, pricing)
-          ),
-          created_at,
-          sede_id
+          )
         `)
-        .gte('created_at', `${filters.fecha_inicio}T00:00:00.000Z`)
-        .lte('created_at', `${filters.fecha_fin}T23:59:59.999Z`)
-        .eq('status', 'Entregados');
+        .gte('created_at', `${filters.fecha_inicio}T00:00:00`)
+        .lte('created_at', `${filters.fecha_fin}T23:59:59`);
 
       if (filters.sede_id) {
         query = query.eq('sede_id', filters.sede_id);
@@ -310,22 +310,51 @@ export class MetricsService {
     try {
       console.log('🏢 Obteniendo métricas por sede:', filters);
 
-      const { data, error } = await supabase
-        .from('ordenes')
+      // Obtener datos de sedes desde ordenes_duraciones_con_sede
+      const { data: sedeData, error: sedeError } = await supabase
+        .from('ordenes_duraciones_con_sede')
         .select(`
           sede_id,
           status,
-          pagos!inner(total_pago),
           created_at,
-          sedes!inner(name)
+          sede_nombre
         `)
-        .gte('created_at', `${filters.fecha_inicio}T00:00:00.000Z`)
-        .lte('created_at', `${filters.fecha_fin}T23:59:59.999Z`);
+        .gte('created_at', `${filters.fecha_inicio}T00:00:00`)
+        .lte('created_at', `${filters.fecha_fin}T23:59:59`);
 
-      if (error) {
-        console.error('❌ Error obteniendo métricas por sede:', error);
-        throw new Error(`Error obteniendo métricas por sede: ${error.message}`);
+      if (sedeError) {
+        console.error('❌ Error obteniendo métricas por sede:', sedeError);
+        throw new Error(`Error obteniendo métricas por sede: ${sedeError.message}`);
       }
+
+      // Obtener pagos por separado
+      let pagosData: any[] = [];
+      if (sedeData && sedeData.length > 0) {
+        const ordenIds = sedeData.map(o => o.id);
+        const { data: pagosResult, error: pagosError } = await supabase
+          .from('ordenes')
+          .select(`
+            id,
+            pagos!left(total_pago)
+          `)
+          .in('id', ordenIds);
+
+        if (pagosError) {
+          console.error('⚠️ Error obteniendo pagos para sede metrics:', pagosError);
+        } else {
+          pagosData = pagosResult || [];
+        }
+      }
+
+      // Crear mapa de pagos por orden_id
+      const pagosMap = new Map();
+      pagosData.forEach(orden => {
+        if (orden.pagos) {
+          pagosMap.set(orden.id, orden.pagos.total_pago);
+        }
+      });
+
+      const data = sedeData;
 
       // Procesar datos por sede
       const sedesMap = new Map<string, {
@@ -337,8 +366,8 @@ export class MetricsService {
 
       data?.forEach(orden => {
         const sedeId = orden.sede_id;
-        const sedeName = orden.sedes?.name || 'Sede desconocida';
-        const ingresos = orden.status === 'Entregados' ? (orden.pagos?.total_pago || 0) : 0;
+        const sedeName = orden.sede_nombre || 'Sede desconocida';
+        const ingresos = orden.status === 'Entregados' ? (pagosMap.get(orden.id) || 0) : 0;
         const esCompletado = orden.status === 'Entregados';
         const esActivo = !esCompletado;
 
@@ -385,14 +414,13 @@ export class MetricsService {
       console.log('⏰ Obteniendo métricas por hora:', filters);
 
       let query = supabase
-        .from('ordenes')
+        .from('ordenes_duraciones_con_sede')
         .select(`
           created_at,
           sede_id
         `)
-        .gte('created_at', `${filters.fecha_inicio}T00:00:00.000Z`)
-        .lte('created_at', `${filters.fecha_fin}T23:59:59.999Z`)
-        .eq('status', 'Entregados');
+        .gte('created_at', `${filters.fecha_inicio}T00:00:00`)
+        .lte('created_at', `${filters.fecha_fin}T23:59:59`);
 
       if (filters.sede_id) {
         query = query.eq('sede_id', filters.sede_id);
@@ -440,7 +468,7 @@ export class MetricsService {
   // Obtener todas las métricas del dashboard
   async getDashboardMetrics(filters: MetricsFilters): Promise<DashboardMetrics> {
     try {
-      console.log('📈 Obteniendo todas las métricas del dashboard:', filters);
+      console.log('📈 Obteniendo métricas del dashboard:', filters);
 
       const [
         metricasPorDia,
@@ -471,7 +499,13 @@ export class MetricsService {
         }
       };
 
-      console.log('✅ Todas las métricas del dashboard obtenidas');
+      console.log('✅ Todas las métricas del dashboard obtenidas:', {
+        metricasPorDia_count: metricasPorDia.length,
+        totalPedidos,
+        totalIngresos,
+        promedioGeneral,
+        productosMasVendidos_count: productosMasVendidos.length
+      });
       return resultado;
     } catch (error) {
       console.error('❌ Error en getDashboardMetrics:', error);
@@ -487,7 +521,7 @@ export class MetricsService {
       console.log('⏱️ MetricsService: Consultando métricas de tiempo de órdenes...');
       console.log('🔍 MetricsService: Filtros aplicados:', filters);
 
-      // Construir query base - usar el nombre real de la tabla de métricas de tiempo
+      // Construir query base - usar la tabla correcta de métricas de tiempo
       let query = supabase
         .from('ordenes_duraciones_con_sede')
         .select('*')
@@ -501,12 +535,12 @@ export class MetricsService {
 
       if (filters.fecha_inicio) {
         console.log('📅 MetricsService: Filtrando desde fecha:', filters.fecha_inicio);
-        query = query.gte('created_at', `${filters.fecha_inicio}T00:00:00.000Z`);
+        query = query.gte('created_at', `${filters.fecha_inicio}T00:00:00`);
       }
       
       if (filters.fecha_fin) {
         console.log('📅 MetricsService: Filtrando hasta fecha:', filters.fecha_fin);
-        query = query.lte('created_at', `${filters.fecha_fin}T23:59:59.999Z`);
+        query = query.lte('created_at', `${filters.fecha_fin}T23:59:59`);
       }
 
       const { data, error } = await query.limit(500); // Incrementar límite para más datos
@@ -517,6 +551,26 @@ export class MetricsService {
       }
 
       console.log('✅ MetricsService: Métricas de tiempo obtenidas:', data?.length || 0);
+      
+      // Debug: Mostrar algunos registros si existen
+      if (data && data.length > 0) {
+        console.log('🔍 MetricsService: Primeros 3 registros:', data.slice(0, 3));
+      } else {
+        console.log('⚠️ MetricsService: No se encontraron datos en ordenes_duraciones_con_sede');
+        
+        // Verificar si la tabla/vista existe
+        const { data: tableCheck, error: tableError } = await supabase
+          .from('ordenes_duraciones_con_sede')
+          .select('id')
+          .limit(1);
+        
+        if (tableError) {
+          console.error('❌ MetricsService: Error verificando tabla ordenes_duraciones_con_sede:', tableError);
+        } else {
+          console.log('✅ MetricsService: Tabla ordenes_duraciones_con_sede existe, pero no hay datos en el rango especificado');
+        }
+      }
+      
       return data || [];
     } catch (error) {
       console.error('❌ Error en getOrderTimeMetrics:', error);

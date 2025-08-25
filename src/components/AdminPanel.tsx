@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Plus, Search, Edit, Trash2, Users, Building2, UserCheck, UserX, TrendingUp, DollarSign, Package, Clock, LayoutDashboard, Phone, MapPin, Settings, RefreshCw, Cog, ChartLine, Timer, BarChart3 } from 'lucide-react'
+import { Plus, Search, Edit, Trash2, Users, Building2, UserCheck, UserX, TrendingUp, DollarSign, Package, Clock, LayoutDashboard, Phone, MapPin, Settings, RefreshCw, Cog, ChartLine, Timer, BarChart3, Truck } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -15,7 +15,7 @@ import { supabase, type Database } from '@/lib/supabase'
 import { useAuth } from '@/hooks/useAuth'
 import { useAdminTab } from '@/hooks/useAdminTab'
 import { useAdminSection } from '@/hooks/useAdminSection'
-import { adminService, CreateUserData, User, CreateSedeData, UpdateSedeData, Sede } from '@/services/adminService'
+import { adminService, CreateUserData, User, CreateSedeData, UpdateSedeData, Sede, Repartidor } from '@/services/adminService'
 import { metricsService, DashboardMetrics, MetricsFilters } from '@/services/metricsService'
 import { Calendar } from '@/components/ui/calendar'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
@@ -36,6 +36,18 @@ export function AdminPanel({ onBack, onNavigateToTimeMetrics }: AdminPanelProps)
   const [users, setUsers] = useState<Profile[]>([])
   const [sedes, setSedes] = useState<Sede[]>([])
   const [sedesSimple, setSedesSimple] = useState<Array<{ id: string; name: string }>>([])
+  const [repartidores, setRepartidores] = useState<Repartidor[]>([])
+  const [selectedRepartidor, setSelectedRepartidor] = useState<Repartidor | null>(null)
+  const [isRepartidorSedeEditOpen, setIsRepartidorSedeEditOpen] = useState(false)
+  const [repartidorSedeFormData, setRepartidorSedeFormData] = useState({ sede_id: '' })
+  const [isCreateRepartidorOpen, setIsCreateRepartidorOpen] = useState(false)
+  const [isDeleteRepartidorOpen, setIsDeleteRepartidorOpen] = useState(false)
+  const [repartidorFormData, setRepartidorFormData] = useState({
+    nombre: '',
+    telefono: '',
+    placas: '',
+    sede_id: ''
+  })
   const [searchTerm, setSearchTerm] = useState('')
   const [loading, setLoading] = useState(true)
   const [isCreateUserOpen, setIsCreateUserOpen] = useState(false)
@@ -76,8 +88,8 @@ export function AdminPanel({ onBack, onNavigateToTimeMetrics }: AdminPanelProps)
   const [selectedDate, setSelectedDate] = useState<Date>(new Date())
   const [selectedSedeFilter, setSelectedSedeFilter] = useState<string>('all')
   const [dateRange, setDateRange] = useState<{ from: Date; to: Date }>({
-    from: new Date(new Date().setDate(new Date().getDate() - 7)), // Última semana
-    to: new Date()
+    from: new Date(), // Hoy por defecto
+    to: new Date()    // Hoy por defecto
   })
 
   useEffect(() => {
@@ -85,12 +97,16 @@ export function AdminPanel({ onBack, onNavigateToTimeMetrics }: AdminPanelProps)
     fetchUsers()
     fetchSedes()
     fetchSedesComplete()
-    loadMetrics()
+    fetchRepartidores()
+    // loadMetrics() se ejecutará por el otro useEffect
   }, [])
 
-  // Recargar métricas cuando cambien los filtros
+  // Recargar métricas cuando cambien los filtros - solo si dateRange está inicializado
   useEffect(() => {
-    loadMetrics()
+    if (dateRange.from && dateRange.to) {
+      console.log('🔄 Recargando métricas por cambio de filtros...');
+      loadMetrics();
+    }
   }, [dateRange, selectedSedeFilter])
 
   const fetchUsers = async () => {
@@ -152,6 +168,12 @@ export function AdminPanel({ onBack, onNavigateToTimeMetrics }: AdminPanelProps)
     try {
       setMetricsLoading(true)
       console.log('📊 Cargando métricas...')
+      console.log('🔍 DEBUG dateRange:', {
+        from: dateRange.from,
+        to: dateRange.to,
+        from_iso: dateRange.from.toISOString(),
+        to_iso: dateRange.to.toISOString()
+      })
 
       const filters: MetricsFilters = {
         fecha_inicio: format(dateRange.from, 'yyyy-MM-dd'),
@@ -173,7 +195,9 @@ export function AdminPanel({ onBack, onNavigateToTimeMetrics }: AdminPanelProps)
       console.log('✅ Métricas cargadas exitosamente:', {
         metricasPorDia: metrics.metricasPorDia?.length || 0,
         totalPedidos: metrics.totalGeneral?.pedidos || 0,
-        totalIngresos: metrics.totalGeneral?.ingresos || 0
+        totalIngresos: metrics.totalGeneral?.ingresos || 0,
+        promedio: metrics.totalGeneral?.promedio || 0,
+        rawMetrics: JSON.stringify(metrics, null, 2)
       })
     } catch (error) {
       console.error('❌ Error cargando métricas:', error)
@@ -433,9 +457,180 @@ export function AdminPanel({ onBack, onNavigateToTimeMetrics }: AdminPanelProps)
     }
   }
 
+  const handleDeleteUser = async (userId: string, userName: string, userEmail: string) => {
+    if (!confirm(`¿Estás seguro de que deseas eliminar el usuario "${userName}" (${userEmail})? Esta acción no se puede deshacer.`)) {
+      return
+    }
+
+    try {
+      await adminService.deleteUser(userId)
+      
+      toast({
+        title: "Usuario eliminado",
+        description: `El usuario ${userName} ha sido eliminado exitosamente`,
+      })
+
+      fetchUsers()
+    } catch (error: any) {
+      console.error('Error deleting user:', error)
+      toast({
+        title: "Error",
+        description: "No se pudo eliminar el usuario",
+        variant: "destructive",
+      })
+    }
+  }
+
+  // ======= FUNCIONES PARA REPARTIDORES =======
+
+  const fetchRepartidores = async () => {
+    try {
+      console.log('🔍 Intentando obtener repartidores...')
+      const repartidoresData = await adminService.getRepartidores()
+      setRepartidores(repartidoresData)
+      console.log('✅ Repartidores obtenidos:', repartidoresData.length)
+    } catch (error) {
+      console.error('❌ Error fetching repartidores:', error)
+      toast({
+        title: "Error",
+        description: "No se pudieron cargar los repartidores",
+        variant: "destructive",
+      })
+    }
+  }
+
+  const handleRepartidorSedeEdit = (repartidor: Repartidor) => {
+    setSelectedRepartidor(repartidor)
+    setRepartidorSedeFormData({ sede_id: repartidor.sede_id || '' })
+    setIsRepartidorSedeEditOpen(true)
+  }
+
+  const handleUpdateRepartidorSede = async (e: React.FormEvent) => {
+    e.preventDefault()
+    
+    if (!selectedRepartidor) return
+    
+    try {
+      await adminService.updateRepartidorSede(
+        selectedRepartidor.id, 
+        repartidorSedeFormData.sede_id || null
+      )
+      
+      toast({
+        title: "Sede actualizada",
+        description: `La sede del repartidor ${selectedRepartidor.nombre} ha sido actualizada exitosamente`,
+      })
+      
+      setIsRepartidorSedeEditOpen(false)
+      setSelectedRepartidor(null)
+      setRepartidorSedeFormData({ sede_id: '' })
+      fetchRepartidores()
+    } catch (error: any) {
+      console.error('Error updating repartidor sede:', error)
+      toast({
+        title: "Error",
+        description: error.message || "No se pudo actualizar la sede del repartidor",
+        variant: "destructive",
+      })
+    }
+  }
+
+  const toggleRepartidorStatus = async (repartidorId: number, currentStatus: boolean) => {
+    try {
+      await adminService.updateRepartidorStatus(repartidorId, !currentStatus)
+
+      toast({
+        title: currentStatus ? "Repartidor desactivado" : "Repartidor activado",
+        description: `El repartidor ha sido ${currentStatus ? 'desactivado' : 'activado'} exitosamente`,
+      })
+
+      fetchRepartidores()
+    } catch (error: any) {
+      console.error('Error updating repartidor:', error)
+      toast({
+        title: "Error",
+        description: "No se pudo actualizar el repartidor",
+        variant: "destructive",
+      })
+    }
+  }
+
+  const handleCreateRepartidor = async (e: React.FormEvent) => {
+    e.preventDefault()
+    
+    if (!repartidorFormData.nombre.trim() || !repartidorFormData.telefono.trim()) {
+      toast({
+        title: "Error",
+        description: "Por favor completa los campos obligatorios (nombre y teléfono)",
+        variant: "destructive",
+      })
+      return
+    }
+
+    try {
+      await adminService.createRepartidor({
+        nombre: repartidorFormData.nombre.trim(),
+        telefono: repartidorFormData.telefono.trim(),
+        placas: repartidorFormData.placas.trim() || undefined,
+        sede_id: repartidorFormData.sede_id || null
+      })
+
+      toast({
+        title: "Repartidor creado",
+        description: `El repartidor ${repartidorFormData.nombre} ha sido creado exitosamente`,
+      })
+
+      setIsCreateRepartidorOpen(false)
+      setRepartidorFormData({
+        nombre: '',
+        telefono: '',
+        placas: '',
+        sede_id: ''
+      })
+      fetchRepartidores()
+    } catch (error: any) {
+      console.error('Error creating repartidor:', error)
+      toast({
+        title: "Error",
+        description: error.message || "No se pudo crear el repartidor",
+        variant: "destructive",
+      })
+    }
+  }
+
+  const handleDeleteRepartidor = async () => {
+    if (!selectedRepartidor) return
+
+    try {
+      await adminService.deleteRepartidor(selectedRepartidor.id)
+
+      toast({
+        title: "Repartidor eliminado",
+        description: `El repartidor ${selectedRepartidor.nombre} ha sido eliminado exitosamente`,
+      })
+
+      setIsDeleteRepartidorOpen(false)
+      setSelectedRepartidor(null)
+      fetchRepartidores()
+    } catch (error: any) {
+      console.error('Error deleting repartidor:', error)
+      toast({
+        title: "Error",
+        description: error.message || "No se pudo eliminar el repartidor",
+        variant: "destructive",
+      })
+    }
+  }
+
   const filteredUsers = users.filter(user =>
     user.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
     user.email.toLowerCase().includes(searchTerm.toLowerCase())
+  )
+
+  const filteredRepartidores = repartidores.filter(repartidor =>
+    repartidor.nombre.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    repartidor.telefono.includes(searchTerm) ||
+    (repartidor.placas && repartidor.placas.toLowerCase().includes(searchTerm.toLowerCase()))
   )
 
   const getRoleBadge = (role: string) => {
@@ -637,7 +832,7 @@ export function AdminPanel({ onBack, onNavigateToTimeMetrics }: AdminPanelProps)
 
         {/* Tabs para Gestión */}
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-          <TabsList className="grid w-full grid-cols-2">
+          <TabsList className="grid w-full grid-cols-3">
             <TabsTrigger value="users" className="flex items-center gap-2">
               <Users className="h-4 w-4" />
               Usuarios
@@ -645,6 +840,10 @@ export function AdminPanel({ onBack, onNavigateToTimeMetrics }: AdminPanelProps)
             <TabsTrigger value="sedes" className="flex items-center gap-2">
               <Building2 className="h-4 w-4" />
               Sedes
+            </TabsTrigger>
+            <TabsTrigger value="repartidores" className="flex items-center gap-2">
+              <Truck className="h-4 w-4" />
+              Repartidores
             </TabsTrigger>
           </TabsList>
 
@@ -825,6 +1024,7 @@ export function AdminPanel({ onBack, onNavigateToTimeMetrics }: AdminPanelProps)
                               variant="outline"
                               size="sm"
                               onClick={() => toggleUserStatus(user.id, user.is_active)}
+                              title={user.is_active ? 'Desactivar usuario' : 'Activar usuario'}
                             >
                               {user.is_active ? <UserX className="h-4 w-4" /> : <UserCheck className="h-4 w-4" />}
                             </Button>
@@ -832,8 +1032,17 @@ export function AdminPanel({ onBack, onNavigateToTimeMetrics }: AdminPanelProps)
                               variant="outline"
                               size="sm"
                               onClick={() => handleUserSedeEdit(user)}
+                              title="Editar sede del usuario"
                             >
                               <Building2 className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              variant="destructive"
+                              size="sm"
+                              onClick={() => handleDeleteUser(user.id, user.name, user.email)}
+                              title="Eliminar usuario"
+                            >
+                              <Trash2 className="h-4 w-4" />
                             </Button>
                           </div>
                         </TableCell>
@@ -1024,6 +1233,127 @@ export function AdminPanel({ onBack, onNavigateToTimeMetrics }: AdminPanelProps)
               </CardContent>
             </Card>
           </TabsContent>
+
+          {/* Tab Content: Repartidores */}
+          <TabsContent value="repartidores">
+            <Card>
+              <CardHeader>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <CardTitle>Gestión de Repartidores</CardTitle>
+                    <CardDescription>
+                      Administra los repartidores y sus asignaciones de sede
+                    </CardDescription>
+                  </div>
+                  <Button onClick={() => setIsCreateRepartidorOpen(true)} className="flex items-center gap-2">
+                    <Plus className="h-4 w-4" />
+                    Agregar Repartidor
+                  </Button>
+                </div>
+              </CardHeader>
+              <CardContent>
+                <div className="flex items-center justify-between mb-6">
+                  <div className="flex items-center space-x-2">
+                    <Search className="h-4 w-4" />
+                    <Input
+                      placeholder="Buscar repartidores..."
+                      value={searchTerm}
+                      onChange={(e) => setSearchTerm(e.target.value)}
+                      className="max-w-sm"
+                    />
+                  </div>
+                  <div className="text-sm text-muted-foreground">
+                    {filteredRepartidores.length} de {repartidores.length} repartidores
+                  </div>
+                </div>
+
+                {loading ? (
+                  <div className="text-center py-4">Cargando repartidores...</div>
+                ) : (
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Repartidor</TableHead>
+                        <TableHead>Teléfono</TableHead>
+                        <TableHead>Placas</TableHead>
+                        <TableHead>Sede</TableHead>
+                        <TableHead>Disponibilidad</TableHead>
+                        <TableHead>Acciones</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {filteredRepartidores.map((repartidor) => (
+                        <TableRow key={repartidor.id}>
+                          <TableCell>
+                            <div>
+                              <div className="font-medium">{repartidor.nombre}</div>
+                              <div className="text-sm text-muted-foreground">ID: {repartidor.id}</div>
+                            </div>
+                          </TableCell>
+                          <TableCell>{repartidor.telefono}</TableCell>
+                          <TableCell>
+                            {repartidor.placas ? (
+                              <span className="text-sm font-medium">{repartidor.placas}</span>
+                            ) : (
+                              <span className="text-sm text-muted-foreground">Sin placas</span>
+                            )}
+                          </TableCell>
+                          <TableCell>
+                            {repartidor.sede_id ? (
+                              <span className="text-sm text-muted-foreground">
+                                {repartidor.sede_name || 'N/A'}
+                              </span>
+                            ) : (
+                              <span className="text-sm text-muted-foreground">Sin sede</span>
+                            )}
+                          </TableCell>
+                          <TableCell>
+                            {repartidor.disponible ? (
+                              <Badge variant="default">Disponible</Badge>
+                            ) : (
+                              <Badge variant="secondary">No Disponible</Badge>
+                            )}
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex gap-2">
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => toggleRepartidorStatus(repartidor.id, repartidor.disponible)}
+                                title={repartidor.disponible ? 'Desactivar repartidor' : 'Activar repartidor'}
+                              >
+                                {repartidor.disponible ? <UserX className="h-4 w-4" /> : <UserCheck className="h-4 w-4" />}
+                              </Button>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => handleRepartidorSedeEdit(repartidor)}
+                                title="Cambiar sede del repartidor"
+                              >
+                                <Building2 className="h-4 w-4" />
+                              </Button>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => {
+                                  setSelectedRepartidor(repartidor)
+                                  setIsDeleteRepartidorOpen(true)
+                                }}
+                                title="Eliminar repartidor"
+                                className="text-red-600 hover:text-red-700"
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
         </Tabs>
           </div>
         ) : (
@@ -1065,6 +1395,56 @@ export function AdminPanel({ onBack, onNavigateToTimeMetrics }: AdminPanelProps)
                       {/* Selector de Rango de Fechas */}
                       <div className="flex flex-col gap-2">
                         <Label>Rango de Fechas</Label>
+                        
+                        {/* Botones de acceso rápido */}
+                        <div className="flex flex-wrap gap-2 mb-2">
+                          <Button 
+                            variant="outline" 
+                            size="sm"
+                            onClick={() => {
+                              const today = new Date();
+                              setDateRange({ from: today, to: today });
+                            }}
+                          >
+                            Hoy
+                          </Button>
+                          <Button 
+                            variant="outline" 
+                            size="sm"
+                            onClick={() => {
+                              const yesterday = new Date();
+                              yesterday.setDate(yesterday.getDate() - 1);
+                              setDateRange({ from: yesterday, to: yesterday });
+                            }}
+                          >
+                            Ayer
+                          </Button>
+                          <Button 
+                            variant="outline" 
+                            size="sm"
+                            onClick={() => {
+                              const today = new Date();
+                              const lastWeek = new Date();
+                              lastWeek.setDate(today.getDate() - 7);
+                              setDateRange({ from: lastWeek, to: today });
+                            }}
+                          >
+                            Última semana
+                          </Button>
+                          <Button 
+                            variant="outline" 
+                            size="sm"
+                            onClick={() => {
+                              const today = new Date();
+                              const lastMonth = new Date();
+                              lastMonth.setMonth(today.getMonth() - 1);
+                              setDateRange({ from: lastMonth, to: today });
+                            }}
+                          >
+                            Último mes
+                          </Button>
+                        </div>
+                        
                         <div className="flex gap-2">
                           <Popover>
                             <PopoverTrigger asChild>
@@ -1078,7 +1458,7 @@ export function AdminPanel({ onBack, onNavigateToTimeMetrics }: AdminPanelProps)
                                 mode="single"
                                 selected={dateRange.from}
                                 onSelect={(date) => date && setDateRange({ ...dateRange, from: date })}
-                                disabled={(date) => date > new Date() || date < new Date("2024-01-01")}
+                                disabled={(date) => date < new Date("2020-01-01")}
                                 initialFocus
                               />
                             </PopoverContent>
@@ -1098,7 +1478,7 @@ export function AdminPanel({ onBack, onNavigateToTimeMetrics }: AdminPanelProps)
                                 mode="single"
                                 selected={dateRange.to}
                                 onSelect={(date) => date && setDateRange({ ...dateRange, to: date })}
-                                disabled={(date) => date > new Date() || date < dateRange.from}
+                                disabled={(date) => date < dateRange.from}
                                 initialFocus
                               />
                             </PopoverContent>
@@ -1360,6 +1740,142 @@ export function AdminPanel({ onBack, onNavigateToTimeMetrics }: AdminPanelProps)
                 </Button>
               </div>
             </form>
+          </DialogContent>
+        </Dialog>
+
+        {/* Modal para Reasignar Sede de Repartidor */}
+        <Dialog open={isRepartidorSedeEditOpen} onOpenChange={setIsRepartidorSedeEditOpen}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Reasignar Sede de Repartidor</DialogTitle>
+              <DialogDescription>
+                Cambia la sede asignada a {selectedRepartidor?.nombre}
+              </DialogDescription>
+            </DialogHeader>
+            <form onSubmit={handleUpdateRepartidorSede} className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="repartidor-sede-select">Nueva Sede</Label>
+                <Select value={repartidorSedeFormData.sede_id} onValueChange={(value) => setRepartidorSedeFormData({ sede_id: value })}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Seleccionar sede" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="">Sin sede</SelectItem>
+                    {sedesSimple.map((sede) => (
+                      <SelectItem key={sede.id} value={sede.id}>
+                        {sede.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="flex justify-end space-x-2">
+                <Button type="button" variant="outline" onClick={() => setIsRepartidorSedeEditOpen(false)}>
+                  Cancelar
+                </Button>
+                <Button type="submit">
+                  <Truck className="mr-2 h-4 w-4" />
+                  Actualizar Sede
+                </Button>
+              </div>
+            </form>
+          </DialogContent>
+        </Dialog>
+
+        {/* Modal para Crear Repartidor */}
+        <Dialog open={isCreateRepartidorOpen} onOpenChange={setIsCreateRepartidorOpen}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Crear Nuevo Repartidor</DialogTitle>
+              <DialogDescription>
+                Agrega un nuevo repartidor al sistema
+              </DialogDescription>
+            </DialogHeader>
+            <form onSubmit={handleCreateRepartidor} className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="repartidor-nombre">Nombre *</Label>
+                <Input
+                  id="repartidor-nombre"
+                  value={repartidorFormData.nombre}
+                  onChange={(e) => setRepartidorFormData({ ...repartidorFormData, nombre: e.target.value })}
+                  placeholder="Nombre completo del repartidor"
+                  required
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="repartidor-telefono">Teléfono *</Label>
+                <Input
+                  id="repartidor-telefono"
+                  value={repartidorFormData.telefono}
+                  onChange={(e) => setRepartidorFormData({ ...repartidorFormData, telefono: e.target.value })}
+                  placeholder="Número de teléfono"
+                  required
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="repartidor-placas">Placas (opcional)</Label>
+                <Input
+                  id="repartidor-placas"
+                  value={repartidorFormData.placas}
+                  onChange={(e) => setRepartidorFormData({ ...repartidorFormData, placas: e.target.value })}
+                  placeholder="Placas del vehículo"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="repartidor-sede">Sede (opcional)</Label>
+                <Select value={repartidorFormData.sede_id} onValueChange={(value) => setRepartidorFormData({ ...repartidorFormData, sede_id: value })}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Seleccionar sede" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="">Sin sede</SelectItem>
+                    {sedesSimple.map((sede) => (
+                      <SelectItem key={sede.id} value={sede.id}>
+                        {sede.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="flex justify-end space-x-2">
+                <Button type="button" variant="outline" onClick={() => setIsCreateRepartidorOpen(false)}>
+                  Cancelar
+                </Button>
+                <Button type="submit">
+                  <Plus className="mr-2 h-4 w-4" />
+                  Crear Repartidor
+                </Button>
+              </div>
+            </form>
+          </DialogContent>
+        </Dialog>
+
+        {/* Modal para Eliminar Repartidor */}
+        <Dialog open={isDeleteRepartidorOpen} onOpenChange={setIsDeleteRepartidorOpen}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Eliminar Repartidor</DialogTitle>
+              <DialogDescription>
+                ¿Estás seguro de que quieres eliminar al repartidor <strong>{selectedRepartidor?.nombre}</strong>?
+                <br />
+                <span className="text-sm text-muted-foreground">
+                  Esta acción no se puede deshacer. Si el repartidor tiene órdenes activas, no se podrá eliminar.
+                </span>
+              </DialogDescription>
+            </DialogHeader>
+            <div className="flex justify-end space-x-2">
+              <Button type="button" variant="outline" onClick={() => setIsDeleteRepartidorOpen(false)}>
+                Cancelar
+              </Button>
+              <Button 
+                type="button" 
+                variant="destructive" 
+                onClick={handleDeleteRepartidor}
+              >
+                <Trash2 className="mr-2 h-4 w-4" />
+                Eliminar Repartidor
+              </Button>
+            </div>
           </DialogContent>
         </Dialog>
       </div>

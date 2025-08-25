@@ -257,6 +257,7 @@ export const TimeMetricsPage: React.FC<TimeMetricsPageProps> = ({ onBack }) => {
 
     console.log('📈 Datos procesados para gráfica por etapas:', processedData);
     console.log('🏢 Promedios por sede:', sedeAverages);
+    console.log('🔍 Estructura final para Recharts:', JSON.stringify(processedData, null, 2));
     
     return processedData;
   };
@@ -925,7 +926,11 @@ export const TimeMetricsPage: React.FC<TimeMetricsPageProps> = ({ onBack }) => {
               ) : (
                 <div className="h-[450px] p-4">
                   <ChartContainer config={chartConfig}>
-                    <RechartsLineChart data={prepareChartData()}>
+                    <RechartsLineChart data={(() => {
+                      const chartData = prepareChartData();
+                      console.log('📊 Datos enviados a RechartsLineChart:', chartData);
+                      return chartData;
+                    })()}>
                       <CartesianGrid strokeDasharray="3 3" />
                       <XAxis 
                         dataKey="stage" 
