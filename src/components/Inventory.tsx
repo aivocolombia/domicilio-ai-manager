@@ -44,6 +44,9 @@ export const Inventory: React.FC<InventoryProps> = ({
   const [platosConSede, setPlatosConSede] = useState<PlatoConSede[]>([]);
   const [bebidasConSede, setBebidasConSede] = useState<BebidaConSede[]>([]);
 
+  // Estado para controlar cargas concurrentes
+  const [isLoadingInventory, setIsLoadingInventory] = useState(false);
+
   // Función para cargar el inventario con información de sede
   const loadInventoryConSede = async () => {
     if (!effectiveSedeId) {
@@ -52,13 +55,14 @@ export const Inventory: React.FC<InventoryProps> = ({
       return;
     }
 
-    // Evitar cargas concurrentes
-    if (loading) {
+    // Evitar cargas concurrentes usando estado separado
+    if (isLoadingInventory) {
       console.log('🔄 Ya hay una carga de inventario en progreso, saltando...');
       return;
     }
 
     try {
+      setIsLoadingInventory(true);
       setLoading(true);
       setError(null);
       
@@ -80,6 +84,7 @@ export const Inventory: React.FC<InventoryProps> = ({
       console.error('❌ Error al cargar inventario:', err);
       setError(err instanceof Error ? err.message : 'Error desconocido');
     } finally {
+      setIsLoadingInventory(false);
       setLoading(false);
     }
   };

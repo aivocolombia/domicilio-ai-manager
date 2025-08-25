@@ -11,6 +11,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Separator } from '@/components/ui/separator';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import { toast } from '@/hooks/use-toast';
 import { 
   Store, 
   Plus, 
@@ -247,6 +248,27 @@ export const SedeOrders: React.FC<SedeOrdersProps> = ({
     if (!customerData.name || !customerData.phone) return;
 
     try {
+      // Validar que todos los productos existan antes de crear el pedido
+      console.log('🔍 Validando existencia de productos antes de crear pedido...');
+      for (const item of newOrder.items) {
+        const [productType, realProductId] = item.productId.split('_');
+        
+        if (productType === 'plato') {
+          const product = platos.find(p => p.id.toString() === realProductId);
+          if (!product) {
+            throw new Error(`Plato con ID ${realProductId} no encontrado en el inventario`);
+          }
+        } else if (productType === 'bebida') {
+          const bebida = bebidas.find(b => b.id.toString() === realProductId);
+          if (!bebida) {
+            throw new Error(`Bebida con ID ${realProductId} no encontrada en el inventario`);
+          }
+        } else {
+          throw new Error(`Tipo de producto inválido: ${productType}`);
+        }
+      }
+      console.log('✅ Todos los productos existen en el inventario');
+
       // Determinar los datos finales del cliente y la dirección
       const finalCustomerName = customerData.name;
       const finalCustomerPhone = customerData.phone;
@@ -267,25 +289,37 @@ export const SedeOrders: React.FC<SedeOrdersProps> = ({
         instrucciones: newOrder.specialInstructions || undefined,
         delivery_time_minutes: newOrder.deliveryTimeMinutes,
         items: newOrder.items.map(item => {
-          const product = platos.find(p => p.id.toString() === item.productId);
-          if (product) {
-            return {
-              producto_tipo: 'plato' as const,
-              producto_id: product.id,
-              cantidad: item.quantity
-            };
+          // Extraer el ID real y tipo del productId único (formato: "tipo_id")
+          const [productType, realProductId] = item.productId.split('_');
+          
+          console.log('🔍 DEBUG: Procesando item para creación:', {
+            originalProductId: item.productId,
+            productType,
+            realProductId,
+            quantity: item.quantity
+          });
+          
+          if (productType === 'plato') {
+            const product = platos.find(p => p.id.toString() === realProductId);
+            if (product) {
+              return {
+                producto_tipo: 'plato' as const,
+                producto_id: product.id,
+                cantidad: item.quantity
+              };
+            }
+          } else if (productType === 'bebida') {
+            const bebida = bebidas.find(b => b.id.toString() === realProductId);
+            if (bebida) {
+              return {
+                producto_tipo: 'bebida' as const,
+                producto_id: bebida.id,
+                cantidad: item.quantity
+              };
+            }
           }
           
-          const bebida = bebidas.find(b => b.id.toString() === item.productId);
-          if (bebida) {
-            return {
-              producto_tipo: 'bebida' as const,
-              producto_id: bebida.id,
-              cantidad: item.quantity
-            };
-          }
-          
-          throw new Error(`Producto no encontrado: ${item.productId}`);
+          throw new Error(`Producto no encontrado: ${item.productId} (tipo: ${productType}, ID: ${realProductId})`);
         }),
         sede_id: profile.sede_id,
         // Datos para actualización de cliente
@@ -324,8 +358,29 @@ export const SedeOrders: React.FC<SedeOrdersProps> = ({
       }
 
     } catch (error) {
-      console.error('Error creando pedido:', error);
-      // El error ya se maneja en el hook useSedeOrders
+      console.error('❌ Error creando pedido:', error);
+      
+      // Mostrar mensaje de error específico al usuario
+      let errorMessage = "Error desconocido al crear pedido";
+      
+      if (error instanceof Error) {
+        // Mensajes de error más amigables
+        if (error.message.includes('no encontrado en el inventario')) {
+          errorMessage = "Uno de los productos seleccionados ya no está disponible. Por favor, actualiza el inventario y vuelve a intentar.";
+        } else if (error.message.includes('Tipo de producto inválido')) {
+          errorMessage = "Error interno: tipo de producto inválido. Contacta al administrador.";
+        } else if (error.message.includes('Producto no encontrado')) {
+          errorMessage = "Uno de los productos no se encuentra disponible. Por favor refresca la página e inténtalo de nuevo.";
+        } else {
+          errorMessage = error.message;
+        }
+      }
+      
+      toast({
+        title: "Error al crear pedido",
+        description: errorMessage,
+        variant: "destructive"
+      });
     }
   };
 
