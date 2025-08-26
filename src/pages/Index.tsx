@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, Suspense, lazy } from 'react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Dashboard } from '@/components/Dashboard';
 import { Inventory } from '@/components/Inventory';
@@ -6,11 +6,15 @@ import { DeliveryPersonnel } from '@/components/DeliveryPersonnel';
 import CallCenter from '@/components/CallCenter';
 import { UserProfile } from '@/components/UserProfile';
 import { SedeOrders } from '@/components/SedeOrders';
-import { AdminPanel } from '@/components/AdminPanel';
-import { TimeMetricsPage } from '@/components/TimeMetricsPage';
+
+// Lazy loading para componentes pesados
+const AdminPanel = lazy(() => import('@/components/AdminPanel').then(module => ({ default: module.AdminPanel })));
+const TimeMetricsPage = lazy(() => import('@/components/TimeMetricsPage').then(module => ({ default: module.TimeMetricsPage })));
+
 import { Order, DeliverySettings, OrderSource, DeliveryPerson, PaymentMethod, PaymentStatus, User as UserType, Sede, OrderStatus, DeliveryType } from '@/types/delivery';
 import { LayoutDashboard, Package, Users, Phone, Store, Settings, Building2, ChevronDown } from 'lucide-react';
 import { StatusBar } from '@/components/StatusBar';
+import { Loading } from '@/components/Loading';
 import { InventoryProvider } from '@/contexts/InventoryContext';
 import { SedeProvider } from '@/contexts/SedeContext';
 import { useAuth } from '@/hooks/useAuth';
@@ -364,16 +368,22 @@ const Index = () => {
   // Si showAdminPanel es true, mostrar el AdminPanel
   if (showAdminPanel) {
     return (
-      <AdminPanel 
-        onBack={navigateToMain}
-        onNavigateToTimeMetrics={navigateToTimeMetrics}
-      />
+      <Suspense fallback={<Loading message="Cargando Panel de Administración..." size="lg" />}>
+        <AdminPanel 
+          onBack={navigateToMain}
+          onNavigateToTimeMetrics={navigateToTimeMetrics}
+        />
+      </Suspense>
     );
   }
 
   // Si showTimeMetrics es true, mostrar las métricas de tiempo
   if (showTimeMetrics) {
-    return <TimeMetricsPage onBack={navigateToMain} />;
+    return (
+      <Suspense fallback={<Loading message="Cargando Métricas de Tiempo..." size="lg" />}>
+        <TimeMetricsPage onBack={navigateToMain} />
+      </Suspense>
+    );
   }
 
   return (
@@ -515,6 +525,7 @@ const Index = () => {
               currentSedeName={currentSedeName}
               onCreateOrder={handleCreateOrder}
               onTransferOrder={handleTransferOrder}
+              onNavigateToDashboard={() => setActiveTab('dashboard')}
             />
           </TabsContent>
         </Tabs>

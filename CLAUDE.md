@@ -15,6 +15,12 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ### Installation
 - `npm i` - Install dependencies
 
+### Code Quality & Performance
+- Lazy loading implemented for heavy components (AdminPanel, TimeMetricsPage)
+- Custom logging system available via `@/utils/logger.ts`
+- Optimized async state management via `@/hooks/useAsyncState.ts`
+- Bundle optimization: removed unused UI components (breadcrumb, carousel, command, drawer, pagination, sidebar)
+
 ## Architecture Overview
 
 ### Tech Stack
@@ -38,12 +44,14 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 #### Key Components
 - `Login.tsx` - Authentication form
 - `ProtectedRoute.tsx` - Route protection with role-based access
-- `AdminPanel.tsx` - Administrator interface
-- `Dashboard.tsx` - Main dashboard
+- `AdminPanel.tsx` - Administrator interface (lazy loaded)
+- `Dashboard.tsx` - Main dashboard with sorting, pagination (15 items/page), and filtering
 - `Inventory.tsx` - Product/menu management
 - `CallCenter.tsx` - Order management interface
 - `DeliveryPersonnel.tsx` - Delivery staff management
-- `StatusBar.tsx` - System status display
+- `StatusBar.tsx` - Dynamic system status display with inventory alerts
+- `TimeMetricsPage.tsx` - Time metrics analysis (lazy loaded)
+- `Loading.tsx` - Reusable loading component for lazy loaded modules
 
 #### Authentication System
 - `useAuth.tsx:1-204` - Authentication context and hooks
@@ -160,3 +168,61 @@ SUPABASE_SERVICE_ROLE_KEY=your_service_role_key
 2. Assigned to delivery personnel via `DeliveryPersonnel`
 3. Status tracking through order lifecycle
 4. ETA management with update counting
+
+#### Order Cancellation System
+1. **Cancel Order**: From dashboard, admin/agents can cancel orders with mandatory reason
+2. **View Cancellation Reason**: Orange "Ver motivo" button appears for cancelled orders
+3. **Admin Analytics**: AdminPanel shows cancelled orders counter with breakdown by sede
+4. **Detailed Report**: Click counter to see full table with cancellation reasons and timestamps
+
+### New Features & Optimizations (Recent Updates)
+
+#### Dashboard Enhancements
+- **Sorting**: Click column headers to sort by any field (ascending/descending)
+- **Pagination**: 15 orders per page with navigation controls and page numbers
+- **Date Filters**: Fixed timezone issues - now correctly filters by Colombia timezone
+- **CSV Export**: Corrected all field mappings to eliminate undefined values
+
+#### StatusBar Intelligence
+- **Dynamic Icons**: Changes based on operational status (critical/activity/OK)
+- **Inventory Alerts**: Shows specific counts "2 platos, 1 topping" when items are out of stock
+- **Color Coding**: Red background for critical issues, blue for activity, green for all OK
+- **Smart Messaging**: Context-aware status messages instead of generic text
+
+#### Performance Optimizations
+- **Lazy Loading**: AdminPanel and TimeMetricsPage load on-demand
+- **Bundle Reduction**: Removed unused UI components (~15-20KB savings)
+- **Async State Management**: New `useAsyncState` hook for consistent loading/error patterns
+- **Logging System**: Configurable logger in `@/utils/logger.ts` for development/production
+
+### Development Best Practices
+
+#### Code Organization
+- Use lazy loading for heavy components (AdminPanel, TimeMetricsPage are examples)
+- Implement `useAsyncState` hook for consistent loading/error state management
+- Use the centralized logger instead of console.log statements
+- Follow established patterns for service classes in `/services` directory
+
+#### Performance Guidelines
+- All database operations should use service classes with timeout handling
+- Implement pagination for large data sets (15 items per page is standard)
+- Use Suspense boundaries for lazy-loaded components
+- Prefer memoization for expensive calculations in complex components
+
+#### UI/UX Standards
+- StatusBar should show dynamic content based on actual system state
+- Use consistent loading states across all components (Loading component available)
+- Implement proper error boundaries for robust user experience
+- Color coding: Red for critical issues, Blue for activity, Green for OK states
+
+#### Database Integration
+- Always handle timezone correctly for Colombia (UTC-5)
+- Store cancellation reasons in `motivo_cancelacion` field with timestamp
+- Use proper field mapping for CSV exports to avoid undefined values
+- Implement real-time subscriptions for inventory updates where appropriate
+
+#### Quality Assurance
+- Bundle optimization: Check for unused imports and components regularly
+- Audit console.log statements in production builds
+- Validate async state patterns are consistent across components
+- Test lazy loading boundaries with slow network conditions

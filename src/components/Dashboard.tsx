@@ -38,6 +38,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { createDateRangeForQuery, formatDateTimeForDisplay, debugTodayFilter } from '@/utils/dateUtils';
@@ -104,6 +105,12 @@ export const Dashboard: React.FC<DashboardProps> = ({
     reason: string;
     canceledAt?: string;
   } | null>(null);
+
+  // Estados para modal de pausar pedidos
+  const [isPauseModalOpen, setIsPauseModalOpen] = useState(false);
+  const [pauseOption, setPauseOption] = useState<'agent' | 'global'>('agent');
+  const [pauseTimer, setPauseTimer] = useState<string>('');
+  const [pauseTimerActive, setPauseTimerActive] = useState(false);
 
   // Estados para ordenamiento
   const [sortField, setSortField] = useState<keyof DashboardOrder>('creado_fecha');
@@ -650,6 +657,20 @@ export const Dashboard: React.FC<DashboardProps> = ({
     };
   }, [dateFilter, dateRange, profile?.sede_id, statusFilter]);
 
+  // Limpiar selecciones de pedidos cancelados/entregados
+  useEffect(() => {
+    if (selectedOrders.length > 0) {
+      const validSelections = selectedOrders.filter(selectedId => {
+        const order = paginatedOrders.find(o => o.id_display === selectedId);
+        return order && order.estado !== 'Cancelado' && order.estado !== 'Entregados';
+      });
+      
+      if (validSelections.length !== selectedOrders.length) {
+        setSelectedOrders(validSelections);
+      }
+    }
+  }, [paginatedOrders, selectedOrders]);
+
   const getStatusIcon = (status: string) => {
     switch (status) {
       case 'Recibidos': return <Clock className="h-4 w-4" />;
@@ -717,7 +738,11 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
   const handleSelectAll = (checked: boolean) => {
     if (checked) {
-      setSelectedOrders(paginatedOrders.map(order => order.orden_id.toString()));
+      // Solo seleccionar pedidos que no estén cancelados o entregados
+      const selectableOrders = paginatedOrders.filter(order => 
+        order.estado !== 'Cancelado' && order.estado !== 'Entregados'
+      );
+      setSelectedOrders(selectableOrders.map(order => order.id_display));
     } else {
       setSelectedOrders([]);
     }
@@ -736,6 +761,41 @@ export const Dashboard: React.FC<DashboardProps> = ({
       ...settings,
       acceptingOrders: !settings.acceptingOrders
     });
+  };
+
+  // Handler para pausar pedidos con opciones y timer
+  const handlePauseOrders = () => {
+    const minutes = pauseTimer ? parseInt(pauseTimer) : 0;
+    
+    // Pause immediately
+    toggleAcceptingOrders();
+    
+    // Show confirmation
+    const pauseTypeText = pauseOption === 'agent' ? 'para este agente' : 'globalmente';
+    const timerText = minutes > 0 ? ` por ${minutes} minutos` : '';
+    
+    toast({
+      title: "Pedidos Pausados",
+      description: `Los pedidos han sido pausados ${pauseTypeText}${timerText}`,
+    });
+    
+    // Set up automatic reactivation if timer is set
+    if (minutes > 0) {
+      setPauseTimerActive(true);
+      setTimeout(() => {
+        toggleAcceptingOrders(); // Reactivate
+        setPauseTimerActive(false);
+        toast({
+          title: "Pedidos Reactivados",
+          description: `Los pedidos se han reactivado automáticamente después de ${minutes} minutos`,
+        });
+      }, minutes * 60 * 1000);
+    }
+    
+    // Close modal and reset form
+    setIsPauseModalOpen(false);
+    setPauseOption('agent');
+    setPauseTimer('');
   };
 
   // Handler para eliminar orden (solo admin)
@@ -840,7 +900,13 @@ export const Dashboard: React.FC<DashboardProps> = ({
           )}
           
           <Button
-            onClick={toggleAcceptingOrders}
+            onClick={() => {
+              if (settings.acceptingOrders) {
+                setIsPauseModalOpen(true);
+              } else {
+                toggleAcceptingOrders();
+              }
+            }}
             variant={settings.acceptingOrders ? "destructive" : "default"}
             className="flex items-center gap-2"
           >
@@ -1031,10 +1097,33 @@ export const Dashboard: React.FC<DashboardProps> = ({
             <CardTitle>Pedidos</CardTitle>
             <div className="flex items-center gap-2">
               <Checkbox
-                checked={selectedOrders.length === paginatedOrders.length && paginatedOrders.length > 0}
+                checked={(() => {
+                  const selectableOrders = paginatedOrders.filter(order => 
+                    order.estado !== 'Cancelado' && order.estado !== 'Entregados'
+                  );
+                  return selectableOrders.length > 0 && selectedOrders.length === selectableOrders.length;
+                })()}
                 onCheckedChange={handleSelectAll}
+                disabled={(() => {
+                  const selectableOrders = paginatedOrders.filter(order => 
+                    order.estado !== 'Cancelado' && order.estado !== 'Entregados'
+                  );
+                  return selectableOrders.length === 0;
+                })()}
               />
-              <span className="text-sm text-muted-foreground">Seleccionar todos</span>
+              <span className="text-sm text-muted-foreground">
+                {(() => {
+                  const selectableOrders = paginatedOrders.filter(order => 
+                    order.estado !== 'Cancelado' && order.estado !== 'Entregados'
+                  );
+                  const nonSelectableCount = paginatedOrders.length - selectableOrders.length;
+                  
+                  if (nonSelectableCount > 0) {
+                    return `Seleccionar todos (${selectableOrders.length} disponibles)`;
+                  }
+                  return 'Seleccionar todos';
+                })()}
+              </span>
             </div>
           </div>
         </CardHeader>
@@ -1097,11 +1186,17 @@ export const Dashboard: React.FC<DashboardProps> = ({
                   paginatedOrders.map((order) => {
                     const realOrder = order as DashboardOrder;
                     return (
-                      <tr key={realOrder.orden_id} className="border-b hover:bg-muted/50">
+                      <tr key={realOrder.orden_id} className={`border-b ${
+                        realOrder.estado === 'Cancelado' || realOrder.estado === 'Entregados' 
+                          ? 'bg-gray-50 opacity-75' 
+                          : 'hover:bg-muted/50'
+                      }`}>
                         <td className="p-2">
                           <Checkbox
                             checked={selectedOrders.includes(realOrder.id_display)}
                             onCheckedChange={(checked) => handleSelectOrder(realOrder.id_display, checked as boolean)}
+                            disabled={realOrder.estado === 'Cancelado' || realOrder.estado === 'Entregados'}
+                            className={realOrder.estado === 'Cancelado' || realOrder.estado === 'Entregados' ? 'opacity-50 cursor-not-allowed' : ''}
                           />
                         </td>
                         <td className="p-2 font-mono text-sm">{realOrder.id_display}</td>
@@ -1452,6 +1547,122 @@ export const Dashboard: React.FC<DashboardProps> = ({
                 Cerrar
               </Button>
             </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Modal para Pausar Pedidos */}
+      <Dialog open={isPauseModalOpen} onOpenChange={setIsPauseModalOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <PowerOff className="h-5 w-5 text-red-600" />
+              Pausar Pedidos
+            </DialogTitle>
+            <DialogDescription>
+              Configura como pausar la recepción de nuevos pedidos
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="space-y-6">
+            {/* Opciones de pausa */}
+            <div className="space-y-3">
+              <Label className="text-sm font-medium text-gray-900">Tipo de Pausa:</Label>
+              <RadioGroup 
+                value={pauseOption} 
+                onValueChange={(value: 'agent' | 'global') => setPauseOption(value)}
+                className="space-y-3"
+              >
+                <div className="flex items-center space-x-3 p-3 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors">
+                  <RadioGroupItem value="agent" id="pause-agent" />
+                  <div className="flex-1">
+                    <Label htmlFor="pause-agent" className="font-medium cursor-pointer">
+                      Pausar para este Agente
+                    </Label>
+                    <p className="text-sm text-gray-600 mt-1">
+                      Solo este agente dejará de recibir pedidos
+                    </p>
+                  </div>
+                </div>
+                
+                <div className="flex items-center space-x-3 p-3 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors">
+                  <RadioGroupItem value="global" id="pause-global" />
+                  <div className="flex-1">
+                    <Label htmlFor="pause-global" className="font-medium cursor-pointer">
+                      Pausar Globalmente
+                    </Label>
+                    <p className="text-sm text-gray-600 mt-1">
+                      Se pausarán los pedidos para toda la sede
+                    </p>
+                  </div>
+                </div>
+              </RadioGroup>
+            </div>
+
+            {/* Timer automático */}
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <Label htmlFor="pause-timer" className="text-sm font-medium text-gray-900">
+                  Timer Automático (opcional):
+                </Label>
+                <span className="text-xs text-gray-500">en minutos</span>
+              </div>
+              <Input
+                id="pause-timer"
+                type="number"
+                placeholder="Ej: 30"
+                value={pauseTimer}
+                onChange={(e) => setPauseTimer(e.target.value)}
+                min="1"
+                max="480"
+                className="text-center"
+              />
+              <p className="text-xs text-gray-500">
+                Déjalo vacío para pausar manualmente. Máximo 480 minutos (8 horas).
+              </p>
+            </div>
+
+            {/* Resumen de la acción */}
+            <div className="p-3 bg-red-50 border border-red-200 rounded-lg">
+              <div className="text-sm text-red-800">
+                <strong>Resumen:</strong>
+                <br />
+                • Se pausarán los pedidos {pauseOption === 'agent' ? 'para este agente' : 'globalmente'}
+                {pauseTimer && parseInt(pauseTimer) > 0 && (
+                  <>
+                    <br />
+                    • Se reactivarán automáticamente en {pauseTimer} minutos
+                  </>
+                )}
+                {(!pauseTimer || parseInt(pauseTimer) === 0) && (
+                  <>
+                    <br />
+                    • Deberás reactivar manualmente
+                  </>
+                )}
+              </div>
+            </div>
+          </div>
+
+          <div className="flex justify-end space-x-2">
+            <Button 
+              variant="outline" 
+              onClick={() => {
+                setIsPauseModalOpen(false);
+                setPauseOption('agent');
+                setPauseTimer('');
+              }}
+            >
+              Cancelar
+            </Button>
+            <Button 
+              onClick={handlePauseOrders}
+              variant="destructive"
+              className="flex items-center gap-2"
+            >
+              <PowerOff className="h-4 w-4" />
+              Pausar Pedidos
+            </Button>
           </div>
         </DialogContent>
       </Dialog>

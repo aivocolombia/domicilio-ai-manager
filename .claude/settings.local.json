@@ -5,7 +5,18 @@
       "Bash(git checkout:*)",
       "Bash(node:*)",
       "Bash(rm:*)",
-      "Bash(rg:*)"
+      "Bash(rg:*)",
+      "Bash(find:*)",
+      "Bash(for component in accordion aspect-ratio breadcrumb carousel chart collapsible command context-menu drawer form hover-card input-otp menubar navigation-menu pagination resizable scroll-area sheet sidebar skeleton slider toggle toggle-group)",
+      "Bash(do echo -n \"$component: \")",
+      "Bash(if rg -q \"import.*$component\" src/)",
+      "Bash(then echo \"USED\")",
+      "Bash(else echo \"UNUSED\")",
+      "Bash(fi)",
+      "Bash(done)",
+      "Bash(for dep in \"embla-carousel-react\" \"next-themes\" \"react-day-picker\" \"react-resizable-panels\" \"vaul\" \"input-otp\" \"cmdk\")",
+      "Bash(do echo -n \"$dep: \")",
+      "Bash(if rg -q \"$dep\" src/)"
     ],
     "additionalDirectories": [
       "C:\\c\\Users\\USER\\Documents\\GitHub"

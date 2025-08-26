@@ -44,6 +44,7 @@ interface SedeOrdersProps {
   currentSedeName: string;
   onCreateOrder: (order: Omit<Order, 'id' | 'createdAt' | 'estimatedDeliveryTime'>) => void;
   onTransferOrder: (orderId: string, targetSedeId: string) => void;
+  onNavigateToDashboard?: () => void;
 }
 
 export const SedeOrders: React.FC<SedeOrdersProps> = ({ 
@@ -54,7 +55,8 @@ export const SedeOrders: React.FC<SedeOrdersProps> = ({
   effectiveSedeId,
   currentSedeName,
   onCreateOrder, 
-  onTransferOrder 
+  onTransferOrder,
+  onNavigateToDashboard
 }) => {
   const { profile } = useAuth();
   const { platos, bebidas, loading: menuLoading } = useMenu();
@@ -823,26 +825,72 @@ export const SedeOrders: React.FC<SedeOrdersProps> = ({
 
             <Separator />
 
-            <div className="p-4 bg-blue-50 rounded-lg">
-              <div className="flex items-center gap-2 mb-2">
-                <Building2 className="h-4 w-4 text-blue-600" />
-                <span className="font-medium text-blue-900">Transferir Pedido</span>
+            {/* Mini contador de pedidos por fase */}
+            <div className="p-4 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg border border-blue-200">
+              <div className="flex items-center gap-2 mb-3">
+                <Package className="h-4 w-4 text-blue-600" />
+                <span className="font-medium text-blue-900">Estado de Pedidos</span>
               </div>
-              <p className="text-sm text-blue-700 mb-3">
-                La funcionalidad de transferir pedido se ha movido al Dashboard. 
-                Ve a la pestaña "Dashboard" y usa el botón "Transferir Pedido" para mover pedidos entre sedes.
-              </p>
-              <Button 
-                variant="outline" 
-                size="sm"
-                onClick={() => {
-                  // Aquí podríamos navegar al dashboard si fuera necesario
-                  console.log('Ir al dashboard para transferir pedido');
-                }}
-                className="text-blue-600 border-blue-300 hover:bg-blue-100"
-              >
-                Ir al Dashboard
-              </Button>
+              
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                {/* Recibidos */}
+                <div className="bg-white rounded-md p-3 shadow-sm border border-blue-100">
+                  <div className="flex items-center gap-2">
+                    <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
+                    <span className="text-xs font-medium text-blue-700">Recibidos</span>
+                  </div>
+                  <div className="text-lg font-bold text-blue-900 mt-1">
+                    {realOrders.filter(order => order.estado === 'received').length}
+                  </div>
+                </div>
+
+                {/* En Cocina */}
+                <div className="bg-white rounded-md p-3 shadow-sm border border-yellow-100">
+                  <div className="flex items-center gap-2">
+                    <div className="w-2 h-2 bg-yellow-500 rounded-full"></div>
+                    <span className="text-xs font-medium text-yellow-700">En Cocina</span>
+                  </div>
+                  <div className="text-lg font-bold text-yellow-900 mt-1">
+                    {realOrders.filter(order => order.estado === 'kitchen').length}
+                  </div>
+                </div>
+
+                {/* En Domicilio */}
+                <div className="bg-white rounded-md p-3 shadow-sm border border-purple-100">
+                  <div className="flex items-center gap-2">
+                    <div className="w-2 h-2 bg-purple-500 rounded-full"></div>
+                    <span className="text-xs font-medium text-purple-700">Domicilio</span>
+                  </div>
+                  <div className="text-lg font-bold text-purple-900 mt-1">
+                    {realOrders.filter(order => order.estado === 'delivery').length}
+                  </div>
+                </div>
+
+                {/* Listo para Pickup */}
+                <div className="bg-white rounded-md p-3 shadow-sm border border-orange-100">
+                  <div className="flex items-center gap-2">
+                    <div className="w-2 h-2 bg-orange-500 rounded-full"></div>
+                    <span className="text-xs font-medium text-orange-700">Pickup</span>
+                  </div>
+                  <div className="text-lg font-bold text-orange-900 mt-1">
+                    {realOrders.filter(order => order.estado === 'ready_pickup').length}
+                  </div>
+                </div>
+              </div>
+
+              {/* Total activos */}
+              <div className="mt-3 pt-3 border-t border-blue-200">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-blue-700">Total pedidos activos:</span>
+                  <span className="font-bold text-blue-900">
+                    {realOrders.filter(order => 
+                      order.estado !== 'delivered' && 
+                      order.estado !== 'Cancelado' && 
+                      order.estado !== 'cancelled'
+                    ).length}
+                  </span>
+                </div>
+              </div>
             </div>
           </CardContent>
         </Card>

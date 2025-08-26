@@ -586,7 +586,7 @@ export const TimeMetricsPage: React.FC<TimeMetricsPageProps> = ({ onBack }) => {
   }
 
   return (
-    <div className="container mx-auto p-6 space-y-6">
+    <div className="container mx-auto p-6 space-y-6 min-h-screen">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-4">
@@ -918,13 +918,13 @@ export const TimeMetricsPage: React.FC<TimeMetricsPageProps> = ({ onBack }) => {
                 Tiempo acumulativo desde que se recibe la orden hasta la entrega final
               </p>
             </CardHeader>
-            <CardContent>
+            <CardContent className="min-h-[750px]">
               {rawChartData.length === 0 ? (
                 <div className="text-center py-8 text-muted-foreground">
                   No hay datos disponibles para el rango seleccionado
                 </div>
               ) : (
-                <div className="h-[450px] p-4">
+                <div className="h-[700px] p-2">
                   <ChartContainer config={chartConfig}>
                     <RechartsLineChart data={(() => {
                       const chartData = prepareChartData();

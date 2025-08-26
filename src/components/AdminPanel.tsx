@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Plus, Search, Edit, Trash2, Users, Building2, UserCheck, UserX, TrendingUp, DollarSign, Package, Clock, LayoutDashboard, Phone, MapPin, Settings, RefreshCw, Cog, ChartLine, Timer, BarChart3, Truck, XCircle, Eye, AlertTriangle } from 'lucide-react'
+import { Plus, Search, Edit, Trash2, Users, Building2, UserCheck, UserX, TrendingUp, DollarSign, Package, Clock, LayoutDashboard, Phone, MapPin, Settings, RefreshCw, Cog, ChartLine, Timer, BarChart3, Truck, XCircle, Eye, AlertTriangle, ChevronLeft, ChevronRight } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -108,6 +108,53 @@ export function AdminPanel({ onBack, onNavigateToTimeMetrics }: AdminPanelProps)
   }>>([])
   const [loadingCanceled, setLoadingCanceled] = useState(false)
 
+  // Estados para modal de detalles de cancelados por sede
+  const [canceledDetailsModalOpen, setCanceledDetailsModalOpen] = useState(false)
+  const [selectedSedeDetails, setSelectedSedeDetails] = useState<{
+    sede_id: string;
+    sede_nombre: string;
+  } | null>(null)
+  const [canceledOrdersDetails, setCanceledOrdersDetails] = useState<Array<{
+    id: string;
+    id_display: string;
+    cliente_nombre: string;
+    cliente_telefono: string;
+    cliente_direccion: string;
+    total: number;
+    motivo_cancelacion: string;
+    created_at: string;
+    cancelado_at: string;
+  }>>([])
+  const [canceledDetailsLoading, setCanceledDetailsLoading] = useState(false)
+  const [canceledSearchTerm, setCanceledSearchTerm] = useState('')
+  const [canceledCurrentPage, setCanceledCurrentPage] = useState(1)
+  const itemsPerPage = 10
+
+  // Estados derivados para la UI de cancelados
+  const canceledStats = canceledOrdersData ? Array.from({ length: canceledOrdersData.total }, (_, i) => ({ id: i })) : []
+  const canceledBySede = canceledOrdersData?.porSede.map(sede => ({
+    sede_id: sede.sede_id,
+    sede_nombre: sede.sede,
+    count: sede.count
+  })).sort((a, b) => b.count - a.count) || []
+
+  // Filtrar y paginar datos de cancelados para modal
+  const filteredCanceledOrders = canceledOrdersDetails.filter(order => {
+    const searchLower = canceledSearchTerm.toLowerCase()
+    return (
+      order.id_display.toLowerCase().includes(searchLower) ||
+      order.cliente_nombre.toLowerCase().includes(searchLower) ||
+      order.cliente_telefono.includes(canceledSearchTerm) ||
+      order.motivo_cancelacion.toLowerCase().includes(searchLower)
+    )
+  })
+
+  const totalCanceledPages = Math.ceil(filteredCanceledOrders.length / itemsPerPage)
+  const paginatedCanceledOrders = filteredCanceledOrders.slice(
+    (canceledCurrentPage - 1) * itemsPerPage,
+    canceledCurrentPage * itemsPerPage
+  )
+
   useEffect(() => {
     console.log('🚀 AdminPanel iniciando...')
     fetchUsers()
@@ -123,6 +170,7 @@ export function AdminPanel({ onBack, onNavigateToTimeMetrics }: AdminPanelProps)
     if (dateRange.from && dateRange.to) {
       console.log('🔄 Recargando métricas por cambio de filtros...');
       loadMetrics();
+      loadCanceledOrdersStats(); // También recargar estadísticas de cancelados
     }
   }, [dateRange, selectedSedeFilter])
 
@@ -228,20 +276,35 @@ export function AdminPanel({ onBack, onNavigateToTimeMetrics }: AdminPanelProps)
     }
   }
 
-  // Función para cargar estadísticas de pedidos cancelados
+  // Función para cargar estadísticas de pedidos cancelados con filtros de fecha
   const loadCanceledOrdersStats = async () => {
     try {
       console.log('📊 Cargando estadísticas de pedidos cancelados...')
       
-      const { data, error } = await supabase
+      // Construir query con filtros de fecha
+      let query = supabase
         .from('ordenes')
         .select(`
           id,
           status,
           sede_id,
+          created_at,
           sedes!left(name)
         `)
         .eq('status', 'Cancelado')
+        .order('created_at', { ascending: false })
+
+      // Aplicar filtros de fecha si están definidos
+      if (dateRange.from && dateRange.to) {
+        const fechaInicio = format(dateRange.from, 'yyyy-MM-dd')
+        const fechaFin = format(dateRange.to, 'yyyy-MM-dd')
+        
+        query = query
+          .gte('created_at', `${fechaInicio}T00:00:00Z`)
+          .lte('created_at', `${fechaFin}T23:59:59Z`)
+      }
+
+      const { data, error } = await query
 
       if (error) {
         console.error('❌ Error cargando estadísticas cancelados:', error)
@@ -277,6 +340,79 @@ export function AdminPanel({ onBack, onNavigateToTimeMetrics }: AdminPanelProps)
       })
     } catch (error) {
       console.error('❌ Error inesperado cargando cancelados:', error)
+    }
+  }
+
+  // Función para cargar lista detallada de pedidos cancelados por sede
+  const loadCanceledOrdersBySede = async (sedeId?: string) => {
+    try {
+      setLoadingCanceled(true)
+      console.log('📋 Cargando pedidos cancelados por sede:', sedeId)
+      
+      let query = supabase
+        .from('ordenes')
+        .select(`
+          id,
+          status,
+          motivo_cancelacion,
+          cancelado_at,
+          created_at,
+          clientes!left(nombre),
+          sedes!left(name),
+          pagos!left(total_pago)
+        `)
+        .eq('status', 'Cancelado')
+        .order('cancelado_at', { ascending: false })
+
+      // Filtrar por sede si se proporciona
+      if (sedeId && sedeId !== 'all') {
+        query = query.eq('sede_id', sedeId)
+      }
+
+      // Aplicar filtros de fecha
+      if (dateRange.from && dateRange.to) {
+        const fechaInicio = format(dateRange.from, 'yyyy-MM-dd')
+        const fechaFin = format(dateRange.to, 'yyyy-MM-dd')
+        
+        query = query
+          .gte('created_at', `${fechaInicio}T00:00:00Z`)
+          .lte('created_at', `${fechaFin}T23:59:59Z`)
+      }
+
+      const { data, error } = await query
+
+      if (error) {
+        console.error('❌ Error cargando lista cancelados por sede:', error)
+        toast({
+          title: "Error",
+          description: "No se pudo cargar la lista de pedidos cancelados",
+          variant: "destructive"
+        })
+        return
+      }
+
+      const formattedList = data?.map(orden => ({
+        id_display: `ORD-${orden.id.toString().padStart(4, '0')}`,
+        cliente_nombre: orden.clientes?.nombre || 'Cliente desconocido',
+        sede: orden.sedes?.name || 'Sin sede',
+        motivo_cancelacion: orden.motivo_cancelacion || 'No especificado',
+        cancelado_at: orden.cancelado_at || '',
+        total: orden.pagos?.total_pago || 0
+      })) || []
+
+      setCanceledOrdersList(formattedList)
+      setShowCanceledModal(true)
+
+      console.log('✅ Lista de cancelados por sede cargada:', formattedList.length)
+    } catch (error) {
+      console.error('❌ Error inesperado cargando lista por sede:', error)
+      toast({
+        title: "Error",
+        description: "Error inesperado al cargar la lista",
+        variant: "destructive"
+      })
+    } finally {
+      setLoadingCanceled(false)
     }
   }
 
@@ -332,6 +468,87 @@ export function AdminPanel({ onBack, onNavigateToTimeMetrics }: AdminPanelProps)
       })
     } finally {
       setLoadingCanceled(false)
+    }
+  }
+
+  // Función para cargar detalles completos de pedidos cancelados por sede
+  const loadCanceledOrdersDetailsBySede = async (sedeId: string, sedeName: string) => {
+    try {
+      setCanceledDetailsLoading(true)
+      console.log('📋 Cargando detalles de pedidos cancelados para sede:', sedeName)
+      
+      let query = supabase
+        .from('ordenes')
+        .select(`
+          id,
+          status,
+          motivo_cancelacion,
+          cancelado_at,
+          created_at,
+          clientes!inner(nombre, telefono, direccion),
+          pagos!left(total_pago),
+          sedes!left(name)
+        `)
+        .eq('status', 'Cancelado')
+        .order('created_at', { ascending: false })
+
+      // Filtrar por sede
+      if (sedeId !== 'sin-sede') {
+        query = query.eq('sede_id', sedeId)
+      } else {
+        query = query.is('sede_id', null)
+      }
+
+      // Aplicar filtros de fecha
+      if (dateRange.from && dateRange.to) {
+        const fechaInicio = format(dateRange.from, 'yyyy-MM-dd')
+        const fechaFin = format(dateRange.to, 'yyyy-MM-dd')
+        
+        query = query
+          .gte('created_at', `${fechaInicio}T00:00:00Z`)
+          .lte('created_at', `${fechaFin}T23:59:59Z`)
+      }
+
+      const { data, error } = await query
+
+      if (error) {
+        console.error('❌ Error cargando detalles cancelados por sede:', error)
+        toast({
+          title: "Error",
+          description: "No se pudieron cargar los detalles de pedidos cancelados",
+          variant: "destructive"
+        })
+        return
+      }
+
+      const formattedDetails = data?.map(orden => ({
+        id: orden.id.toString(),
+        id_display: `ORD-${orden.id.toString().padStart(4, '0')}`,
+        cliente_nombre: orden.clientes?.nombre || 'Cliente desconocido',
+        cliente_telefono: orden.clientes?.telefono || 'No especificado',
+        cliente_direccion: orden.clientes?.direccion || 'No especificada',
+        total: orden.pagos?.total_pago || 0,
+        motivo_cancelacion: orden.motivo_cancelacion || 'No especificado',
+        created_at: orden.created_at || '',
+        cancelado_at: orden.cancelado_at || ''
+      })) || []
+
+      setCanceledOrdersDetails(formattedDetails)
+      setSelectedSedeDetails({ sede_id: sedeId, sede_nombre: sedeName })
+      setCanceledDetailsModalOpen(true)
+      setCanceledCurrentPage(1) // Reset pagination
+      setCanceledSearchTerm('') // Reset search
+
+      console.log('✅ Detalles de cancelados por sede cargados:', formattedDetails.length)
+    } catch (error) {
+      console.error('❌ Error inesperado cargando detalles por sede:', error)
+      toast({
+        title: "Error",
+        description: "Error inesperado al cargar los detalles",
+        variant: "destructive"
+      })
+    } finally {
+      setCanceledDetailsLoading(false)
     }
   }
 
@@ -1777,6 +1994,120 @@ export function AdminPanel({ onBack, onNavigateToTimeMetrics }: AdminPanelProps)
                     </CardContent>
                   </Card>
                 </div>
+
+                {/* Pedidos Cancelados - Sección Elegante */}
+                <Card className="mt-6">
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                      <XCircle className="h-5 w-5 text-red-500" />
+                      Pedidos Cancelados
+                    </CardTitle>
+                    <CardDescription>
+                      Análisis detallado de pedidos cancelados por sede
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                      {/* Contador Grande Total */}
+                      <div className="lg:col-span-1">
+                        <div className="bg-red-50 border-2 border-red-200 rounded-xl p-6 text-center">
+                          <div className="text-5xl font-bold text-red-600 mb-2">
+                            {canceledStats.length}
+                          </div>
+                          <div className="text-lg font-semibold text-red-800 mb-1">
+                            Total Cancelados
+                          </div>
+                          <div className="text-sm text-red-600">
+                            En el período seleccionado
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Lista de Sedes */}
+                      <div className="lg:col-span-2">
+                        <div className="space-y-3">
+                          <h3 className="font-semibold text-lg text-gray-800 mb-4">
+                            Cancelados por Sede
+                          </h3>
+                          <div className="max-h-80 overflow-y-auto space-y-2">
+                            {canceledBySede.length > 0 ? (
+                              canceledBySede.map((sede, index) => (
+                                <div 
+                                  key={sede.sede_id || 'sin-sede'}
+                                  className="flex items-center justify-between p-4 bg-white border border-gray-200 rounded-lg transition-all duration-200 cursor-pointer hover:bg-red-50 hover:border-red-300 hover:shadow-md group"
+                                  onClick={() => {
+                                    loadCanceledOrdersDetailsBySede(
+                                      sede.sede_id,
+                                      sede.sede_nombre || 'Sin Sede'
+                                    );
+                                  }}
+                                >
+                                  <div className="flex items-center gap-3">
+                                    <div className="w-3 h-3 bg-red-500 rounded-full group-hover:bg-red-600 transition-colors"></div>
+                                    <div>
+                                      <div className="font-semibold text-gray-900 group-hover:text-red-800 transition-colors">
+                                        {sede.sede_nombre || 'Sin Sede'}
+                                      </div>
+                                      <div className="text-sm text-gray-600">
+                                        Sede #{index + 1}
+                                      </div>
+                                    </div>
+                                  </div>
+                                  <div className="text-right">
+                                    <div className="text-2xl font-bold text-red-600 group-hover:text-red-700 transition-colors">
+                                      {sede.count}
+                                    </div>
+                                    <div className="text-xs text-gray-500 group-hover:text-red-600 transition-colors">
+                                      cancelados
+                                    </div>
+                                  </div>
+                                </div>
+                              ))
+                            ) : (
+                              <div className="text-center py-8 text-gray-500">
+                                <XCircle className="h-12 w-12 mx-auto mb-3 text-gray-300" />
+                                <p className="text-lg font-medium mb-1">No hay pedidos cancelados</p>
+                                <p className="text-sm">En el período seleccionado</p>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                    
+                    {/* Información adicional */}
+                    {canceledStats.length > 0 && (
+                      <div className="mt-6 pt-4 border-t border-gray-200">
+                        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 text-center">
+                          <div className="bg-gray-50 rounded-lg p-3">
+                            <div className="text-2xl font-bold text-gray-800">
+                              {canceledBySede.length}
+                            </div>
+                            <div className="text-sm text-gray-600">Sedes Afectadas</div>
+                          </div>
+                          <div className="bg-gray-50 rounded-lg p-3">
+                            <div className="text-2xl font-bold text-gray-800">
+                              {canceledBySede.length > 0 ? Math.round(canceledStats.length / canceledBySede.length) : 0}
+                            </div>
+                            <div className="text-sm text-gray-600">Promedio por Sede</div>
+                          </div>
+                          <div className="bg-gray-50 rounded-lg p-3">
+                            <div className="text-2xl font-bold text-gray-800">
+                              {canceledBySede.length > 0 ? Math.max(...canceledBySede.map(s => s.count)) : 0}
+                            </div>
+                            <div className="text-sm text-gray-600">Máximo por Sede</div>
+                          </div>
+                          <div className="bg-gray-50 rounded-lg p-3">
+                            <div className="text-2xl font-bold text-gray-800">
+                              {((canceledStats.length / (metricsData?.totalGeneral.pedidos || 1)) * 100).toFixed(1)}%
+                            </div>
+                            <div className="text-sm text-gray-600">Tasa de Cancelación</div>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
               </div>
             )}
 
@@ -2139,6 +2470,202 @@ export function AdminPanel({ onBack, onNavigateToTimeMetrics }: AdminPanelProps)
                 </div>
               </div>
             )}
+          </DialogContent>
+        </Dialog>
+
+        {/* Modal para Detalles de Pedidos Cancelados por Sede */}
+        <Dialog open={canceledDetailsModalOpen} onOpenChange={setCanceledDetailsModalOpen}>
+          <DialogContent className="max-w-6xl max-h-[90vh] overflow-hidden">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <XCircle className="h-5 w-5 text-red-600" />
+                Pedidos Cancelados - {selectedSedeDetails?.sede_nombre}
+              </DialogTitle>
+              <DialogDescription>
+                Detalles completos de todos los pedidos cancelados para esta sede
+              </DialogDescription>
+            </DialogHeader>
+            
+            <div className="space-y-4">
+              {/* Barra de búsqueda */}
+              <div className="flex items-center gap-4">
+                <div className="relative flex-1">
+                  <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    placeholder="Buscar por ID pedido, cliente, teléfono o motivo..."
+                    value={canceledSearchTerm}
+                    onChange={(e) => {
+                      setCanceledSearchTerm(e.target.value);
+                      setCanceledCurrentPage(1); // Reset to first page when searching
+                    }}
+                    className="pl-10"
+                  />
+                </div>
+                <div className="text-sm text-muted-foreground whitespace-nowrap">
+                  {filteredCanceledOrders.length} de {canceledOrdersDetails.length} pedidos
+                </div>
+              </div>
+
+              {/* Tabla de pedidos cancelados */}
+              <div className="border rounded-lg overflow-hidden">
+                <div className="max-h-[400px] overflow-y-auto">
+                  {canceledDetailsLoading ? (
+                    <div className="flex items-center justify-center py-8">
+                      <RefreshCw className="h-6 w-6 animate-spin text-muted-foreground mr-2" />
+                      <span className="text-muted-foreground">Cargando detalles...</span>
+                    </div>
+                  ) : paginatedCanceledOrders.length > 0 ? (
+                    <Table>
+                      <TableHeader className="sticky top-0 bg-background">
+                        <TableRow>
+                          <TableHead className="w-[100px]">ID Pedido</TableHead>
+                          <TableHead className="w-[150px]">Cliente</TableHead>
+                          <TableHead className="w-[120px]">Teléfono</TableHead>
+                          <TableHead className="w-[200px]">Dirección</TableHead>
+                          <TableHead className="w-[100px]">Total</TableHead>
+                          <TableHead className="w-[120px]">Fecha Pedido</TableHead>
+                          <TableHead className="w-[120px]">Fecha Cancelación</TableHead>
+                          <TableHead className="min-w-[300px]">Motivo de Cancelación</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {paginatedCanceledOrders.map((order, index) => (
+                          <TableRow key={order.id} className="hover:bg-red-50/50">
+                            <TableCell className="font-mono font-medium text-blue-600">
+                              {order.id_display}
+                            </TableCell>
+                            <TableCell className="font-medium">
+                              {order.cliente_nombre}
+                            </TableCell>
+                            <TableCell className="text-sm text-muted-foreground">
+                              {order.cliente_telefono}
+                            </TableCell>
+                            <TableCell className="text-sm text-muted-foreground max-w-[200px] truncate" title={order.cliente_direccion}>
+                              {order.cliente_direccion}
+                            </TableCell>
+                            <TableCell className="font-semibold text-green-600">
+                              ${order.total.toLocaleString()}
+                            </TableCell>
+                            <TableCell className="text-sm text-muted-foreground">
+                              {order.created_at ? new Date(order.created_at).toLocaleDateString('es-CO', {
+                                year: 'numeric',
+                                month: '2-digit',
+                                day: '2-digit',
+                                hour: '2-digit',
+                                minute: '2-digit'
+                              }) : 'No disponible'}
+                            </TableCell>
+                            <TableCell className="text-sm text-red-600 font-medium">
+                              {order.cancelado_at ? new Date(order.cancelado_at).toLocaleDateString('es-CO', {
+                                year: 'numeric',
+                                month: '2-digit',
+                                day: '2-digit',
+                                hour: '2-digit',
+                                minute: '2-digit'
+                              }) : 'No disponible'}
+                            </TableCell>
+                            <TableCell className="max-w-[300px]">
+                              <div className="p-2 bg-red-50 rounded-md border border-red-200">
+                                <p className="text-sm text-red-800 break-words">
+                                  {order.motivo_cancelacion}
+                                </p>
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  ) : (
+                    <div className="text-center py-12 text-muted-foreground">
+                      <XCircle className="h-12 w-12 mx-auto mb-4 text-gray-300" />
+                      <p className="text-lg font-medium mb-2">
+                        {canceledSearchTerm ? 'No se encontraron pedidos' : 'No hay pedidos cancelados'}
+                      </p>
+                      <p className="text-sm">
+                        {canceledSearchTerm ? 
+                          'Intenta con otros términos de búsqueda' : 
+                          'Esta sede no tiene pedidos cancelados en el período seleccionado'
+                        }
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Paginación */}
+              {totalCanceledPages > 1 && (
+                <div className="flex items-center justify-between">
+                  <div className="text-sm text-muted-foreground">
+                    Página {canceledCurrentPage} de {totalCanceledPages}
+                    {' '} • {filteredCanceledOrders.length} pedidos totales
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setCanceledCurrentPage(prev => Math.max(prev - 1, 1))}
+                      disabled={canceledCurrentPage === 1}
+                      className="flex items-center gap-1"
+                    >
+                      <ChevronLeft className="h-4 w-4" />
+                      Anterior
+                    </Button>
+                    
+                    <div className="flex items-center gap-1">
+                      {/* Show page numbers */}
+                      {Array.from({ length: Math.min(5, totalCanceledPages) }, (_, i) => {
+                        let pageNumber;
+                        if (totalCanceledPages <= 5) {
+                          pageNumber = i + 1;
+                        } else if (canceledCurrentPage <= 3) {
+                          pageNumber = i + 1;
+                        } else if (canceledCurrentPage >= totalCanceledPages - 2) {
+                          pageNumber = totalCanceledPages - 4 + i;
+                        } else {
+                          pageNumber = canceledCurrentPage - 2 + i;
+                        }
+                        
+                        return (
+                          <Button
+                            key={pageNumber}
+                            variant={canceledCurrentPage === pageNumber ? "default" : "outline"}
+                            size="sm"
+                            onClick={() => setCanceledCurrentPage(pageNumber)}
+                            className="w-8 h-8"
+                          >
+                            {pageNumber}
+                          </Button>
+                        );
+                      })}
+                    </div>
+                    
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setCanceledCurrentPage(prev => Math.min(prev + 1, totalCanceledPages))}
+                      disabled={canceledCurrentPage === totalCanceledPages}
+                      className="flex items-center gap-1"
+                    >
+                      Siguiente
+                      <ChevronRight className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="flex justify-end pt-4 border-t">
+              <Button 
+                variant="outline" 
+                onClick={() => {
+                  setCanceledDetailsModalOpen(false);
+                  setCanceledSearchTerm('');
+                  setCanceledCurrentPage(1);
+                }}
+              >
+                Cerrar
+              </Button>
+            </div>
           </DialogContent>
         </Dialog>
       </div>
