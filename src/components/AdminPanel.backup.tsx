@@ -1,5 +1,5 @@
-import { useState, useEffect, useCallback } from 'react'
-import { Plus, Search, Edit, Trash2, Users, Building2, UserCheck, UserX, TrendingUp, DollarSign, Package, Clock, LayoutDashboard, Phone, MapPin, Settings, RefreshCw, Cog, ChartLine, Timer, BarChart3, Truck, Eye, AlertTriangle, ChevronLeft, ChevronRight, XCircle } from 'lucide-react'
+import { useState, useEffect } from 'react'
+import { Plus, Search, Edit, Trash2, Users, Building2, UserCheck, UserX, TrendingUp, DollarSign, Package, Clock, LayoutDashboard, Phone, MapPin, Settings, RefreshCw, Cog, ChartLine, Timer, BarChart3, Truck, Eye, AlertTriangle, ChevronLeft, ChevronRight } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -15,20 +15,17 @@ import { supabase, type Database } from '@/lib/supabase'
 import { useAuth } from '@/hooks/useAuth'
 import { useAdminTab } from '@/hooks/useAdminTab'
 import { useAdminSection } from '@/hooks/useAdminSection'
-import { useLoadingStates } from '@/hooks/useLoadingStates'
 import { adminService, CreateUserData, User, CreateSedeData, UpdateSedeData, Sede, Repartidor } from '@/services/adminService'
 import { metricsService, DashboardMetrics, MetricsFilters } from '@/services/metricsService'
-import { adminDataLoader } from '@/services/adminDataLoader'
-import { optimisticAdd, optimisticUpdate, optimisticDelete } from '@/utils/optimisticUpdates'
-import { SectionLoading, TableSectionLoading, MetricsLoading, StatusIndicator } from '@/components/LoadingIndicators'
 import { Calendar } from '@/components/ui/calendar'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { CalendarIcon } from 'lucide-react'
 import { format } from 'date-fns'
 import { es } from 'date-fns/locale'
-import { logger } from '@/utils/logger'
+
 
 type Profile = User
+
 
 interface AdminPanelProps {
   onBack?: () => void;
@@ -36,25 +33,10 @@ interface AdminPanelProps {
 }
 
 export function AdminPanel({ onBack, onNavigateToTimeMetrics }: AdminPanelProps) {
-  // Data state with optimistic updates support
   const [users, setUsers] = useState<Profile[]>([])
   const [sedes, setSedes] = useState<Sede[]>([])
   const [sedesSimple, setSedesSimple] = useState<Array<{ id: string; name: string }>>([])
   const [repartidores, setRepartidores] = useState<Repartidor[]>([])
-  
-  // Loading states management
-  const {
-    loadingStates,
-    isAnyLoading,
-    startLoading,
-    finishLoading,
-    clearError,
-    incrementRetry,
-    resetSection,
-    getLoadingInfo
-  } = useLoadingStates()
-
-  // Dialog and form states
   const [selectedRepartidor, setSelectedRepartidor] = useState<Repartidor | null>(null)
   const [isRepartidorSedeEditOpen, setIsRepartidorSedeEditOpen] = useState(false)
   const [repartidorSedeFormData, setRepartidorSedeFormData] = useState({ sede_id: '' })
@@ -67,7 +49,7 @@ export function AdminPanel({ onBack, onNavigateToTimeMetrics }: AdminPanelProps)
     sede_id: ''
   })
   const [searchTerm, setSearchTerm] = useState('')
-  // Removed global loading state - now using section-specific states
+  const [loading, setLoading] = useState(true)
   const [isCreateUserOpen, setIsCreateUserOpen] = useState(false)
   const [isCreateSedeOpen, setIsCreateSedeOpen] = useState(false)
   const [isEditSedeOpen, setIsEditSedeOpen] = useState(false)
@@ -102,6 +84,7 @@ export function AdminPanel({ onBack, onNavigateToTimeMetrics }: AdminPanelProps)
 
   // Estados para métricas
   const [metricsData, setMetricsData] = useState<DashboardMetrics | null>(null)
+  const [metricsLoading, setMetricsLoading] = useState(false)
   const [selectedDate, setSelectedDate] = useState<Date>(new Date())
   const [selectedSedeFilter, setSelectedSedeFilter] = useState<string>('all')
   const [dateRange, setDateRange] = useState<{ from: Date; to: Date }>({
@@ -109,160 +92,139 @@ export function AdminPanel({ onBack, onNavigateToTimeMetrics }: AdminPanelProps)
     to: new Date()    // Hoy por defecto
   })
 
-  // Initialize data loading on mount
+
+
+
   useEffect(() => {
-    logger.info('🚀 AdminPanel iniciando con carga optimizada...')
-    loadInitialData()
+    console.log('🚀 AdminPanel iniciando...')
+    fetchUsers()
+    fetchSedes()
+    fetchSedesComplete()
+    fetchRepartidores()
+    // loadMetrics() se ejecutará por el otro useEffect
   }, [])
 
-  // Optimized metrics loading with debouncing  
+  // Recargar métricas cuando cambien los filtros - solo si dateRange está inicializado
   useEffect(() => {
     if (dateRange.from && dateRange.to) {
-      logger.info('🔄 Recargando métricas con debounce...')
-      loadMetricsOptimized()
+      console.log('🔄 Recargando métricas por cambio de filtros...');
+      loadMetrics();
     }
   }, [dateRange, selectedSedeFilter])
 
-  // Optimized data loading functions with timeout and retry
-  const loadInitialData = useCallback(async () => {
-    logger.info('Starting optimized initial data load')
-    
-    try {
-      const result = await adminDataLoader.loadAllData(false, undefined, {
-        sequential: true, // Use sequential loading to avoid connection stress
-        useCache: true
-      })
-      
-      // Update users
-      if (result.users.success && result.users.data) {
-        setUsers(result.users.data)
-        finishLoading('users')
-      } else {
-        finishLoading('users', result.users.error)
-      }
-      
-      // Update sedes (both simple and complete)
-      if (result.sedes.success && result.sedes.data) {
-        setSedes(result.sedes.data.complete)
-        setSedesSimple(result.sedes.data.simple)
-        finishLoading('sedes')
-      } else {
-        finishLoading('sedes', result.sedes.error)
-      }
-      
-      // Update repartidores
-      if (result.repartidores.success && result.repartidores.data) {
-        setRepartidores(result.repartidores.data)
-        finishLoading('repartidores')
-      } else {
-        finishLoading('repartidores', result.repartidores.error)
-      }
-      
-      logger.info('Initial data load completed', {
-        totalAttempts: result.totalAttempts,
-        usersLoaded: !!result.users.success,
-        sedesLoaded: !!result.sedes.success,
-        repartidoresLoaded: !!result.repartidores.success
-      })
-      
-    } catch (error) {
-      logger.error('Initial data load failed', { error })
-      finishLoading('users', 'Error de conexión')
-      finishLoading('sedes', 'Error de conexión')
-      finishLoading('repartidores', 'Error de conexión')
-    }
-  }, [finishLoading])
 
-  // Retry functions for individual sections
-  const retrySection = useCallback(async (section: 'users' | 'sedes' | 'repartidores') => {
-    startLoading(section)
-    incrementRetry(section)
-    
+  const fetchUsers = async () => {
     try {
-      switch (section) {
-        case 'users': {
-          const result = await adminDataLoader.loadUsers({ useCache: false })
-          if (result.success && result.data) {
-            setUsers(result.data)
-            finishLoading('users')
-          } else {
-            finishLoading('users', result.error)
-          }
-          break
-        }
-        case 'sedes': {
-          const result = await adminDataLoader.loadSedes({ useCache: false })
-          if (result.success && result.data) {
-            setSedes(result.data.complete)
-            setSedesSimple(result.data.simple)
-            finishLoading('sedes')
-          } else {
-            finishLoading('sedes', result.error)
-          }
-          break
-        }
-        case 'repartidores': {
-          const result = await adminDataLoader.loadRepartidores({ useCache: false })
-          if (result.success && result.data) {
-            setRepartidores(result.data)
-            finishLoading('repartidores')
-          } else {
-            finishLoading('repartidores', result.error)
-          }
-          break
-        }
-      }
-    } catch (error) {
-      finishLoading(section, 'Error de conexión')
-    }
-  }, [startLoading, finishLoading, incrementRetry])
+      console.log('🔍 Intentando obtener usuarios...')
+      
+      const { data, error } = await supabase
+        .from('profiles')
+        .select(`
+          *,
+          sedes(name)
+        `)
+        .order('created_at', { ascending: false })
 
-  // Optimized metrics loading with debouncing and caching
-  const loadMetricsOptimized = useCallback(async () => {
-    startLoading('metrics')
-    
+      if (error) {
+        console.error('❌ Error obteniendo usuarios:', error)
+        throw error
+      }
+      
+      console.log('✅ Usuarios obtenidos:', data?.length || 0)
+      setUsers(data || [])
+    } catch (error) {
+      console.error('❌ Error fetching users:', error)
+      toast({
+        title: "Error",
+        description: "No se pudieron cargar los usuarios",
+        variant: "destructive",
+      })
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const fetchSedes = async () => {
     try {
+      console.log('🔍 Intentando obtener sedes simples...')
+      
+      const sedesData = await adminService.getSedes()
+      setSedesSimple(sedesData)
+      console.log('✅ Sedes simples obtenidas:', sedesData.length)
+    } catch (error) {
+      console.error('❌ Error fetching sedes:', error)
+    }
+  }
+
+  const fetchSedesComplete = async () => {
+    try {
+      console.log('🔍 Intentando obtener sedes completas...')
+      
+      const sedesData = await adminService.getSedesComplete()
+      setSedes(sedesData)
+      console.log('✅ Sedes completas obtenidas:', sedesData.length)
+    } catch (error) {
+      console.error('❌ Error fetching sedes completas:', error)
+    }
+  }
+
+  const loadMetrics = async () => {
+    try {
+      setMetricsLoading(true)
+      console.log('📊 Cargando métricas...')
+      console.log('🔍 DEBUG dateRange:', {
+        from: dateRange.from,
+        to: dateRange.to,
+        from_iso: dateRange.from.toISOString(),
+        to_iso: dateRange.to.toISOString()
+      })
+
       const filters: MetricsFilters = {
         fecha_inicio: format(dateRange.from, 'yyyy-MM-dd'),
         fecha_fin: format(dateRange.to, 'yyyy-MM-dd'),
         sede_id: selectedSedeFilter === 'all' ? undefined : selectedSedeFilter
       }
-      
-      logger.info('Loading metrics with optimized loader', { filters })
-      
-      const result = await adminDataLoader.loadMetrics(filters, { useCache: true })
-      
-      if (result.success && result.data) {
-        setMetricsData(result.data)
-        finishLoading('metrics')
-        logger.info('Metrics loaded successfully', {
-          metricasPorDia: result.data.metricasPorDia?.length || 0,
-          totalPedidos: result.data.totalGeneral?.pedidos || 0
-        })
-      } else {
-        finishLoading('metrics', result.error)
-        if (!result.timedOut) {
-          toast({
-            title: "Error",
-            description: result.error || "No se pudieron cargar las métricas",
-            variant: "destructive",
-          })
-        }
-      }
-    } catch (error) {
-      logger.error('Metrics loading failed', { error })
-      finishLoading('metrics', 'Error de conexión')
-    }
-  }, [dateRange, selectedSedeFilter, startLoading, finishLoading, toast])
 
-  // Optimistic CRUD operations
+      console.log('🔍 DEBUG AdminPanel - Filtros aplicados:', {
+        fecha_inicio: filters.fecha_inicio,
+        fecha_fin: filters.fecha_fin,
+        sede_id: filters.sede_id,
+        dateRange_from: dateRange.from,
+        dateRange_to: dateRange.to,
+        selectedSedeFilter: selectedSedeFilter
+      })
+
+      const metrics = await metricsService.getDashboardMetrics(filters)
+      setMetricsData(metrics)
+      console.log('✅ Métricas cargadas exitosamente:', {
+        metricasPorDia: metrics.metricasPorDia?.length || 0,
+        totalPedidos: metrics.totalGeneral?.pedidos || 0,
+        totalIngresos: metrics.totalGeneral?.ingresos || 0,
+        promedio: metrics.totalGeneral?.promedio || 0,
+        rawMetrics: JSON.stringify(metrics, null, 2)
+      })
+    } catch (error) {
+      console.error('❌ Error cargando métricas:', error)
+      toast({
+        title: "Error",
+        description: "No se pudieron cargar las métricas",
+        variant: "destructive",
+      })
+    } finally {
+      setMetricsLoading(false)
+    }
+  }
+
+
+
   const handleCreateUser = async (e: React.FormEvent) => {
     e.preventDefault()
     
     try {
       setIsCreatingUser(true)
-      logger.info('Creating user with optimistic updates...')
+      console.log('➕ Creando usuario con nuevo servicio...')
       
+      // Usar el nuevo servicio para crear el perfil de usuario
       const userData: CreateUserData = {
         email: formData.email,
         password: formData.password,
@@ -272,61 +234,25 @@ export function AdminPanel({ onBack, onNavigateToTimeMetrics }: AdminPanelProps)
         is_active: formData.is_active
       }
 
-      // Create temporary user for optimistic update
-      const tempUser: User = {
-        id: 'temp-' + Date.now(),
-        email: userData.email,
-        name: userData.name,
-        role: userData.role,
-        sede_id: userData.sede_id,
-        is_active: userData.is_active,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString()
-      }
+      const newUser = await adminService.createUser(userData)
 
-      const { optimisticItems, execute } = optimisticAdd(
-        users,
-        tempUser,
-        () => adminService.createUser(userData),
-        {
-          onSuccess: (newUser) => {
-            // Replace temp user with real user
-            setUsers(prev => prev.map(u => u.id === tempUser.id ? newUser : u))
-            toast({
-              title: "Usuario creado exitosamente",
-              description: `${formData.name} ha sido creado y puede iniciar sesión inmediatamente con: ${formData.email}`,
-            })
-            setFormData({
-              name: '',
-              email: '',
-              password: '',
-              role: 'agent',
-              sede_id: '',
-              is_active: true
-            })
-            setIsCreateUserOpen(false)
-            // Invalidate cache to ensure fresh data on next load
-            adminDataLoader.invalidateCache(['users'])
-          },
-          onError: (error, rollback) => {
-            // Remove the optimistically added user
-            setUsers(prev => prev.filter(u => u.id !== tempUser.id))
-            toast({
-              title: "Error",
-              description: error.message || "No se pudo crear el perfil de usuario",
-              variant: "destructive",
-            })
-          }
-        }
-      )
+      toast({
+        title: "Usuario creado exitosamente",
+        description: `${formData.name} ha sido creado y puede iniciar sesión inmediatamente con: ${formData.email}`,
+      })
 
-      // Apply optimistic update immediately
-      setUsers(optimisticItems)
-      
-      // Execute the actual operation
-      await execute()
+      setFormData({
+        name: '',
+        email: '',
+        password: '',
+        role: 'agent',
+        sede_id: '',
+        is_active: true
+      })
+      setIsCreateUserOpen(false)
+      fetchUsers()
     } catch (error: any) {
-      logger.error('Error creating user:', error)
+      console.error('Error creating user:', error)
       toast({
         title: "Error",
         description: error.message || "No se pudo crear el perfil de usuario",
@@ -349,43 +275,19 @@ export function AdminPanel({ onBack, onNavigateToTimeMetrics }: AdminPanelProps)
     if (!selectedUser) return
     
     try {
-      const updates = { sede_id: userSedeFormData.sede_id }
+      await adminService.updateUserSede(selectedUser.id, userSedeFormData.sede_id)
       
-      const { optimisticItems, execute } = optimisticUpdate(
-        users,
-        selectedUser.id,
-        updates,
-        () => adminService.updateUserSede(selectedUser.id, userSedeFormData.sede_id),
-        {
-          onSuccess: () => {
-            toast({
-              title: "Sede actualizada",
-              description: `La sede de ${selectedUser.name} ha sido actualizada exitosamente.`,
-            })
-            setIsUserSedeEditOpen(false)
-            setSelectedUser(null)
-            setUserSedeFormData({ sede_id: '' })
-            adminDataLoader.invalidateCache(['users'])
-          },
-          onError: (error, rollback) => {
-            // Rollback optimistic update
-            setUsers(prev => prev.map(u => u.id === selectedUser.id ? selectedUser : u))
-            toast({
-              title: "Error",
-              description: error.message || "No se pudo actualizar la sede del usuario",
-              variant: "destructive",
-            })
-          }
-        }
-      )
+      toast({
+        title: "Sede actualizada",
+        description: `La sede de ${selectedUser.name} ha sido actualizada exitosamente.`,
+      })
       
-      // Apply optimistic update
-      setUsers(optimisticItems)
-      
-      // Execute actual operation
-      await execute()
+      setIsUserSedeEditOpen(false)
+      setSelectedUser(null)
+      setUserSedeFormData({ sede_id: '' })
+      fetchUsers()
     } catch (error: any) {
-      logger.error('Error updating user sede:', error)
+      console.error('Error updating user sede:', error)
       toast({
         title: "Error",
         description: error.message || "No se pudo actualizar la sede del usuario",
@@ -398,7 +300,7 @@ export function AdminPanel({ onBack, onNavigateToTimeMetrics }: AdminPanelProps)
     e.preventDefault()
     
     try {
-      logger.info('Creating sede with optimistic updates...')
+      console.log('➕ Creando sede...')
       
       const sedeData: CreateSedeData = {
         name: sedeFormData.name,
@@ -407,62 +309,24 @@ export function AdminPanel({ onBack, onNavigateToTimeMetrics }: AdminPanelProps)
         is_active: sedeFormData.is_active
       }
 
-      // Create temporary sede for optimistic update
-      const tempSede: Sede = {
-        id: 'temp-' + Date.now(),
-        name: sedeData.name,
-        address: sedeData.address,
-        phone: sedeData.phone,
-        current_capacity: 0,
-        max_capacity: 50,
-        is_active: sedeData.is_active,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString()
-      }
+      const newSede = await adminService.createSede(sedeData)
 
-      const { optimisticItems, execute } = optimisticAdd(
-        sedes,
-        tempSede,
-        () => adminService.createSede(sedeData),
-        {
-          onSuccess: (newSede) => {
-            // Update both sedes arrays
-            setSedes(prev => prev.map(s => s.id === tempSede.id ? newSede : s))
-            setSedesSimple(prev => [...prev.filter(s => s.id !== tempSede.id), { id: newSede.id, name: newSede.name }])
-            
-            toast({
-              title: "Sede creada",
-              description: `La sede ${sedeFormData.name} ha sido creada exitosamente`,
-            })
-            setSedeFormData({
-              name: '',
-              address: '',
-              phone: '',
-              is_active: true
-            })
-            setIsCreateSedeOpen(false)
-            adminDataLoader.invalidateCache(['sedes'])
-          },
-          onError: (error, rollback) => {
-            setSedes(prev => prev.filter(s => s.id !== tempSede.id))
-            setSedesSimple(prev => prev.filter(s => s.id !== tempSede.id))
-            toast({
-              title: "Error",
-              description: error.message || "No se pudo crear la sede",
-              variant: "destructive",
-            })
-          }
-        }
-      )
+      toast({
+        title: "Sede creada",
+        description: `La sede ${sedeFormData.name} ha sido creada exitosamente`,
+      })
 
-      // Apply optimistic updates
-      setSedes(optimisticItems)
-      setSedesSimple(prev => [...prev, { id: tempSede.id, name: tempSede.name }])
-      
-      // Execute actual operation
-      await execute()
+      setSedeFormData({
+        name: '',
+        address: '',
+        phone: '',
+        is_active: true
+      })
+      setIsCreateSedeOpen(false)
+      fetchSedesComplete()
+      fetchSedes()
     } catch (error: any) {
-      logger.error('Error creating sede:', error)
+      console.error('Error creating sede:', error)
       toast({
         title: "Error",
         description: error.message || "No se pudo crear la sede",
@@ -477,7 +341,7 @@ export function AdminPanel({ onBack, onNavigateToTimeMetrics }: AdminPanelProps)
     if (!selectedSede) return
 
     try {
-      logger.info('Updating sede with optimistic updates...')
+      console.log('✏️ Editando sede...')
       
       const updateData: UpdateSedeData = {
         name: sedeFormData.name,
@@ -486,49 +350,25 @@ export function AdminPanel({ onBack, onNavigateToTimeMetrics }: AdminPanelProps)
         is_active: sedeFormData.is_active
       }
 
-      const { optimisticItems, execute } = optimisticUpdate(
-        sedes,
-        selectedSede.id,
-        updateData,
-        () => adminService.updateSede(selectedSede.id, updateData),
-        {
-          onSuccess: (updatedSede) => {
-            // Update both arrays
-            setSedes(prev => prev.map(s => s.id === selectedSede.id ? updatedSede : s))
-            setSedesSimple(prev => prev.map(s => s.id === selectedSede.id ? { id: updatedSede.id, name: updatedSede.name } : s))
-            
-            toast({
-              title: "Sede actualizada",
-              description: `La sede ${sedeFormData.name} ha sido actualizada exitosamente`,
-            })
-            setSedeFormData({
-              name: '',
-              address: '',
-              phone: '',
-              is_active: true
-            })
-            setIsEditSedeOpen(false)
-            setSelectedSede(null)
-            adminDataLoader.invalidateCache(['sedes'])
-          },
-          onError: (error, rollback) => {
-            setSedes(prev => prev.map(s => s.id === selectedSede.id ? selectedSede : s))
-            toast({
-              title: "Error",
-              description: error.message || "No se pudo actualizar la sede",
-              variant: "destructive",
-            })
-          }
-        }
-      )
-      
-      // Apply optimistic update
-      setSedes(optimisticItems)
-      
-      // Execute actual operation
-      await execute()
+      await adminService.updateSede(selectedSede.id, updateData)
+
+      toast({
+        title: "Sede actualizada",
+        description: `La sede ${sedeFormData.name} ha sido actualizada exitosamente`,
+      })
+
+      setSedeFormData({
+        name: '',
+        address: '',
+        phone: '',
+        is_active: true
+      })
+      setIsEditSedeOpen(false)
+      setSelectedSede(null)
+      fetchSedesComplete()
+      fetchSedes()
     } catch (error: any) {
-      logger.error('Error updating sede:', error)
+      console.error('Error updating sede:', error)
       toast({
         title: "Error",
         description: error.message || "No se pudo actualizar la sede",
@@ -543,39 +383,19 @@ export function AdminPanel({ onBack, onNavigateToTimeMetrics }: AdminPanelProps)
     }
 
     try {
-      logger.info('Deleting sede with optimistic updates...')
+      console.log('🗑️ Eliminando sede...')
       
-      const { optimisticItems, execute } = optimisticDelete(
-        sedes,
-        sede.id,
-        () => adminService.deleteSede(sede.id),
-        {
-          onSuccess: () => {
-            setSedesSimple(prev => prev.filter(s => s.id !== sede.id))
-            toast({
-              title: "Sede eliminada",
-              description: `La sede ${sede.name} ha sido eliminada exitosamente`,
-            })
-            adminDataLoader.invalidateCache(['sedes'])
-          },
-          onError: (error, rollback) => {
-            setSedes(prev => [...prev, sede])
-            toast({
-              title: "Error",
-              description: error.message || "No se pudo eliminar la sede",
-              variant: "destructive",
-            })
-          }
-        }
-      )
-      
-      // Apply optimistic update
-      setSedes(optimisticItems)
-      
-      // Execute actual operation
-      await execute()
+      await adminService.deleteSede(sede.id)
+
+      toast({
+        title: "Sede eliminada",
+        description: `La sede ${sede.name} ha sido eliminada exitosamente`,
+      })
+
+      fetchSedesComplete()
+      fetchSedes()
     } catch (error: any) {
-      logger.error('Error deleting sede:', error)
+      console.error('Error deleting sede:', error)
       toast({
         title: "Error",
         description: error.message || "No se pudo eliminar la sede",
@@ -601,7 +421,7 @@ export function AdminPanel({ onBack, onNavigateToTimeMetrics }: AdminPanelProps)
     }
 
     try {
-      logger.info('Initializing sede products:', sede.name, sede.id)
+      console.log('🔄 Inicializando productos para sede:', sede.name, sede.id)
       
       await adminService.initializeExistingSedeProducts(sede.id)
 
@@ -610,11 +430,11 @@ export function AdminPanel({ onBack, onNavigateToTimeMetrics }: AdminPanelProps)
         description: `Productos inicializados exitosamente para la sede "${sede.name}"`,
       })
 
-      // Optionally reload sedes data
-      await retrySection('sedes')
+      // Recargar la lista (opcional)
+      await fetchSedes()
       
     } catch (error: any) {
-      logger.error('Error initializing sede products:', error)
+      console.error('Error initializing sede products:', error)
       toast({
         title: "Error",
         description: error.message || "No se pudieron inicializar los productos para la sede",
@@ -625,39 +445,16 @@ export function AdminPanel({ onBack, onNavigateToTimeMetrics }: AdminPanelProps)
 
   const toggleUserStatus = async (userId: string, currentStatus: boolean) => {
     try {
-      const updates = { is_active: !currentStatus }
-      
-      const { optimisticItems, execute } = optimisticUpdate(
-        users,
-        userId,
-        updates,
-        () => adminService.updateUserStatus(userId, !currentStatus),
-        {
-          onSuccess: () => {
-            toast({
-              title: currentStatus ? "Usuario desactivado" : "Usuario activado",
-              description: `El usuario ha sido ${currentStatus ? 'desactivado' : 'activado'} exitosamente`,
-            })
-            adminDataLoader.invalidateCache(['users'])
-          },
-          onError: (error, rollback) => {
-            const originalUser = users.find(u => u.id === userId)
-            if (originalUser) {
-              setUsers(prev => prev.map(u => u.id === userId ? originalUser : u))
-            }
-            toast({
-              title: "Error",
-              description: "No se pudo actualizar el usuario",
-              variant: "destructive",
-            })
-          }
-        }
-      )
-      
-      setUsers(optimisticItems)
-      await execute()
+      await adminService.updateUserStatus(userId, !currentStatus)
+
+      toast({
+        title: currentStatus ? "Usuario desactivado" : "Usuario activado",
+        description: `El usuario ha sido ${currentStatus ? 'desactivado' : 'activado'} exitosamente`,
+      })
+
+      fetchUsers()
     } catch (error: any) {
-      logger.error('Error updating user:', error)
+      console.error('Error updating user:', error)
       toast({
         title: "Error",
         description: "No se pudo actualizar el usuario",
@@ -672,36 +469,16 @@ export function AdminPanel({ onBack, onNavigateToTimeMetrics }: AdminPanelProps)
     }
 
     try {
-      const { optimisticItems, execute } = optimisticDelete(
-        users,
-        userId,
-        () => adminService.deleteUser(userId),
-        {
-          onSuccess: () => {
-            toast({
-              title: "Usuario eliminado",
-              description: `El usuario ${userName} ha sido eliminado exitosamente`,
-            })
-            adminDataLoader.invalidateCache(['users'])
-          },
-          onError: (error, rollback) => {
-            const deletedUser = users.find(u => u.id === userId)
-            if (deletedUser) {
-              setUsers(prev => [...prev, deletedUser])
-            }
-            toast({
-              title: "Error",
-              description: "No se pudo eliminar el usuario",
-              variant: "destructive",
-            })
-          }
-        }
-      )
+      await adminService.deleteUser(userId)
       
-      setUsers(optimisticItems)
-      await execute()
+      toast({
+        title: "Usuario eliminado",
+        description: `El usuario ${userName} ha sido eliminado exitosamente`,
+      })
+
+      fetchUsers()
     } catch (error: any) {
-      logger.error('Error deleting user:', error)
+      console.error('Error deleting user:', error)
       toast({
         title: "Error",
         description: "No se pudo eliminar el usuario",
@@ -711,6 +488,22 @@ export function AdminPanel({ onBack, onNavigateToTimeMetrics }: AdminPanelProps)
   }
 
   // ======= FUNCIONES PARA REPARTIDORES =======
+
+  const fetchRepartidores = async () => {
+    try {
+      console.log('🔍 Intentando obtener repartidores...')
+      const repartidoresData = await adminService.getRepartidores()
+      setRepartidores(repartidoresData)
+      console.log('✅ Repartidores obtenidos:', repartidoresData.length)
+    } catch (error) {
+      console.error('❌ Error fetching repartidores:', error)
+      toast({
+        title: "Error",
+        description: "No se pudieron cargar los repartidores",
+        variant: "destructive",
+      })
+    }
+  }
 
   const handleRepartidorSedeEdit = (repartidor: Repartidor) => {
     setSelectedRepartidor(repartidor)
@@ -724,39 +517,22 @@ export function AdminPanel({ onBack, onNavigateToTimeMetrics }: AdminPanelProps)
     if (!selectedRepartidor) return
     
     try {
-      const updates = { sede_id: repartidorSedeFormData.sede_id || null }
-      
-      const { optimisticItems, execute } = optimisticUpdate(
-        repartidores,
-        selectedRepartidor.id,
-        updates,
-        () => adminService.updateRepartidorSede(selectedRepartidor.id, repartidorSedeFormData.sede_id || null),
-        {
-          onSuccess: () => {
-            toast({
-              title: "Sede actualizada",
-              description: `La sede del repartidor ${selectedRepartidor.nombre} ha sido actualizada exitosamente`,
-            })
-            setIsRepartidorSedeEditOpen(false)
-            setSelectedRepartidor(null)
-            setRepartidorSedeFormData({ sede_id: '' })
-            adminDataLoader.invalidateCache(['repartidores'])
-          },
-          onError: (error, rollback) => {
-            setRepartidores(prev => prev.map(r => r.id === selectedRepartidor.id ? selectedRepartidor : r))
-            toast({
-              title: "Error",
-              description: error.message || "No se pudo actualizar la sede del repartidor",
-              variant: "destructive",
-            })
-          }
-        }
+      await adminService.updateRepartidorSede(
+        selectedRepartidor.id, 
+        repartidorSedeFormData.sede_id || null
       )
       
-      setRepartidores(optimisticItems)
-      await execute()
+      toast({
+        title: "Sede actualizada",
+        description: `La sede del repartidor ${selectedRepartidor.nombre} ha sido actualizada exitosamente`,
+      })
+      
+      setIsRepartidorSedeEditOpen(false)
+      setSelectedRepartidor(null)
+      setRepartidorSedeFormData({ sede_id: '' })
+      fetchRepartidores()
     } catch (error: any) {
-      logger.error('Error updating repartidor sede:', error)
+      console.error('Error updating repartidor sede:', error)
       toast({
         title: "Error",
         description: error.message || "No se pudo actualizar la sede del repartidor",
@@ -767,39 +543,16 @@ export function AdminPanel({ onBack, onNavigateToTimeMetrics }: AdminPanelProps)
 
   const toggleRepartidorStatus = async (repartidorId: number, currentStatus: boolean) => {
     try {
-      const updates = { disponible: !currentStatus }
-      
-      const { optimisticItems, execute } = optimisticUpdate(
-        repartidores,
-        repartidorId,
-        updates,
-        () => adminService.updateRepartidorStatus(repartidorId, !currentStatus),
-        {
-          onSuccess: () => {
-            toast({
-              title: currentStatus ? "Repartidor desactivado" : "Repartidor activado",
-              description: `El repartidor ha sido ${currentStatus ? 'desactivado' : 'activado'} exitosamente`,
-            })
-            adminDataLoader.invalidateCache(['repartidores'])
-          },
-          onError: (error, rollback) => {
-            const originalRepartidor = repartidores.find(r => r.id === repartidorId)
-            if (originalRepartidor) {
-              setRepartidores(prev => prev.map(r => r.id === repartidorId ? originalRepartidor : r))
-            }
-            toast({
-              title: "Error",
-              description: "No se pudo actualizar el repartidor",
-              variant: "destructive",
-            })
-          }
-        }
-      )
-      
-      setRepartidores(optimisticItems)
-      await execute()
+      await adminService.updateRepartidorStatus(repartidorId, !currentStatus)
+
+      toast({
+        title: currentStatus ? "Repartidor desactivado" : "Repartidor activado",
+        description: `El repartidor ha sido ${currentStatus ? 'desactivado' : 'activado'} exitosamente`,
+      })
+
+      fetchRepartidores()
     } catch (error: any) {
-      logger.error('Error updating repartidor:', error)
+      console.error('Error updating repartidor:', error)
       toast({
         title: "Error",
         description: "No se pudo actualizar el repartidor",
@@ -821,56 +574,28 @@ export function AdminPanel({ onBack, onNavigateToTimeMetrics }: AdminPanelProps)
     }
 
     try {
-      const tempRepartidor: Repartidor = {
-        id: Date.now(), // Temporary ID
+      await adminService.createRepartidor({
         nombre: repartidorFormData.nombre.trim(),
         telefono: repartidorFormData.telefono.trim(),
         placas: repartidorFormData.placas.trim() || undefined,
-        sede_id: repartidorFormData.sede_id || null,
-        disponible: true,
-        created_at: new Date().toISOString()
-      }
+        sede_id: repartidorFormData.sede_id || null
+      })
 
-      const { optimisticItems, execute } = optimisticAdd(
-        repartidores,
-        tempRepartidor,
-        () => adminService.createRepartidor({
-          nombre: repartidorFormData.nombre.trim(),
-          telefono: repartidorFormData.telefono.trim(),
-          placas: repartidorFormData.placas.trim() || undefined,
-          sede_id: repartidorFormData.sede_id || null
-        }),
-        {
-          onSuccess: (newRepartidor) => {
-            setRepartidores(prev => prev.map(r => r.id === tempRepartidor.id ? newRepartidor : r))
-            toast({
-              title: "Repartidor creado",
-              description: `El repartidor ${repartidorFormData.nombre} ha sido creado exitosamente`,
-            })
-            setIsCreateRepartidorOpen(false)
-            setRepartidorFormData({
-              nombre: '',
-              telefono: '',
-              placas: '',
-              sede_id: ''
-            })
-            adminDataLoader.invalidateCache(['repartidores'])
-          },
-          onError: (error, rollback) => {
-            setRepartidores(prev => prev.filter(r => r.id !== tempRepartidor.id))
-            toast({
-              title: "Error",
-              description: error.message || "No se pudo crear el repartidor",
-              variant: "destructive",
-            })
-          }
-        }
-      )
+      toast({
+        title: "Repartidor creado",
+        description: `El repartidor ${repartidorFormData.nombre} ha sido creado exitosamente`,
+      })
 
-      setRepartidores(optimisticItems)
-      await execute()
+      setIsCreateRepartidorOpen(false)
+      setRepartidorFormData({
+        nombre: '',
+        telefono: '',
+        placas: '',
+        sede_id: ''
+      })
+      fetchRepartidores()
     } catch (error: any) {
-      logger.error('Error creating repartidor:', error)
+      console.error('Error creating repartidor:', error)
       toast({
         title: "Error",
         description: error.message || "No se pudo crear el repartidor",
@@ -883,35 +608,18 @@ export function AdminPanel({ onBack, onNavigateToTimeMetrics }: AdminPanelProps)
     if (!selectedRepartidor) return
 
     try {
-      const { optimisticItems, execute } = optimisticDelete(
-        repartidores,
-        selectedRepartidor.id,
-        () => adminService.deleteRepartidor(selectedRepartidor.id),
-        {
-          onSuccess: () => {
-            toast({
-              title: "Repartidor eliminado",
-              description: `El repartidor ${selectedRepartidor.nombre} ha sido eliminado exitosamente`,
-            })
-            setIsDeleteRepartidorOpen(false)
-            setSelectedRepartidor(null)
-            adminDataLoader.invalidateCache(['repartidores'])
-          },
-          onError: (error, rollback) => {
-            setRepartidores(prev => [...prev, selectedRepartidor])
-            toast({
-              title: "Error",
-              description: error.message || "No se pudo eliminar el repartidor",
-              variant: "destructive",
-            })
-          }
-        }
-      )
+      await adminService.deleteRepartidor(selectedRepartidor.id)
 
-      setRepartidores(optimisticItems)
-      await execute()
+      toast({
+        title: "Repartidor eliminado",
+        description: `El repartidor ${selectedRepartidor.nombre} ha sido eliminado exitosamente`,
+      })
+
+      setIsDeleteRepartidorOpen(false)
+      setSelectedRepartidor(null)
+      fetchRepartidores()
     } catch (error: any) {
-      logger.error('Error deleting repartidor:', error)
+      console.error('Error deleting repartidor:', error)
       toast({
         title: "Error",
         description: error.message || "No se pudo eliminar el repartidor",
@@ -942,12 +650,7 @@ export function AdminPanel({ onBack, onNavigateToTimeMetrics }: AdminPanelProps)
     }
   }
 
-  logger.info('🎨 Rendering optimized AdminPanel', {
-    isAnyLoading,
-    usersCount: users.length,
-    sedesCount: sedes.length,
-    repartidoresCount: repartidores.length
-  })
+  console.log('🎨 Renderizando AdminPanel, loading:', loading, 'users:', users.length)
 
   // Si showMainApp es true, mostrar la aplicación principal
   if (showMainApp) {
@@ -964,19 +667,19 @@ export function AdminPanel({ onBack, onNavigateToTimeMetrics }: AdminPanelProps)
             </div>
             <div className="flex items-center space-x-2">
                                <Button
-                  variant="outline"
-                  onClick={() => {
-                    if (onBack) {
-                      onBack();
-                    } else {
-                      setShowMainApp(false);
-                    }
-                  }}
-                  className="flex items-center gap-2"
-                >
-                  <Users className="h-4 w-4" />
-                  Volver a Admin
-                </Button>
+                   variant="outline"
+                   onClick={() => {
+                     if (onBack) {
+                       onBack();
+                     } else {
+                       setShowMainApp(false);
+                     }
+                   }}
+                   className="flex items-center gap-2"
+                 >
+                   <Users className="h-4 w-4" />
+                   Volver a Admin
+                 </Button>
               <Button variant="outline" onClick={signOut}>
                 Cerrar Sesión
               </Button>
@@ -1029,13 +732,6 @@ export function AdminPanel({ onBack, onNavigateToTimeMetrics }: AdminPanelProps)
               <span className="text-sm font-bold text-primary-foreground">A&F</span>
             </div>
             <h1 className="text-xl font-semibold">Panel de Administración</h1>
-            {/* Overall loading indicator */}
-            <StatusIndicator
-              isLoading={isAnyLoading}
-              error={null}
-              lastUpdated={null}
-              size="sm"
-            />
           </div>
           <div className="flex items-center space-x-2">
             {/* Botón de Inicio - Solo visible si no estamos en la vista de usuarios */}
@@ -1101,10 +797,7 @@ export function AdminPanel({ onBack, onNavigateToTimeMetrics }: AdminPanelProps)
               <Card>
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                   <CardTitle className="text-sm font-medium">Total Usuarios</CardTitle>
-                  <div className="flex items-center gap-2">
-                    <Users className="h-4 w-4 text-muted-foreground" />
-                    <StatusIndicator {...getLoadingInfo('users')} size="sm" />
-                  </div>
+                  <Users className="h-4 w-4 text-muted-foreground" />
                 </CardHeader>
                 <CardContent>
                   <div className="text-2xl font-bold">{users.length}</div>
@@ -1117,10 +810,7 @@ export function AdminPanel({ onBack, onNavigateToTimeMetrics }: AdminPanelProps)
               <Card>
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                   <CardTitle className="text-sm font-medium">Total Sedes</CardTitle>
-                  <div className="flex items-center gap-2">
-                    <Building2 className="h-4 w-4 text-muted-foreground" />
-                    <StatusIndicator {...getLoadingInfo('sedes')} size="sm" />
-                  </div>
+                  <Building2 className="h-4 w-4 text-muted-foreground" />
                 </CardHeader>
                 <CardContent>
                   <div className="text-2xl font-bold">{sedes.length}</div>
@@ -1170,236 +860,207 @@ export function AdminPanel({ onBack, onNavigateToTimeMetrics }: AdminPanelProps)
             <Card>
               <CardHeader>
                 <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <div>
-                      <CardTitle>Gestión de Usuarios</CardTitle>
-                      <CardDescription>
-                        Administra los usuarios del sistema
-                      </CardDescription>
+                  <div>
+                    <CardTitle>Gestión de Usuarios</CardTitle>
+                    <CardDescription>
+                      Administra los usuarios del sistema
+                    </CardDescription>
+                  </div>
+                  <Dialog open={isCreateUserOpen} onOpenChange={setIsCreateUserOpen}>
+                    <DialogTrigger asChild>
+                      <Button>
+                        <Plus className="mr-2 h-4 w-4" />
+                        Crear Usuario
+                      </Button>
+                    </DialogTrigger>
+                <DialogContent>
+                  <DialogHeader>
+                    <DialogTitle>Crear Nuevo Usuario</DialogTitle>
+                    <DialogDescription>
+                      Completa la información del nuevo usuario
+                    </DialogDescription>
+                  </DialogHeader>
+                  <form onSubmit={handleCreateUser} className="space-y-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="name">Nombre</Label>
+                      <Input
+                        id="name"
+                        value={formData.name}
+                        onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                        required
+                      />
                     </div>
-                    <StatusIndicator {...getLoadingInfo('users')} />
-                  </div>
-                  <div className="flex gap-2">
-                    <Button
-                      variant="outline"
-                      onClick={() => retrySection('users')}
-                      disabled={loadingStates.users.isLoading}
-                      className="flex items-center gap-2"
-                    >
-                      <RefreshCw className={`h-4 w-4 ${loadingStates.users.isLoading ? 'animate-spin' : ''}`} />
-                      Actualizar
-                    </Button>
-                    <Dialog open={isCreateUserOpen} onOpenChange={setIsCreateUserOpen}>
-                      <DialogTrigger asChild>
-                        <Button>
-                          <Plus className="mr-2 h-4 w-4" />
-                          Crear Usuario
-                        </Button>
-                      </DialogTrigger>
-                      <DialogContent>
-                        <DialogHeader>
-                          <DialogTitle>Crear Nuevo Usuario</DialogTitle>
-                          <DialogDescription>
-                            Completa la información del nuevo usuario
-                          </DialogDescription>
-                        </DialogHeader>
-                        <form onSubmit={handleCreateUser} className="space-y-4">
-                          <div className="space-y-2">
-                            <Label htmlFor="name">Nombre</Label>
-                            <Input
-                              id="name"
-                              value={formData.name}
-                              onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                              required
-                            />
-                          </div>
-                          <div className="space-y-2">
-                            <Label htmlFor="email">Email</Label>
-                            <Input
-                              id="email"
-                              type="email"
-                              value={formData.email}
-                              onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                              required
-                            />
-                          </div>
-                          <div className="space-y-2">
-                            <Label htmlFor="password">Contraseña</Label>
-                            <Input
-                              id="password"
-                              type="password"
-                              value={formData.password}
-                              onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                              required
-                            />
-                          </div>
-                          <div className="space-y-2">
-                            <Label htmlFor="role">Rol</Label>
-                            <Select
-                              value={formData.role}
-                              onValueChange={(value: 'admin' | 'agent') => setFormData({ ...formData, role: value })}
-                            >
-                              <SelectTrigger>
-                                <SelectValue />
-                              </SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value="agent">Agente</SelectItem>
-                                <SelectItem value="admin">Administrador</SelectItem>
-                              </SelectContent>
-                            </Select>
-                          </div>
-                          <div className="space-y-2">
-                            <Label htmlFor="sede">Sede (Opcional)</Label>
-                            <Select
-                              value={formData.sede_id}
-                              onValueChange={(value) => setFormData({ ...formData, sede_id: value })}
-                            >
-                              <SelectTrigger>
-                                <SelectValue placeholder="Seleccionar sede" />
-                              </SelectTrigger>
-                              <SelectContent>
-                                {sedesSimple.map((sede) => (
-                                  <SelectItem key={sede.id} value={sede.id}>
-                                    {sede.name}
-                                  </SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-                          </div>
-                          <div className="flex items-center space-x-2">
-                            <Switch
-                              id="is_active"
-                              checked={formData.is_active}
-                              onCheckedChange={(checked) => setFormData({ ...formData, is_active: checked })}
-                            />
-                            <Label htmlFor="is_active">Usuario activo</Label>
-                          </div>
-                          <div className="flex justify-end space-x-2">
-                            <Button type="button" variant="outline" onClick={() => setIsCreateUserOpen(false)} disabled={isCreatingUser}>
-                              Cancelar
-                            </Button>
-                            <Button type="submit" disabled={isCreatingUser}>
-                              {isCreatingUser ? (
-                                <>
-                                  <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
-                                  Creando Usuario...
-                                </>
-                              ) : (
-                                'Crear Usuario'
-                              )}
-                            </Button>
-                          </div>
-                        </form>
-                      </DialogContent>
-                    </Dialog>
-                  </div>
-                </div>
-                
-                {/* Section loading indicator for users */}
-                <SectionLoading
-                  isLoading={loadingStates.users.isLoading}
-                  error={loadingStates.users.error}
-                  lastUpdated={loadingStates.users.lastUpdated}
-                  retryCount={loadingStates.users.retryCount}
-                  onRetry={() => retrySection('users')}
-                  sectionName="usuarios"
-                  className="mt-2"
+                    <div className="space-y-2">
+                      <Label htmlFor="email">Email</Label>
+                      <Input
+                        id="email"
+                        type="email"
+                        value={formData.email}
+                        onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                        required
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="password">Contraseña</Label>
+                      <Input
+                        id="password"
+                        type="password"
+                        value={formData.password}
+                        onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                        required
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="role">Rol</Label>
+                      <Select
+                        value={formData.role}
+                        onValueChange={(value: 'admin' | 'agent') => setFormData({ ...formData, role: value })}
+                      >
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="agent">Agente</SelectItem>
+                          <SelectItem value="admin">Administrador</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="sede">Sede (Opcional)</Label>
+                      <Select
+                        value={formData.sede_id}
+                        onValueChange={(value) => setFormData({ ...formData, sede_id: value })}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Seleccionar sede" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {sedesSimple.map((sede) => (
+                            <SelectItem key={sede.id} value={sede.id}>
+                              {sede.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <Switch
+                        id="is_active"
+                        checked={formData.is_active}
+                        onCheckedChange={(checked) => setFormData({ ...formData, is_active: checked })}
+                      />
+                      <Label htmlFor="is_active">Usuario activo</Label>
+                    </div>
+                    <div className="flex justify-end space-x-2">
+                      <Button type="button" variant="outline" onClick={() => setIsCreateUserOpen(false)} disabled={isCreatingUser}>
+                        Cancelar
+                      </Button>
+                      <Button type="submit" disabled={isCreatingUser}>
+                        {isCreatingUser ? (
+                          <>
+                            <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
+                            Creando Usuario...
+                          </>
+                        ) : (
+                          'Crear Usuario'
+                        )}
+                      </Button>
+                    </div>
+                  </form>
+                </DialogContent>
+              </Dialog>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-4">
+              <div className="flex items-center space-x-2">
+                <Search className="h-4 w-4 text-muted-foreground" />
+                <Input
+                  placeholder="Buscar usuarios..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="max-w-sm"
                 />
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-4">
-                  <div className="flex items-center space-x-2">
-                    <Search className="h-4 w-4 text-muted-foreground" />
-                    <Input
-                      placeholder="Buscar usuarios..."
-                      value={searchTerm}
-                      onChange={(e) => setSearchTerm(e.target.value)}
-                      className="max-w-sm"
-                    />
-                  </div>
-                  
-                  <TableSectionLoading
-                    isLoading={loadingStates.users.isLoading}
-                    error={loadingStates.users.error}
-                    onRetry={() => retrySection('users')}
-                    sectionName="usuarios"
-                    emptyMessage="No se encontraron usuarios"
-                    itemCount={filteredUsers.length}
-                  />
-
-                  {!loadingStates.users.isLoading && !loadingStates.users.error && (
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead>Usuario</TableHead>
-                          <TableHead>Rol</TableHead>
-                          <TableHead>Sede</TableHead>
-                          <TableHead>Estado</TableHead>
-                          <TableHead>Acciones</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {filteredUsers.map((user) => (
-                          <TableRow key={user.id}>
-                            <TableCell>
-                              <div>
-                                <div className="font-medium">{user.name}</div>
-                                <div className="text-sm text-muted-foreground">{user.email}</div>
-                              </div>
-                            </TableCell>
-                            <TableCell>{getRoleBadge(user.role)}</TableCell>
-                            <TableCell>
-                              {user.sede_id ? (
-                                <span className="text-sm text-muted-foreground">
-                                  {sedesSimple.find(s => s.id === user.sede_id)?.name || 'N/A'}
-                                </span>
-                              ) : (
-                                <span className="text-sm text-muted-foreground">Sin sede</span>
-                              )}
-                            </TableCell>
-                            <TableCell>
-                              {user.is_active ? (
-                                <Badge variant="default">Activo</Badge>
-                              ) : (
-                                <Badge variant="secondary">Inactivo</Badge>
-                              )}
-                            </TableCell>
-                            <TableCell>
-                              <div className="flex gap-2">
-                                <Button
-                                  variant="outline"
-                                  size="sm"
-                                  onClick={() => toggleUserStatus(user.id, user.is_active)}
-                                  title={user.is_active ? 'Desactivar usuario' : 'Activar usuario'}
-                                >
-                                  {user.is_active ? <UserX className="h-4 w-4" /> : <UserCheck className="h-4 w-4" />}
-                                </Button>
-                                <Button
-                                  variant="outline"
-                                  size="sm"
-                                  onClick={() => handleUserSedeEdit(user)}
-                                  title="Editar sede del usuario"
-                                >
-                                  <Building2 className="h-4 w-4" />
-                                </Button>
-                                <Button
-                                  variant="destructive"
-                                  size="sm"
-                                  onClick={() => handleDeleteUser(user.id, user.name, user.email)}
-                                  title="Eliminar usuario"
-                                >
-                                  <Trash2 className="h-4 w-4" />
-                                </Button>
-                              </div>
-                            </TableCell>
-                          </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
-                  )}
+              </div>
+              
+              {loading ? (
+                <div className="text-center py-8">
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto"></div>
+                  <p className="text-muted-foreground mt-2">Cargando usuarios...</p>
                 </div>
-              </CardContent>
-            </Card>
+              ) : (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Usuario</TableHead>
+                      <TableHead>Rol</TableHead>
+                      <TableHead>Sede</TableHead>
+                      <TableHead>Estado</TableHead>
+                      <TableHead>Acciones</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {filteredUsers.map((user) => (
+                      <TableRow key={user.id}>
+                        <TableCell>
+                          <div>
+                            <div className="font-medium">{user.name}</div>
+                            <div className="text-sm text-muted-foreground">{user.email}</div>
+                          </div>
+                        </TableCell>
+                        <TableCell>{getRoleBadge(user.role)}</TableCell>
+                        <TableCell>
+                          {user.sede_id ? (
+                            <span className="text-sm text-muted-foreground">
+                              {sedesSimple.find(s => s.id === user.sede_id)?.name || 'N/A'}
+                            </span>
+                          ) : (
+                            <span className="text-sm text-muted-foreground">Sin sede</span>
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          {user.is_active ? (
+                            <Badge variant="default">Activo</Badge>
+                          ) : (
+                            <Badge variant="secondary">Inactivo</Badge>
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex gap-2">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => toggleUserStatus(user.id, user.is_active)}
+                              title={user.is_active ? 'Desactivar usuario' : 'Activar usuario'}
+                            >
+                              {user.is_active ? <UserX className="h-4 w-4" /> : <UserCheck className="h-4 w-4" />}
+                            </Button>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => handleUserSedeEdit(user)}
+                              title="Editar sede del usuario"
+                            >
+                              <Building2 className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              variant="destructive"
+                              size="sm"
+                              onClick={() => handleDeleteUser(user.id, user.name, user.email)}
+                              title="Eliminar usuario"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              )}
+            </div>
+          </CardContent>
+        </Card>
           </TabsContent>
 
           {/* Tab Content: Sedes */}
@@ -1407,97 +1068,73 @@ export function AdminPanel({ onBack, onNavigateToTimeMetrics }: AdminPanelProps)
             <Card>
               <CardHeader>
                 <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <div>
-                      <CardTitle>Gestión de Sedes</CardTitle>
-                      <CardDescription>
-                        Administra las sedes del sistema
-                      </CardDescription>
-                    </div>
-                    <StatusIndicator {...getLoadingInfo('sedes')} />
+                  <div>
+                    <CardTitle>Gestión de Sedes</CardTitle>
+                    <CardDescription>
+                      Administra las sedes del sistema
+                    </CardDescription>
                   </div>
-                  <div className="flex gap-2">
-                    <Button
-                      variant="outline"
-                      onClick={() => retrySection('sedes')}
-                      disabled={loadingStates.sedes.isLoading}
-                      className="flex items-center gap-2"
-                    >
-                      <RefreshCw className={`h-4 w-4 ${loadingStates.sedes.isLoading ? 'animate-spin' : ''}`} />
-                      Actualizar
-                    </Button>
-                    <Dialog open={isCreateSedeOpen} onOpenChange={setIsCreateSedeOpen}>
-                      <DialogTrigger asChild>
-                        <Button>
-                          <Plus className="mr-2 h-4 w-4" />
-                          Crear Sede
-                        </Button>
-                      </DialogTrigger>
-                      <DialogContent>
-                        <DialogHeader>
-                          <DialogTitle>Crear Nueva Sede</DialogTitle>
-                          <DialogDescription>
-                            Completa la información de la nueva sede
-                          </DialogDescription>
-                        </DialogHeader>
-                        <form onSubmit={handleCreateSede} className="space-y-4">
-                          <div className="space-y-2">
-                            <Label htmlFor="sede-name">Nombre</Label>
-                            <Input
-                              id="sede-name"
-                              value={sedeFormData.name}
-                              onChange={(e) => setSedeFormData({ ...sedeFormData, name: e.target.value })}
-                              required
-                            />
-                          </div>
-                          <div className="space-y-2">
-                            <Label htmlFor="sede-address">Dirección</Label>
-                            <Input
-                              id="sede-address"
-                              value={sedeFormData.address}
-                              onChange={(e) => setSedeFormData({ ...sedeFormData, address: e.target.value })}
-                              required
-                            />
-                          </div>
-                          <div className="space-y-2">
-                            <Label htmlFor="sede-phone">Teléfono</Label>
-                            <Input
-                              id="sede-phone"
-                              type="tel"
-                              value={sedeFormData.phone}
-                              onChange={(e) => setSedeFormData({ ...sedeFormData, phone: e.target.value })}
-                              required
-                            />
-                          </div>
-                          <div className="flex items-center space-x-2">
-                            <Switch
-                              id="sede-active"
-                              checked={sedeFormData.is_active}
-                              onCheckedChange={(checked) => setSedeFormData({ ...sedeFormData, is_active: checked })}
-                            />
-                            <Label htmlFor="sede-active">Sede activa</Label>
-                          </div>
-                          <div className="flex justify-end space-x-2">
-                            <Button type="button" variant="outline" onClick={() => setIsCreateSedeOpen(false)}>
-                              Cancelar
-                            </Button>
-                            <Button type="submit">Crear Sede</Button>
-                          </div>
-                        </form>
-                      </DialogContent>
-                    </Dialog>
-                  </div>
+                  <Dialog open={isCreateSedeOpen} onOpenChange={setIsCreateSedeOpen}>
+                    <DialogTrigger asChild>
+                      <Button>
+                        <Plus className="mr-2 h-4 w-4" />
+                        Crear Sede
+                      </Button>
+                    </DialogTrigger>
+                    <DialogContent>
+                      <DialogHeader>
+                        <DialogTitle>Crear Nueva Sede</DialogTitle>
+                        <DialogDescription>
+                          Completa la información de la nueva sede
+                        </DialogDescription>
+                      </DialogHeader>
+                      <form onSubmit={handleCreateSede} className="space-y-4">
+                        <div className="space-y-2">
+                          <Label htmlFor="sede-name">Nombre</Label>
+                          <Input
+                            id="sede-name"
+                            value={sedeFormData.name}
+                            onChange={(e) => setSedeFormData({ ...sedeFormData, name: e.target.value })}
+                            required
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="sede-address">Dirección</Label>
+                          <Input
+                            id="sede-address"
+                            value={sedeFormData.address}
+                            onChange={(e) => setSedeFormData({ ...sedeFormData, address: e.target.value })}
+                            required
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="sede-phone">Teléfono</Label>
+                          <Input
+                            id="sede-phone"
+                            type="tel"
+                            value={sedeFormData.phone}
+                            onChange={(e) => setSedeFormData({ ...sedeFormData, phone: e.target.value })}
+                            required
+                          />
+                        </div>
+                        <div className="flex items-center space-x-2">
+                          <Switch
+                            id="sede-active"
+                            checked={sedeFormData.is_active}
+                            onCheckedChange={(checked) => setSedeFormData({ ...sedeFormData, is_active: checked })}
+                          />
+                          <Label htmlFor="sede-active">Sede activa</Label>
+                        </div>
+                        <div className="flex justify-end space-x-2">
+                          <Button type="button" variant="outline" onClick={() => setIsCreateSedeOpen(false)}>
+                            Cancelar
+                          </Button>
+                          <Button type="submit">Crear Sede</Button>
+                        </div>
+                      </form>
+                    </DialogContent>
+                  </Dialog>
                 </div>
-                
-                <SectionLoading
-                  isLoading={loadingStates.sedes.isLoading}
-                  error={loadingStates.sedes.error}
-                  lastUpdated={loadingStates.sedes.lastUpdated}
-                  retryCount={loadingStates.sedes.retryCount}
-                  onRetry={() => retrySection('sedes')}
-                  sectionName="sedes"
-                  className="mt-2"
-                />
               </CardHeader>
               <CardContent>
                 <div className="space-y-4">
@@ -1512,16 +1149,11 @@ export function AdminPanel({ onBack, onNavigateToTimeMetrics }: AdminPanelProps)
                     />
                   </div>
 
-                  <TableSectionLoading
-                    isLoading={loadingStates.sedes.isLoading}
-                    error={loadingStates.sedes.error}
-                    onRetry={() => retrySection('sedes')}
-                    sectionName="sedes"
-                    emptyMessage="No se encontraron sedes"
-                    itemCount={sedes.length}
-                  />
-
-                  {!loadingStates.sedes.isLoading && !loadingStates.sedes.error && (
+                  {loading ? (
+                    <div className="text-center py-8">
+                      <div className="text-muted-foreground">Cargando sedes...</div>
+                    </div>
+                  ) : (
                     <Table>
                       <TableHeader>
                         <TableRow>
@@ -1614,41 +1246,17 @@ export function AdminPanel({ onBack, onNavigateToTimeMetrics }: AdminPanelProps)
             <Card>
               <CardHeader>
                 <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <div>
-                      <CardTitle>Gestión de Repartidores</CardTitle>
-                      <CardDescription>
-                        Administra los repartidores y sus asignaciones de sede
-                      </CardDescription>
-                    </div>
-                    <StatusIndicator {...getLoadingInfo('repartidores')} />
+                  <div>
+                    <CardTitle>Gestión de Repartidores</CardTitle>
+                    <CardDescription>
+                      Administra los repartidores y sus asignaciones de sede
+                    </CardDescription>
                   </div>
-                  <div className="flex gap-2">
-                    <Button
-                      variant="outline"
-                      onClick={() => retrySection('repartidores')}
-                      disabled={loadingStates.repartidores.isLoading}
-                      className="flex items-center gap-2"
-                    >
-                      <RefreshCw className={`h-4 w-4 ${loadingStates.repartidores.isLoading ? 'animate-spin' : ''}`} />
-                      Actualizar
-                    </Button>
-                    <Button onClick={() => setIsCreateRepartidorOpen(true)} className="flex items-center gap-2">
-                      <Plus className="h-4 w-4" />
-                      Agregar Repartidor
-                    </Button>
-                  </div>
+                  <Button onClick={() => setIsCreateRepartidorOpen(true)} className="flex items-center gap-2">
+                    <Plus className="h-4 w-4" />
+                    Agregar Repartidor
+                  </Button>
                 </div>
-                
-                <SectionLoading
-                  isLoading={loadingStates.repartidores.isLoading}
-                  error={loadingStates.repartidores.error}
-                  lastUpdated={loadingStates.repartidores.lastUpdated}
-                  retryCount={loadingStates.repartidores.retryCount}
-                  onRetry={() => retrySection('repartidores')}
-                  sectionName="repartidores"
-                  className="mt-2"
-                />
               </CardHeader>
               <CardContent>
                 <div className="flex items-center justify-between mb-6">
@@ -1666,16 +1274,9 @@ export function AdminPanel({ onBack, onNavigateToTimeMetrics }: AdminPanelProps)
                   </div>
                 </div>
 
-                <TableSectionLoading
-                  isLoading={loadingStates.repartidores.isLoading}
-                  error={loadingStates.repartidores.error}
-                  onRetry={() => retrySection('repartidores')}
-                  sectionName="repartidores"
-                  emptyMessage="No se encontraron repartidores"
-                  itemCount={filteredRepartidores.length}
-                />
-
-                {!loadingStates.repartidores.isLoading && !loadingStates.repartidores.error && (
+                {loading ? (
+                  <div className="text-center py-4">Cargando repartidores...</div>
+                ) : (
                   <Table>
                     <TableHeader>
                       <TableRow>
@@ -1766,13 +1367,16 @@ export function AdminPanel({ onBack, onNavigateToTimeMetrics }: AdminPanelProps)
           /* ========== SECCIÓN DE MÉTRICAS ========== */
           <div className="space-y-6">
             {/* Métricas de Negocio */}
-            <MetricsLoading
-              isLoading={loadingStates.metrics.isLoading}
-              error={loadingStates.metrics.error}
-              onRetry={loadMetricsOptimized}
-            />
-
-            {!loadingStates.metrics.isLoading && !loadingStates.metrics.error && !metricsData && (
+            {metricsLoading ? (
+              <Card>
+                <CardContent className="flex items-center justify-center py-12">
+                  <div className="flex items-center gap-2 text-muted-foreground">
+                    <RefreshCw className="h-5 w-5 animate-spin" />
+                    Cargando métricas...
+                  </div>
+                </CardContent>
+              </Card>
+            ) : !metricsData ? (
               <Card>
                 <CardContent className="flex items-center justify-center py-12">
                   <div className="text-muted-foreground">
@@ -1780,25 +1384,18 @@ export function AdminPanel({ onBack, onNavigateToTimeMetrics }: AdminPanelProps)
                   </div>
                 </CardContent>
               </Card>
-            )}
-
-            {!loadingStates.metrics.isLoading && !loadingStates.metrics.error && metricsData && (
+            ) : (
               <div className="space-y-6">
                 {/* Controles de Filtros */}
                 <Card>
                   <CardHeader>
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <CardTitle className="flex items-center gap-2">
-                          <Settings className="h-5 w-5" />
-                          Configuración de Métricas
-                        </CardTitle>
-                        <CardDescription>
-                          Selecciona el rango de fechas y sede para ver las métricas
-                        </CardDescription>
-                      </div>
-                      <StatusIndicator {...getLoadingInfo('metrics')} />
-                    </div>
+                    <CardTitle className="flex items-center gap-2">
+                      <Settings className="h-5 w-5" />
+                      Configuración de Métricas
+                    </CardTitle>
+                    <CardDescription>
+                      Selecciona el rango de fechas y sede para ver las métricas
+                    </CardDescription>
                   </CardHeader>
                   <CardContent>
                     <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-end">
@@ -1916,11 +1513,11 @@ export function AdminPanel({ onBack, onNavigateToTimeMetrics }: AdminPanelProps)
 
                       {/* Botón de Actualizar */}
                       <Button 
-                        onClick={loadMetricsOptimized}
-                        disabled={loadingStates.metrics.isLoading}
+                        onClick={loadMetrics} 
+                        disabled={metricsLoading}
                         className="w-[120px]"
                       >
-                        {loadingStates.metrics.isLoading ? (
+                        {metricsLoading ? (
                           <RefreshCw className="h-4 w-4 animate-spin mr-2" />
                         ) : (
                           <RefreshCw className="h-4 w-4 mr-2" />
@@ -2030,69 +1627,8 @@ export function AdminPanel({ onBack, onNavigateToTimeMetrics }: AdminPanelProps)
                       </div>
                     </CardContent>
                   </Card>
-
-                  {/* Métricas de Pedidos Cancelados */}
-                  <Card>
-                    <CardHeader>
-                      <CardTitle className="flex items-center gap-2">
-                        <XCircle className="h-5 w-5 text-red-500" />
-                        Análisis de Cancelaciones
-                      </CardTitle>
-                      <CardDescription>
-                        Estadísticas de pedidos cancelados por sede
-                      </CardDescription>
-                    </CardHeader>
-                    <CardContent>
-                      <div className="space-y-4">
-                        {/* Resumen de cancelaciones */}
-                        <div className="grid grid-cols-3 gap-4 p-4 bg-red-50 rounded-lg border border-red-200">
-                          <div className="text-center">
-                            <div className="text-2xl font-bold text-red-600">
-                              {metricsData.pedidosCancelados?.total || 0}
-                            </div>
-                            <div className="text-sm text-red-700">Total Cancelados</div>
-                          </div>
-                          <div className="text-center">
-                            <div className="text-2xl font-bold text-red-600">
-                              {metricsData.pedidosCancelados?.porcentaje ? `${metricsData.pedidosCancelados.porcentaje.toFixed(1)}%` : '0.0%'}
-                            </div>
-                            <div className="text-sm text-red-700">Tasa de Cancelación</div>
-                          </div>
-                          <div className="text-center">
-                            <div className="text-2xl font-bold text-red-600">
-                              ${((metricsData.pedidosCancelados?.montoTotal || 0) / 1000).toFixed(0)}k
-                            </div>
-                            <div className="text-sm text-red-700">Monto Perdido</div>
-                          </div>
-                        </div>
-
-                        {/* Cancelaciones por sede */}
-                        {metricsData.pedidosCancelados?.porSede && metricsData.pedidosCancelados.porSede.length > 0 ? (
-                          <div className="space-y-3">
-                            <h4 className="font-semibold text-sm">Cancelaciones por Sede:</h4>
-                            {metricsData.pedidosCancelados.porSede.map((sede, index) => (
-                              <div key={index} className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
-                                <div className="flex items-center gap-3">
-                                  <div className="w-3 h-3 bg-red-500 rounded-full"></div>
-                                  <span className="font-medium">{sede.nombre}</span>
-                                </div>
-                                <div className="text-right">
-                                  <div className="font-bold text-red-600">{sede.cancelados}</div>
-                                  <div className="text-xs text-muted-foreground">{sede.porcentaje ? `${sede.porcentaje.toFixed(1)}%` : '0%'} del total</div>
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-                        ) : (
-                          <div className="text-center py-6 text-muted-foreground">
-                            <XCircle className="h-12 w-12 mx-auto mb-2 opacity-50" />
-                            <p>No hay cancelaciones en el período seleccionado</p>
-                          </div>
-                        )}
-                      </div>
-                    </CardContent>
-                  </Card>
                 </div>
+
               </div>
             )}
 
@@ -2121,8 +1657,6 @@ export function AdminPanel({ onBack, onNavigateToTimeMetrics }: AdminPanelProps)
           </div>
         )}
 
-        {/* All Dialogs remain the same but are omitted for brevity - they would be included in the full implementation */}
-        
         {/* Dialog para editar sede */}
         <Dialog open={isEditSedeOpen} onOpenChange={setIsEditSedeOpen}>
           <DialogContent>
@@ -2352,6 +1886,7 @@ export function AdminPanel({ onBack, onNavigateToTimeMetrics }: AdminPanelProps)
             </div>
           </DialogContent>
         </Dialog>
+
 
       </div>
     </div>

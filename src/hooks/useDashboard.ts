@@ -96,6 +96,7 @@ export const useDashboard = (sede_id?: string | number) => {
   }, [toast]); // Removemos sede_id de las dependencias para evitar re-creaciones
 
   // Cargar datos al montar el componente con protección contra bucles
+  // MODIFICADO: Solo cargar datos iniciales si no hay filtros externos pendientes
   useEffect(() => {
     let timeoutId: NodeJS.Timeout;
     
@@ -105,9 +106,12 @@ export const useDashboard = (sede_id?: string | number) => {
         const currentSedeId = sedeIdRef.current;
         if (currentSedeId && !loadingRef.current) {
           console.log('🔄 UseDashboard: Cargando datos iniciales para sede:', currentSedeId);
-          loadDashboardOrders();
+          // IMPORTANTE: Solo cargar si no hay órdenes ya cargadas (evita conflicto con filtros del Dashboard)
+          if (orders.length === 0) {
+            loadDashboardOrders();
+          }
         }
-      }, 100);
+      }, 200); // Aumentamos el delay para que el Dashboard pueda aplicar su filtro inicial primero
     };
     
     loadInitialData();
@@ -115,7 +119,7 @@ export const useDashboard = (sede_id?: string | number) => {
     return () => {
       clearTimeout(timeoutId);
     };
-  }, [sede_id]); // Solo dependemos de sede_id, no de loadDashboardOrders
+  }, [sede_id, orders.length]); // Agregamos orders.length como dependencia
 
   // Filtrar órdenes por estado
   const filterOrdersByStatus = useCallback(async (status: string | null) => {

@@ -18,7 +18,8 @@
       "Bash(do echo -n \"$dep: \")",
       "Bash(if rg -q \"$dep\" src/)",
       "Bash(timeout 10s npm run dev)",
-      "Bash(timeout 15s npm run dev)"
+      "Bash(timeout 15s npm run dev)",
+      "Bash(grep:*)"
     ],
     "additionalDirectories": [
       "C:\\c\\Users\\USER\\Documents\\GitHub"

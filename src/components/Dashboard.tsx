@@ -86,6 +86,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
     to: new Date()    // Hoy por defecto
   });
   const [isDatePickerOpen, setIsDatePickerOpen] = useState(false);
+  const [hasAppliedInitialFilter, setHasAppliedInitialFilter] = useState(false);
   
   // Estados para transferir pedido
   const [transferOrderId, setTransferOrderId] = useState('');
@@ -661,6 +662,18 @@ export const Dashboard: React.FC<DashboardProps> = ({
       clearTimeout(timeoutId);
     };
   }, [dateFilter, dateRange, sedeIdToUse, statusFilter]);
+
+  // Aplicar filtro inicial cuando el componente se monta (solo una vez)
+  useEffect(() => {
+    if (sedeIdToUse && !hasAppliedInitialFilter) {
+      console.log('🔄 DASHBOARD: Aplicando filtro inicial por defecto (Solo Hoy)');
+      setHasAppliedInitialFilter(true);
+      // Aplicar el filtro de "Solo Hoy" inmediatamente
+      setTimeout(() => {
+        applyDateFilter();
+      }, 100);
+    }
+  }, [sedeIdToUse, hasAppliedInitialFilter]);
 
   // Limpiar selecciones de pedidos cancelados/entregados
   useEffect(() => {
