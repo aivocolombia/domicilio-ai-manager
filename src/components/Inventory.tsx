@@ -130,19 +130,19 @@ export const Inventory: React.FC<InventoryProps> = ({
   });
 
   const toggleProductAvailability = async (productId: number, type: 'plato' | 'bebida') => {
-    console.log('🚀 toggleProductAvailability INICIADO:', { productId, type, profile_sede_id: profile?.sede_id });
+    console.log('🚀 toggleProductAvailability INICIADO:', { productId, type, effectiveSedeId, profile_sede_id: profile?.sede_id });
     
-    if (!profile?.sede_id) {
+    if (!effectiveSedeId) {
       toast({
         title: "Error",
-        description: "No se ha asignado una sede al usuario.",
+        description: "No se ha seleccionado una sede para gestionar el inventario.",
         variant: "destructive"
       });
       return;
     }
 
     try {
-      console.log('🔄 Toggleando producto:', { productId, type, sedeId: profile.sede_id });
+      console.log('🔄 Toggleando producto:', { productId, type, sedeId: effectiveSedeId });
       
       const product = allProducts.find(item => item.id === productId && item.type === type);
       if (!product) {
@@ -162,7 +162,7 @@ export const Inventory: React.FC<InventoryProps> = ({
       if (product.name.toLowerCase().includes('limonada')) {
         console.log('🍋 Debug Limonada ANTES del toggle:', {
           product,
-          sedeId: profile.sede_id,
+          sedeId: effectiveSedeId,
           isCurrentlyAvailable,
           toggleTo: !isCurrentlyAvailable,
           bebidasConSede: bebidasConSede.filter(b => b.name.toLowerCase().includes('limonada'))
@@ -172,11 +172,11 @@ export const Inventory: React.FC<InventoryProps> = ({
       switch (type) {
         case 'plato':
           console.log('🍽️ Actualizando plato para sede...');
-          await menuService.updatePlatoSedeAvailability(profile.sede_id, productId, !isCurrentlyAvailable);
+          await menuService.updatePlatoSedeAvailability(effectiveSedeId, productId, !isCurrentlyAvailable);
           break;
         case 'bebida':
           console.log('🥤 Actualizando bebida para sede...');
-          await menuService.updateBebidaSedeAvailability(profile.sede_id, productId, !isCurrentlyAvailable);
+          await menuService.updateBebidaSedeAvailability(effectiveSedeId, productId, !isCurrentlyAvailable);
           break;
       }
 
@@ -230,17 +230,17 @@ export const Inventory: React.FC<InventoryProps> = ({
   };
 
   const toggleToppingAvailability = async (toppingId: number) => {
-    if (!profile?.sede_id) {
+    if (!effectiveSedeId) {
       toast({
         title: "Error",
-        description: "No se ha asignado una sede al usuario.",
+        description: "No se ha seleccionado una sede para gestionar el inventario.",
         variant: "destructive"
       });
       return;
     }
 
     try {
-      console.log('🔄 Toggleando topping:', { toppingId, sedeId: profile.sede_id });
+      console.log('🔄 Toggleando topping:', { toppingId, sedeId: effectiveSedeId });
       
       // Buscar el topping en todos los platos para obtener su estado actual
       let currentTopping: any = null;
@@ -266,7 +266,7 @@ export const Inventory: React.FC<InventoryProps> = ({
       });
       
       await menuService.updateToppingSedeAvailability(
-        profile.sede_id, 
+        effectiveSedeId, 
         toppingId, 
         !isCurrentlyAvailable
       );

@@ -90,6 +90,42 @@ export const OrderConfigModal: React.FC<OrderConfigModalProps> = ({
     try {
       setIsUpdating(true);
       
+      // Validación: Si se cambia a "Camino" debe tener repartidor asignado
+      if (newStatus === 'Camino' && !assignedDeliveryPersonId) {
+        toast({
+          title: "Repartidor requerido",
+          description: "Para cambiar el estado a 'En Camino', debe asignar un repartidor primero.",
+          variant: "destructive"
+        });
+        setIsUpdating(false);
+        return;
+      }
+
+      // También validar órdenes existentes que ya están seleccionadas
+      const ordersNeedingDeliveryPerson = selectedOrderIds.filter(orderId => {
+        const order = orders.find(o => ('id' in o ? o.id : o.id_display) === orderId);
+        if (!order) return false;
+        
+        // Si se va a cambiar a Camino y la orden no tiene repartidor asignado y no se está asignando uno ahora
+        if (newStatus === 'Camino') {
+          const hasCurrentDeliveryPerson = ('assignedDeliveryPersonId' in order && order.assignedDeliveryPersonId) ||
+                                          ('repartidor' in order && order.repartidor && order.repartidor !== 'Sin asignar');
+          return !hasCurrentDeliveryPerson && !assignedDeliveryPersonId;
+        }
+        
+        return false;
+      });
+
+      if (ordersNeedingDeliveryPerson.length > 0) {
+        toast({
+          title: "Repartidor requerido",
+          description: `${ordersNeedingDeliveryPerson.length} pedido(s) necesitan un repartidor asignado para cambiar a 'En Camino'.`,
+          variant: "destructive"
+        });
+        setIsUpdating(false);
+        return;
+      }
+      
       // Preparar actualizaciones para órdenes reales
       const updates: OrderStatusUpdate[] = selectedOrderIds.map(orderId => ({
         orderId: orderId,

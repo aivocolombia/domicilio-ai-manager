@@ -44,6 +44,7 @@ import { es } from 'date-fns/locale';
 import { createDateRangeForQuery, formatDateTimeForDisplay, debugTodayFilter } from '@/utils/dateUtils';
 import { Order, OrderStatus, OrderSource, DeliverySettings, DeliveryPerson, PaymentMethod } from '@/types/delivery';
 import { OrderConfigModal } from './OrderConfigModal';
+import { OrderDetailsModal } from './OrderDetailsModal';
 import { cn } from '@/lib/utils';
 import { useDashboard } from '@/hooks/useDashboard';
 import { DashboardOrder } from '@/services/dashboardService';
@@ -111,6 +112,10 @@ export const Dashboard: React.FC<DashboardProps> = ({
   const [pauseOption, setPauseOption] = useState<'agent' | 'global'>('agent');
   const [pauseTimer, setPauseTimer] = useState<string>('');
   const [pauseTimerActive, setPauseTimerActive] = useState(false);
+
+  // Estados para modal de detalles del pedido
+  const [orderDetailsModalOpen, setOrderDetailsModalOpen] = useState(false);
+  const [selectedOrderId, setSelectedOrderId] = useState<number | null>(null);
 
   // Estados para ordenamiento
   const [sortField, setSortField] = useState<keyof DashboardOrder>('creado_fecha');
@@ -639,7 +644,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
       // Debounce de 300ms para evitar llamadas excesivas
       clearTimeout(timeoutId);
       timeoutId = setTimeout(async () => {
-        if (profile?.sede_id && isMounted) {
+        if (sedeIdToUse && isMounted) {
           try {
             await applyDateFilter();
           } catch (error) {
@@ -655,7 +660,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
       isMounted = false;
       clearTimeout(timeoutId);
     };
-  }, [dateFilter, dateRange, profile?.sede_id, statusFilter]);
+  }, [dateFilter, dateRange, sedeIdToUse, statusFilter]);
 
   // Limpiar selecciones de pedidos cancelados/entregados
   useEffect(() => {
@@ -771,12 +776,12 @@ export const Dashboard: React.FC<DashboardProps> = ({
     toggleAcceptingOrders();
     
     // Show confirmation
-    const pauseTypeText = pauseOption === 'agent' ? 'para este agente' : 'globalmente';
+    const pauseTypeText = pauseOption === 'agent' ? 'el agente de AI' : 'el agente de AI y todos los pedidos';
     const timerText = minutes > 0 ? ` por ${minutes} minutos` : '';
     
     toast({
-      title: "Pedidos Pausados",
-      description: `Los pedidos han sido pausados ${pauseTypeText}${timerText}`,
+      title: pauseOption === 'agent' ? "Agente AI Pausado" : "Sistema Pausado",
+      description: `Se ha pausado ${pauseTypeText}${timerText}`,
     });
     
     // Set up automatic reactivation if timer is set
@@ -786,8 +791,8 @@ export const Dashboard: React.FC<DashboardProps> = ({
         toggleAcceptingOrders(); // Reactivate
         setPauseTimerActive(false);
         toast({
-          title: "Pedidos Reactivados",
-          description: `Los pedidos se han reactivado automáticamente después de ${minutes} minutos`,
+          title: "Sistema Reactivado",
+          description: `El sistema se ha reactivado automáticamente después de ${minutes} minutos`,
         });
       }, minutes * 60 * 1000);
     }
@@ -826,6 +831,12 @@ export const Dashboard: React.FC<DashboardProps> = ({
       hour: '2-digit', 
       minute: '2-digit' 
     });
+  };
+
+  // Función para abrir modal de detalles del pedido
+  const handleOrderClick = (orderId: number) => {
+    setSelectedOrderId(orderId);
+    setOrderDetailsModalOpen(true);
   };
 
   // Manejar error
@@ -1186,12 +1197,17 @@ export const Dashboard: React.FC<DashboardProps> = ({
                   paginatedOrders.map((order) => {
                     const realOrder = order as DashboardOrder;
                     return (
-                      <tr key={realOrder.orden_id} className={`border-b ${
-                        realOrder.estado === 'Cancelado' || realOrder.estado === 'Entregados' 
-                          ? 'bg-gray-50 opacity-75' 
-                          : 'hover:bg-muted/50'
-                      }`}>
-                        <td className="p-2">
+                      <tr 
+                        key={realOrder.orden_id} 
+                        className={`border-b cursor-pointer transition-colors ${
+                          realOrder.estado === 'Cancelado' || realOrder.estado === 'Entregados' 
+                            ? 'bg-gray-50 opacity-75 hover:bg-gray-100' 
+                            : 'hover:bg-muted/50'
+                        }`}
+                        onClick={() => handleOrderClick(realOrder.orden_id)}
+                        title="Click para ver detalles del pedido"
+                      >
+                        <td className="p-2" onClick={(e) => e.stopPropagation()}>
                           <Checkbox
                             checked={selectedOrders.includes(realOrder.id_display)}
                             onCheckedChange={(checked) => handleSelectOrder(realOrder.id_display, checked as boolean)}
@@ -1254,7 +1270,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                         <td className="p-2 text-sm text-muted-foreground">
                           {realOrder.creado_hora}
                         </td>
-                        <td className="p-2">
+                        <td className="p-2" onClick={(e) => e.stopPropagation()}>
                           <div className="flex items-center gap-1">
                             {/* Botón de cancelar - solo para pedidos que no estén cancelados o entregados */}
                             {realOrder.estado !== 'Cancelado' && realOrder.estado !== 'Entregados' && (
@@ -1577,10 +1593,10 @@ export const Dashboard: React.FC<DashboardProps> = ({
                   <RadioGroupItem value="agent" id="pause-agent" />
                   <div className="flex-1">
                     <Label htmlFor="pause-agent" className="font-medium cursor-pointer">
-                      Pausar para este Agente
+                      Agente AI
                     </Label>
                     <p className="text-sm text-gray-600 mt-1">
-                      Solo este agente dejará de recibir pedidos
+                      Solo pausa el agente de inteligencia artificial
                     </p>
                   </div>
                 </div>
@@ -1589,10 +1605,10 @@ export const Dashboard: React.FC<DashboardProps> = ({
                   <RadioGroupItem value="global" id="pause-global" />
                   <div className="flex-1">
                     <Label htmlFor="pause-global" className="font-medium cursor-pointer">
-                      Pausar Globalmente
+                      Global
                     </Label>
                     <p className="text-sm text-gray-600 mt-1">
-                      Se pausarán los pedidos para toda la sede
+                      Detiene el agente de AI y pausa todos los pedidos
                     </p>
                   </div>
                 </div>
@@ -1627,7 +1643,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
               <div className="text-sm text-red-800">
                 <strong>Resumen:</strong>
                 <br />
-                • Se pausarán los pedidos {pauseOption === 'agent' ? 'para este agente' : 'globalmente'}
+                • Se pausará {pauseOption === 'agent' ? 'solo el agente de AI' : 'el agente de AI y todos los pedidos'}
                 {pauseTimer && parseInt(pauseTimer) > 0 && (
                   <>
                     <br />
@@ -1666,6 +1682,16 @@ export const Dashboard: React.FC<DashboardProps> = ({
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Modal para ver detalles del pedido */}
+      <OrderDetailsModal
+        isOpen={orderDetailsModalOpen}
+        onClose={() => {
+          setOrderDetailsModalOpen(false);
+          setSelectedOrderId(null);
+        }}
+        orderId={selectedOrderId}
+      />
     </div>
   );
 };

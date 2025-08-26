@@ -169,7 +169,7 @@ const generateMockDeliveryPersonnel = (): DeliveryPerson[] => {
 const Index = () => {
   const { profile } = useAuth();
   const { activeTab, setActiveTab, resetToDashboard } = useActiveTab();
-  const { showAdminPanel, showTimeMetrics, navigateToAdmin, navigateToTimeMetrics, navigateToMain } = useAppState();
+  const { showAdminPanel, showTimeMetrics, navigateToAdmin, navigateToTimeMetrics, navigateToMain, navigateToMainView } = useAppState();
   const [orders, setOrders] = useState<Order[]>([]);
   const [deliveryPersonnel, setDeliveryPersonnel] = useState<DeliveryPerson[]>([]);
   const [currentUser] = useState<UserType>(generateMockUser());
@@ -318,16 +318,18 @@ const Index = () => {
   };
 
   useEffect(() => {
-    // Solo cargar órdenes si NO estamos en AdminPanel o TimeMetrics
+    // Solo cargar datos iniciales si NO estamos en AdminPanel o TimeMetrics
     if (!showAdminPanel && !showTimeMetrics) {
       console.log('📊 Index: Cargando datos del dashboard principal...');
-      // Cargar órdenes reales si hay sede efectiva
-      if (effectiveSedeId) {
-        loadOrders();
-      } else {
-        // Fallback a datos mock solo si no hay sede
+      // No cargar órdenes aquí - dejar que el Dashboard maneje sus propios datos
+      // Esto evita que se recarguen sin filtros cuando se cambia de sede
+      if (!effectiveSedeId) {
+        // Solo usar datos mock si no hay sede efectiva como último recurso
         console.log('⚠️ Usando datos mock por falta de sede efectiva');
         setOrders(generateMockOrders());
+      } else {
+        // Limpiar órdenes para que Dashboard cargue datos frescos con filtros correctos
+        setOrders([]);
       }
       setDeliveryPersonnel(generateMockDeliveryPersonnel());
     } else {

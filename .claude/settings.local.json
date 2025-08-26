@@ -16,7 +16,9 @@
       "Bash(done)",
       "Bash(for dep in \"embla-carousel-react\" \"next-themes\" \"react-day-picker\" \"react-resizable-panels\" \"vaul\" \"input-otp\" \"cmdk\")",
       "Bash(do echo -n \"$dep: \")",
-      "Bash(if rg -q \"$dep\" src/)"
+      "Bash(if rg -q \"$dep\" src/)",
+      "Bash(timeout 10s npm run dev)",
+      "Bash(timeout 15s npm run dev)"
     ],
     "additionalDirectories": [
       "C:\\c\\Users\\USER\\Documents\\GitHub"

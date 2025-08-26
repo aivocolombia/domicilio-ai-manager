@@ -144,19 +144,23 @@ export class MetricsService {
       // Obtener pagos por separado
       let pagosData: any[] = [];
       if (ordenesData && ordenesData.length > 0) {
-        const ordenIds = ordenesData.map(o => o.id);
-        const { data: pagosResult, error: pagosError } = await supabase
-          .from('ordenes')
-          .select(`
-            id,
-            pagos!left(total_pago)
-          `)
-          .in('id', ordenIds);
+        const ordenIds = ordenesData.map(o => o.id).filter(id => id !== undefined && id !== null);
+        
+        // Solo hacer la consulta si hay IDs válidos
+        if (ordenIds.length > 0) {
+          const { data: pagosResult, error: pagosError } = await supabase
+            .from('ordenes')
+            .select(`
+              id,
+              pagos!left(total_pago)
+            `)
+            .in('id', ordenIds);
 
-        if (pagosError) {
-          console.error('⚠️ Error obteniendo pagos:', pagosError);
-        } else {
-          pagosData = pagosResult || [];
+          if (pagosError) {
+            console.error('⚠️ Error obteniendo pagos:', pagosError);
+          } else {
+            pagosData = pagosResult || [];
+          }
         }
       }
 
@@ -330,19 +334,23 @@ export class MetricsService {
       // Obtener pagos por separado
       let pagosData: any[] = [];
       if (sedeData && sedeData.length > 0) {
-        const ordenIds = sedeData.map(o => o.id);
-        const { data: pagosResult, error: pagosError } = await supabase
-          .from('ordenes')
-          .select(`
-            id,
-            pagos!left(total_pago)
-          `)
-          .in('id', ordenIds);
+        const ordenIds = sedeData.map(o => o.id).filter(id => id !== undefined && id !== null);
+        
+        // Solo hacer la consulta si hay IDs válidos
+        if (ordenIds.length > 0) {
+          const { data: pagosResult, error: pagosError } = await supabase
+            .from('ordenes')
+            .select(`
+              id,
+              pagos!left(total_pago)
+            `)
+            .in('id', ordenIds);
 
-        if (pagosError) {
-          console.error('⚠️ Error obteniendo pagos para sede metrics:', pagosError);
-        } else {
-          pagosData = pagosResult || [];
+          if (pagosError) {
+            console.error('⚠️ Error obteniendo pagos para sede metrics:', pagosError);
+          } else {
+            pagosData = pagosResult || [];
+          }
         }
       }
 

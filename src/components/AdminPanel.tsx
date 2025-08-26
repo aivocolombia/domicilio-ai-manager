@@ -93,67 +93,76 @@ export function AdminPanel({ onBack, onNavigateToTimeMetrics }: AdminPanelProps)
   })
 
   // Estados para pedidos cancelados
-  const [canceledOrdersData, setCanceledOrdersData] = useState<{
-    total: number;
-    porSede: Array<{ sede: string; count: number; sede_id: string }>;
-  } | null>(null)
   const [showCanceledModal, setShowCanceledModal] = useState(false)
   const [canceledOrdersList, setCanceledOrdersList] = useState<Array<{
-    id_display: string;
-    cliente_nombre: string;
-    sede: string;
-    motivo_cancelacion: string;
-    cancelado_at: string;
-    total: number;
+    id_display: string
+    cliente_nombre: string
+    sede: string
+    motivo_cancelacion: string
+    cancelado_at: string
+    total: number
   }>>([])
   const [loadingCanceled, setLoadingCanceled] = useState(false)
-
-  // Estados para modal de detalles de cancelados por sede
   const [canceledDetailsModalOpen, setCanceledDetailsModalOpen] = useState(false)
-  const [selectedSedeDetails, setSelectedSedeDetails] = useState<{
-    sede_id: string;
-    sede_nombre: string;
-  } | null>(null)
-  const [canceledOrdersDetails, setCanceledOrdersDetails] = useState<Array<{
-    id: string;
-    id_display: string;
-    cliente_nombre: string;
-    cliente_telefono: string;
-    cliente_direccion: string;
-    total: number;
-    motivo_cancelacion: string;
-    created_at: string;
-    cancelado_at: string;
-  }>>([])
   const [canceledDetailsLoading, setCanceledDetailsLoading] = useState(false)
-  const [canceledSearchTerm, setCanceledSearchTerm] = useState('')
+  const [canceledOrdersDetails, setCanceledOrdersDetails] = useState<Array<{
+    id: string
+    id_display: string
+    cliente_nombre: string
+    cliente_telefono: string
+    cliente_direccion: string
+    total: number
+    motivo_cancelacion: string
+    created_at: string
+    cancelado_at: string
+  }>>([])
+  const [selectedSedeDetails, setSelectedSedeDetails] = useState<{
+    sede_id: string
+    sede_nombre: string
+  } | null>(null)
   const [canceledCurrentPage, setCanceledCurrentPage] = useState(1)
-  const itemsPerPage = 10
+  const [canceledSearchTerm, setCanceledSearchTerm] = useState('')
+  
+  // Estados para estadísticas de cancelados
+  const [canceledStats, setCanceledStats] = useState<Array<{
+    id: string
+    sede_id: string
+    sede_nombre: string
+    total: number
+  }>>([])
+  const [canceledBySede, setCanceledBySede] = useState<Array<{
+    sede_id: string
+    sede_nombre: string
+    count: number
+    porcentaje: number
+  }>>([])
+  
+  // Variables para paginación y filtrado de cancelados
+  const [filteredCanceledOrders, setFilteredCanceledOrders] = useState<Array<{
+    id: string
+    id_display: string
+    cliente_nombre: string
+    cliente_telefono: string
+    cliente_direccion: string
+    total: number
+    motivo_cancelacion: string
+    created_at: string
+    cancelado_at: string
+  }>>([])
+  const [paginatedCanceledOrders, setPaginatedCanceledOrders] = useState<Array<{
+    id: string
+    id_display: string
+    cliente_nombre: string
+    cliente_telefono: string
+    cliente_direccion: string
+    total: number
+    motivo_cancelacion: string
+    created_at: string
+    cancelado_at: string
+  }>>([])
+  const [totalCanceledPages, setTotalCanceledPages] = useState(1)
 
-  // Estados derivados para la UI de cancelados
-  const canceledStats = canceledOrdersData ? Array.from({ length: canceledOrdersData.total }, (_, i) => ({ id: i })) : []
-  const canceledBySede = canceledOrdersData?.porSede.map(sede => ({
-    sede_id: sede.sede_id,
-    sede_nombre: sede.sede,
-    count: sede.count
-  })).sort((a, b) => b.count - a.count) || []
 
-  // Filtrar y paginar datos de cancelados para modal
-  const filteredCanceledOrders = canceledOrdersDetails.filter(order => {
-    const searchLower = canceledSearchTerm.toLowerCase()
-    return (
-      order.id_display.toLowerCase().includes(searchLower) ||
-      order.cliente_nombre.toLowerCase().includes(searchLower) ||
-      order.cliente_telefono.includes(canceledSearchTerm) ||
-      order.motivo_cancelacion.toLowerCase().includes(searchLower)
-    )
-  })
-
-  const totalCanceledPages = Math.ceil(filteredCanceledOrders.length / itemsPerPage)
-  const paginatedCanceledOrders = filteredCanceledOrders.slice(
-    (canceledCurrentPage - 1) * itemsPerPage,
-    canceledCurrentPage * itemsPerPage
-  )
 
   useEffect(() => {
     console.log('🚀 AdminPanel iniciando...')
@@ -161,7 +170,6 @@ export function AdminPanel({ onBack, onNavigateToTimeMetrics }: AdminPanelProps)
     fetchSedes()
     fetchSedesComplete()
     fetchRepartidores()
-    loadCanceledOrdersStats() // Cargar estadísticas de cancelados
     // loadMetrics() se ejecutará por el otro useEffect
   }, [])
 
@@ -170,9 +178,50 @@ export function AdminPanel({ onBack, onNavigateToTimeMetrics }: AdminPanelProps)
     if (dateRange.from && dateRange.to) {
       console.log('🔄 Recargando métricas por cambio de filtros...');
       loadMetrics();
-      loadCanceledOrdersStats(); // También recargar estadísticas de cancelados
     }
   }, [dateRange, selectedSedeFilter])
+
+  // Cargar datos de pedidos cancelados cuando se carguen las métricas
+  useEffect(() => {
+    if (dateRange.from && dateRange.to) {
+      console.log('🔄 Cargando datos de pedidos cancelados...');
+      loadCanceledOrdersData();
+    }
+  }, [dateRange, selectedSedeFilter])
+
+  // Filtrar y paginar datos de pedidos cancelados
+  useEffect(() => {
+    if (canceledOrdersDetails.length > 0) {
+      // Filtrar por término de búsqueda
+      const filtered = canceledOrdersDetails.filter(order => {
+        const searchTerm = canceledSearchTerm.toLowerCase();
+        return (
+          order.id_display.toLowerCase().includes(searchTerm) ||
+          order.cliente_nombre.toLowerCase().includes(searchTerm) ||
+          order.cliente_telefono.toLowerCase().includes(searchTerm) ||
+          order.motivo_cancelacion.toLowerCase().includes(searchTerm)
+        );
+      });
+
+      setFilteredCanceledOrders(filtered);
+
+      // Calcular paginación
+      const itemsPerPage = 10;
+      const totalPages = Math.ceil(filtered.length / itemsPerPage);
+      setTotalCanceledPages(totalPages);
+
+      // Obtener datos de la página actual
+      const startIndex = (canceledCurrentPage - 1) * itemsPerPage;
+      const endIndex = startIndex + itemsPerPage;
+      const paginated = filtered.slice(startIndex, endIndex);
+
+      setPaginatedCanceledOrders(paginated);
+    } else {
+      setFilteredCanceledOrders([]);
+      setPaginatedCanceledOrders([]);
+      setTotalCanceledPages(1);
+    }
+  }, [canceledOrdersDetails, canceledSearchTerm, canceledCurrentPage])
 
   const fetchUsers = async () => {
     try {
@@ -276,70 +325,66 @@ export function AdminPanel({ onBack, onNavigateToTimeMetrics }: AdminPanelProps)
     }
   }
 
-  // Función para cargar estadísticas de pedidos cancelados con filtros de fecha
-  const loadCanceledOrdersStats = async () => {
+
+  // Función para cargar datos de pedidos cancelados
+  const loadCanceledOrdersData = async () => {
     try {
-      console.log('📊 Cargando estadísticas de pedidos cancelados...')
+      console.log('📋 Cargando datos de pedidos cancelados...')
       
-      // Construir query con filtros de fecha
-      let query = supabase
+      const { data, error } = await supabase
         .from('ordenes')
         .select(`
           id,
           status,
-          sede_id,
+          motivo_cancelacion,
+          cancelado_at,
           created_at,
+          sede_id,
           sedes!left(name)
         `)
         .eq('status', 'Cancelado')
-        .order('created_at', { ascending: false })
-
-      // Aplicar filtros de fecha si están definidos
-      if (dateRange.from && dateRange.to) {
-        const fechaInicio = format(dateRange.from, 'yyyy-MM-dd')
-        const fechaFin = format(dateRange.to, 'yyyy-MM-dd')
-        
-        query = query
-          .gte('created_at', `${fechaInicio}T00:00:00Z`)
-          .lte('created_at', `${fechaFin}T23:59:59Z`)
-      }
-
-      const { data, error } = await query
+        .order('cancelado_at', { ascending: false })
 
       if (error) {
-        console.error('❌ Error cargando estadísticas cancelados:', error)
+        console.error('❌ Error cargando datos de cancelados:', error)
         return
       }
 
+      // Procesar datos para estadísticas
+      const statsData = data?.map((orden: any) => ({
+        id: orden.id.toString(),
+        sede_id: orden.sede_id || 'sin-sede',
+        sede_nombre: orden.sedes?.name || 'Sin Sede',
+        total: 1
+      })) || []
+
       // Agrupar por sede
-      const porSede = data?.reduce((acc: any[], orden: any) => {
-        const sede = orden.sedes?.name || 'Sin sede'
-        const sede_id = orden.sede_id || 'sin-sede'
-        
-        const existing = acc.find(item => item.sede_id === sede_id)
-        if (existing) {
-          existing.count++
+      const sedeMap = new Map<string, { sede_id: string; sede_nombre: string; count: number }>()
+      
+      statsData.forEach(item => {
+        const key = item.sede_id
+        if (sedeMap.has(key)) {
+          sedeMap.get(key)!.count += 1
         } else {
-          acc.push({
-            sede,
-            sede_id,
+          sedeMap.set(key, {
+            sede_id: item.sede_id,
+            sede_nombre: item.sede_nombre,
             count: 1
           })
         }
-        return acc
-      }, []) || []
-
-      setCanceledOrdersData({
-        total: data?.length || 0,
-        porSede: porSede
       })
 
-      console.log('✅ Estadísticas de cancelados cargadas:', {
-        total: data?.length || 0,
-        porSede: porSede.length
-      })
+      const sedeStats = Array.from(sedeMap.values()).map(item => ({
+        ...item,
+        porcentaje: 0 // Se calculará después si es necesario
+      }))
+
+      setCanceledStats(statsData)
+      setCanceledBySede(sedeStats)
+
+      console.log('✅ Datos de pedidos cancelados cargados:', statsData.length)
     } catch (error) {
-      console.error('❌ Error inesperado cargando cancelados:', error)
+      console.error('❌ Error inesperado cargando datos de cancelados:', error)
     }
   }
 
@@ -391,7 +436,7 @@ export function AdminPanel({ onBack, onNavigateToTimeMetrics }: AdminPanelProps)
         return
       }
 
-      const formattedList = data?.map(orden => ({
+      const formattedList = data?.map((orden: any) => ({
         id_display: `ORD-${orden.id.toString().padStart(4, '0')}`,
         cliente_nombre: orden.clientes?.nombre || 'Cliente desconocido',
         sede: orden.sedes?.name || 'Sin sede',
@@ -446,7 +491,7 @@ export function AdminPanel({ onBack, onNavigateToTimeMetrics }: AdminPanelProps)
         return
       }
 
-      const formattedList = data?.map(orden => ({
+      const formattedList = data?.map((orden: any) => ({
         id_display: `ORD-${orden.id.toString().padStart(4, '0')}`,
         cliente_nombre: orden.clientes?.nombre || 'Cliente desconocido',
         sede: orden.sedes?.name || 'Sin sede',
@@ -485,7 +530,7 @@ export function AdminPanel({ onBack, onNavigateToTimeMetrics }: AdminPanelProps)
           motivo_cancelacion,
           cancelado_at,
           created_at,
-          clientes!inner(nombre, telefono, direccion),
+          clientes!left(nombre, telefono, direccion),
           pagos!left(total_pago),
           sedes!left(name)
         `)
@@ -511,6 +556,10 @@ export function AdminPanel({ onBack, onNavigateToTimeMetrics }: AdminPanelProps)
 
       const { data, error } = await query
 
+      console.log('🔍 Query ejecutada para sede:', sedeId)
+      console.log('🔍 Datos obtenidos:', data?.length || 0)
+      console.log('🔍 Error si existe:', error)
+
       if (error) {
         console.error('❌ Error cargando detalles cancelados por sede:', error)
         toast({
@@ -521,7 +570,7 @@ export function AdminPanel({ onBack, onNavigateToTimeMetrics }: AdminPanelProps)
         return
       }
 
-      const formattedDetails = data?.map(orden => ({
+      const formattedDetails = data?.map((orden: any) => ({
         id: orden.id.toString(),
         id_display: `ORD-${orden.id.toString().padStart(4, '0')}`,
         cliente_nombre: orden.clientes?.nombre || 'Cliente desconocido',
@@ -532,6 +581,9 @@ export function AdminPanel({ onBack, onNavigateToTimeMetrics }: AdminPanelProps)
         created_at: orden.created_at || '',
         cancelado_at: orden.cancelado_at || ''
       })) || []
+
+      console.log('🔍 Datos formateados:', formattedDetails)
+      console.log('🔍 Primer pedido:', formattedDetails[0])
 
       setCanceledOrdersDetails(formattedDetails)
       setSelectedSedeDetails({ sede_id: sedeId, sede_nombre: sedeName })
@@ -1128,7 +1180,7 @@ export function AdminPanel({ onBack, onNavigateToTimeMetrics }: AdminPanelProps)
           /* ========== SECCIÓN DE CONFIGURACIONES ========== */
           <div className="space-y-6">
             {/* Stats Cards de Configuración */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               <Card>
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                   <CardTitle className="text-sm font-medium">Total Usuarios</CardTitle>
@@ -1170,37 +1222,6 @@ export function AdminPanel({ onBack, onNavigateToTimeMetrics }: AdminPanelProps)
                 </CardContent>
               </Card>
 
-              <Card className="cursor-pointer hover:shadow-md transition-shadow" onClick={loadCanceledOrdersList}>
-                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                  <CardTitle className="text-sm font-medium">Pedidos Cancelados</CardTitle>
-                  <XCircle className="h-4 w-4 text-red-500" />
-                </CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-bold text-red-600">
-                    {canceledOrdersData?.total || 0}
-                  </div>
-                  <div className="text-xs text-muted-foreground space-y-1">
-                    <div className="flex items-center gap-1">
-                      <Eye className="h-3 w-3" />
-                      Click para ver detalles
-                    </div>
-                    {canceledOrdersData && canceledOrdersData.porSede.length > 0 && (
-                      <div className="text-xs">
-                        {canceledOrdersData.porSede.slice(0, 2).map(sede => (
-                          <div key={sede.sede_id} className="text-red-600">
-                            {sede.sede}: {sede.count}
-                          </div>
-                        ))}
-                        {canceledOrdersData.porSede.length > 2 && (
-                          <div className="text-gray-500">
-                            +{canceledOrdersData.porSede.length - 2} más...
-                          </div>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                </CardContent>
-              </Card>
             </div>
 
         {/* Tabs para Gestión */}
@@ -2036,6 +2057,7 @@ export function AdminPanel({ onBack, onNavigateToTimeMetrics }: AdminPanelProps)
                                   key={sede.sede_id || 'sin-sede'}
                                   className="flex items-center justify-between p-4 bg-white border border-gray-200 rounded-lg transition-all duration-200 cursor-pointer hover:bg-red-50 hover:border-red-300 hover:shadow-md group"
                                   onClick={() => {
+                                    console.log('🖱️ Click en sede:', sede.sede_id, sede.sede_nombre);
                                     loadCanceledOrdersDetailsBySede(
                                       sede.sede_id,
                                       sede.sede_nombre || 'Sin Sede'
