@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Plus, Search, Edit, Trash2, Users, Building2, UserCheck, UserX, TrendingUp, DollarSign, Package, Clock, LayoutDashboard, Phone, MapPin, Settings, RefreshCw, Cog, ChartLine, Timer, BarChart3, Truck } from 'lucide-react'
+import { Plus, Search, Edit, Trash2, Users, Building2, UserCheck, UserX, TrendingUp, DollarSign, Package, Clock, LayoutDashboard, Phone, MapPin, Settings, RefreshCw, Cog, ChartLine, Timer, BarChart3, Truck, XCircle, Eye, AlertTriangle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -92,12 +92,29 @@ export function AdminPanel({ onBack, onNavigateToTimeMetrics }: AdminPanelProps)
     to: new Date()    // Hoy por defecto
   })
 
+  // Estados para pedidos cancelados
+  const [canceledOrdersData, setCanceledOrdersData] = useState<{
+    total: number;
+    porSede: Array<{ sede: string; count: number; sede_id: string }>;
+  } | null>(null)
+  const [showCanceledModal, setShowCanceledModal] = useState(false)
+  const [canceledOrdersList, setCanceledOrdersList] = useState<Array<{
+    id_display: string;
+    cliente_nombre: string;
+    sede: string;
+    motivo_cancelacion: string;
+    cancelado_at: string;
+    total: number;
+  }>>([])
+  const [loadingCanceled, setLoadingCanceled] = useState(false)
+
   useEffect(() => {
     console.log('🚀 AdminPanel iniciando...')
     fetchUsers()
     fetchSedes()
     fetchSedesComplete()
     fetchRepartidores()
+    loadCanceledOrdersStats() // Cargar estadísticas de cancelados
     // loadMetrics() se ejecutará por el otro useEffect
   }, [])
 
@@ -208,6 +225,113 @@ export function AdminPanel({ onBack, onNavigateToTimeMetrics }: AdminPanelProps)
       })
     } finally {
       setMetricsLoading(false)
+    }
+  }
+
+  // Función para cargar estadísticas de pedidos cancelados
+  const loadCanceledOrdersStats = async () => {
+    try {
+      console.log('📊 Cargando estadísticas de pedidos cancelados...')
+      
+      const { data, error } = await supabase
+        .from('ordenes')
+        .select(`
+          id,
+          status,
+          sede_id,
+          sedes!left(name)
+        `)
+        .eq('status', 'Cancelado')
+
+      if (error) {
+        console.error('❌ Error cargando estadísticas cancelados:', error)
+        return
+      }
+
+      // Agrupar por sede
+      const porSede = data?.reduce((acc: any[], orden: any) => {
+        const sede = orden.sedes?.name || 'Sin sede'
+        const sede_id = orden.sede_id || 'sin-sede'
+        
+        const existing = acc.find(item => item.sede_id === sede_id)
+        if (existing) {
+          existing.count++
+        } else {
+          acc.push({
+            sede,
+            sede_id,
+            count: 1
+          })
+        }
+        return acc
+      }, []) || []
+
+      setCanceledOrdersData({
+        total: data?.length || 0,
+        porSede: porSede
+      })
+
+      console.log('✅ Estadísticas de cancelados cargadas:', {
+        total: data?.length || 0,
+        porSede: porSede.length
+      })
+    } catch (error) {
+      console.error('❌ Error inesperado cargando cancelados:', error)
+    }
+  }
+
+  // Función para cargar lista detallada de pedidos cancelados
+  const loadCanceledOrdersList = async () => {
+    try {
+      setLoadingCanceled(true)
+      console.log('📋 Cargando lista detallada de pedidos cancelados...')
+      
+      const { data, error } = await supabase
+        .from('ordenes')
+        .select(`
+          id,
+          status,
+          motivo_cancelacion,
+          cancelado_at,
+          clientes!left(nombre),
+          sedes!left(name),
+          pagos!left(total_pago)
+        `)
+        .eq('status', 'Cancelado')
+        .order('cancelado_at', { ascending: false })
+
+      if (error) {
+        console.error('❌ Error cargando lista cancelados:', error)
+        toast({
+          title: "Error",
+          description: "No se pudo cargar la lista de pedidos cancelados",
+          variant: "destructive"
+        })
+        return
+      }
+
+      const formattedList = data?.map(orden => ({
+        id_display: `ORD-${orden.id.toString().padStart(4, '0')}`,
+        cliente_nombre: orden.clientes?.nombre || 'Cliente desconocido',
+        sede: orden.sedes?.name || 'Sin sede',
+        motivo_cancelacion: orden.motivo_cancelacion || 'No especificado',
+        cancelado_at: orden.cancelado_at || '',
+        total: orden.pagos?.total_pago || 0
+      })) || []
+
+      setCanceledOrdersList(formattedList)
+      setShowCanceledModal(true)
+
+      console.log('✅ Lista de cancelados cargada:', formattedList.length)
+    } catch (error) {
+      console.error('❌ Error inesperado cargando lista:', error)
+      toast({
+        title: "Error",
+        description: "Error inesperado al cargar la lista",
+        variant: "destructive"
+      })
+    } finally {
+      setLoadingCanceled(false)
     }
   }
 
@@ -787,7 +911,7 @@ export function AdminPanel({ onBack, onNavigateToTimeMetrics }: AdminPanelProps)
           /* ========== SECCIÓN DE CONFIGURACIONES ========== */
           <div className="space-y-6">
             {/* Stats Cards de Configuración */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
               <Card>
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                   <CardTitle className="text-sm font-medium">Total Usuarios</CardTitle>
@@ -826,6 +950,38 @@ export function AdminPanel({ onBack, onNavigateToTimeMetrics }: AdminPanelProps)
                   <p className="text-xs text-muted-foreground">
                     Usuarios con permisos de administrador
                   </p>
+                </CardContent>
+              </Card>
+
+              <Card className="cursor-pointer hover:shadow-md transition-shadow" onClick={loadCanceledOrdersList}>
+                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                  <CardTitle className="text-sm font-medium">Pedidos Cancelados</CardTitle>
+                  <XCircle className="h-4 w-4 text-red-500" />
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold text-red-600">
+                    {canceledOrdersData?.total || 0}
+                  </div>
+                  <div className="text-xs text-muted-foreground space-y-1">
+                    <div className="flex items-center gap-1">
+                      <Eye className="h-3 w-3" />
+                      Click para ver detalles
+                    </div>
+                    {canceledOrdersData && canceledOrdersData.porSede.length > 0 && (
+                      <div className="text-xs">
+                        {canceledOrdersData.porSede.slice(0, 2).map(sede => (
+                          <div key={sede.sede_id} className="text-red-600">
+                            {sede.sede}: {sede.count}
+                          </div>
+                        ))}
+                        {canceledOrdersData.porSede.length > 2 && (
+                          <div className="text-gray-500">
+                            +{canceledOrdersData.porSede.length - 2} más...
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
                 </CardContent>
               </Card>
             </div>
@@ -1876,6 +2032,113 @@ export function AdminPanel({ onBack, onNavigateToTimeMetrics }: AdminPanelProps)
                 Eliminar Repartidor
               </Button>
             </div>
+          </DialogContent>
+        </Dialog>
+
+        {/* Modal para ver pedidos cancelados */}
+        <Dialog open={showCanceledModal} onOpenChange={setShowCanceledModal}>
+          <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <XCircle className="h-5 w-5 text-red-600" />
+                Pedidos Cancelados ({canceledOrdersList.length})
+              </DialogTitle>
+              <DialogDescription>
+                Lista detallada de todos los pedidos cancelados con sus motivos
+              </DialogDescription>
+            </DialogHeader>
+            
+            {loadingCanceled ? (
+              <div className="flex items-center justify-center py-8">
+                <div className="flex items-center gap-2">
+                  <RefreshCw className="h-5 w-5 animate-spin" />
+                  Cargando pedidos cancelados...
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {canceledOrdersList.length > 0 ? (
+                  <div className="overflow-x-auto">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>ID Pedido</TableHead>
+                          <TableHead>Cliente</TableHead>
+                          <TableHead>Sede</TableHead>
+                          <TableHead>Total</TableHead>
+                          <TableHead>Fecha Cancelación</TableHead>
+                          <TableHead className="min-w-[200px]">Motivo</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {canceledOrdersList.map((order, index) => (
+                          <TableRow key={index}>
+                            <TableCell>
+                              <Badge variant="outline" className="font-mono text-xs">
+                                {order.id_display}
+                              </Badge>
+                            </TableCell>
+                            <TableCell className="font-medium">
+                              {order.cliente_nombre}
+                            </TableCell>
+                            <TableCell>
+                              <Badge variant="secondary" className="text-xs">
+                                {order.sede}
+                              </Badge>
+                            </TableCell>
+                            <TableCell>
+                              <span className="font-medium text-green-600">
+                                ${order.total.toLocaleString()}
+                              </span>
+                            </TableCell>
+                            <TableCell className="text-sm text-muted-foreground">
+                              {order.cancelado_at ? 
+                                new Date(order.cancelado_at).toLocaleString('es-CO', {
+                                  year: 'numeric',
+                                  month: '2-digit',
+                                  day: '2-digit',
+                                  hour: '2-digit',
+                                  minute: '2-digit',
+                                  hour12: false
+                                }) : 
+                                'No disponible'
+                              }
+                            </TableCell>
+                            <TableCell>
+                              <div className="max-w-xs">
+                                <div className="text-sm bg-red-50 border border-red-200 rounded-md p-2">
+                                  <div className="flex items-start gap-2">
+                                    <AlertTriangle className="h-4 w-4 text-red-500 mt-0.5 flex-shrink-0" />
+                                    <p className="text-red-800 text-xs leading-relaxed whitespace-pre-wrap break-words">
+                                      {order.motivo_cancelacion}
+                                    </p>
+                                  </div>
+                                </div>
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                ) : (
+                  <div className="text-center py-8 text-muted-foreground">
+                    <XCircle className="h-12 w-12 mx-auto mb-4 text-gray-300" />
+                    <p className="text-lg font-medium">No hay pedidos cancelados</p>
+                    <p className="text-sm">Todos los pedidos han sido procesados exitosamente</p>
+                  </div>
+                )}
+                
+                <div className="flex justify-end pt-4">
+                  <Button 
+                    variant="outline" 
+                    onClick={() => setShowCanceledModal(false)}
+                  >
+                    Cerrar
+                  </Button>
+                </div>
+              </div>
+            )}
           </DialogContent>
         </Dialog>
       </div>

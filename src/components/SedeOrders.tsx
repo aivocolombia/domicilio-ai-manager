@@ -97,12 +97,13 @@ export const SedeOrders: React.FC<SedeOrdersProps> = ({
   // Usar SOLO pedidos reales - NUNCA legacy/dummy
   const orders = realOrders;
 
-  // Cargar pedidos al montar el componente
+  // Cargar pedidos al montar el componente usando effectiveSedeId
   useEffect(() => {
-    if (profile?.sede_id) {
+    if (effectiveSedeId) {
+      console.log('📅 SedeOrders: Cargando pedidos para sede efectiva:', effectiveSedeId);
       loadSedeOrders();
     }
-  }, [profile?.sede_id, loadSedeOrders]);
+  }, [effectiveSedeId, loadSedeOrders]);
 
   const normalizePhone = (phone: string) => {
     return phone.replace(/[\s\-()]/g, '');
@@ -244,7 +245,7 @@ export const SedeOrders: React.FC<SedeOrdersProps> = ({
     if (newOrder.deliveryType === 'delivery' && !customerData.address) return;
     if (newOrder.deliveryType === 'pickup' && (!newOrder.pickupSede || !newOrder.pickupCustomerName || !newOrder.pickupCustomerPhone)) return;
     if (newOrder.items.length === 0) return;
-    if (!profile?.sede_id) return;
+    if (!effectiveSedeId) return; // Validar que hay sede efectiva (seleccionada por admin o asignada al agente)
     if (!customerData.name || !customerData.phone) return;
 
     try {
@@ -321,7 +322,7 @@ export const SedeOrders: React.FC<SedeOrdersProps> = ({
           
           throw new Error(`Producto no encontrado: ${item.productId} (tipo: ${productType}, ID: ${realProductId})`);
         }),
-        sede_id: profile.sede_id,
+        sede_id: effectiveSedeId, // Usar sede seleccionada por admin o asignada al agente
         // Datos para actualización de cliente
         update_customer_data: {
           nombre: finalCustomerName,

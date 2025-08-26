@@ -25,7 +25,13 @@ import {
   Calendar,
   Filter,
   Download,
-  Trash2
+  Trash2,
+  ArrowUp,
+  ArrowDown,
+  ChevronLeft,
+  ChevronRight,
+  Eye,
+  MessageCircle
 } from 'lucide-react';
 import { Calendar as CalendarComponent } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
@@ -90,6 +96,22 @@ export const Dashboard: React.FC<DashboardProps> = ({
   const [cancelReason, setCancelReason] = useState('');
   const [isCancelModalOpen, setIsCancelModalOpen] = useState(false);
   const [isCancelling, setIsCancelling] = useState(false);
+
+  // Estados para ver motivo de cancelación
+  const [viewCancelModalOpen, setViewCancelModalOpen] = useState(false);
+  const [viewCancelData, setViewCancelData] = useState<{
+    orderId: string;
+    reason: string;
+    canceledAt?: string;
+  } | null>(null);
+
+  // Estados para ordenamiento
+  const [sortField, setSortField] = useState<keyof DashboardOrder>('creado_fecha');
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
+
+  // Estados para paginación
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 15;
 
   // Obtener datos del usuario autenticado
   const { user, profile } = useAuth();
@@ -184,6 +206,45 @@ export const Dashboard: React.FC<DashboardProps> = ({
       toast({
         title: "Error",
         description: error instanceof Error ? error.message : "No se pudo transferir el pedido",
+        variant: "destructive"
+      });
+    }
+  };
+
+  // Función para ver el motivo de cancelación
+  const handleViewCancelReason = async (orderId: string) => {
+    try {
+      console.log('🔍 Obteniendo motivo de cancelación para pedido:', orderId);
+      
+      const { data, error } = await supabase
+        .from('ordenes')
+        .select('motivo_cancelacion, cancelado_at, id')
+        .eq('id', parseInt(orderId))
+        .single();
+
+      if (error) {
+        console.error('❌ Error obteniendo motivo de cancelación:', error);
+        toast({
+          title: "Error",
+          description: "No se pudo obtener el motivo de cancelación",
+          variant: "destructive"
+        });
+        return;
+      }
+
+      if (data) {
+        setViewCancelData({
+          orderId: `ORD-${data.id.toString().padStart(4, '0')}`,
+          reason: data.motivo_cancelacion || 'No se especificó motivo',
+          canceledAt: data.cancelado_at || undefined
+        });
+        setViewCancelModalOpen(true);
+      }
+    } catch (error) {
+      console.error('❌ Error inesperado:', error);
+      toast({
+        title: "Error",
+        description: "Error inesperado al obtener el motivo",
         variant: "destructive"
       });
     }
@@ -368,21 +429,23 @@ export const Dashboard: React.FC<DashboardProps> = ({
       return;
     }
 
-    // Preparar datos para CSV
+    // Preparar datos para CSV usando los campos correctos de la interfaz DashboardOrder
     const csvData = orders.map(order => ({
-      'ID': order.id,
-      'Cliente': order.nombre_cliente || '',
-      'Teléfono': order.telefono_cliente || '',
+      'ID Pedido': order.id_display || '',
+      'ID Interno': order.orden_id || '',
+      'Cliente': order.cliente_nombre || '',
+      'Teléfono': order.cliente_telefono || '',
       'Dirección': order.direccion || '',
-      'Estado': order.status || '',
-      'Total': order.total || 0,
-      'Método de Pago': order.metodo_pago || '',
-      'Fuente': order.fuente || '',
-      'Sede': currentSedeName || '',
-      'Fecha Creación': order.created_at ? new Date(order.created_at).toLocaleDateString('es-ES') : '',
-      'Fecha Entrega': order.entregado_at ? new Date(order.entregado_at).toLocaleDateString('es-ES') : '',
-      'Tiempo Total (min)': order.min_total_desde_recibidos || '',
-      'Repartidor': order.repartidor_nombre || ''
+      'Sede': order.sede || '',
+      'Estado': order.estado || '',
+      'Total': order.total ? `$${order.total.toLocaleString()}` : '$0',
+      'Tipo Pago': order.pago_tipo || '',
+      'Estado Pago': order.pago_estado || '',
+      'Fecha Creación': order.creado_fecha || '',
+      'Hora Creación': order.creado_hora || '',
+      'Hora Entrega': order.entrega_hora || '',
+      'Repartidor': order.repartidor || '',
+      'Payment ID': order.payment_id || ''
     }));
 
     // Convertir a CSV
@@ -424,28 +487,102 @@ export const Dashboard: React.FC<DashboardProps> = ({
   // Función debounced para aplicar filtros y evitar llamadas excesivas
   const debouncedLoadOrders = useDebouncedCallback(loadDashboardOrders, 500);
 
+  // Función de ordenamiento
+  const handleSort = (field: keyof DashboardOrder) => {
+    if (sortField === field) {
+      // Cambiar dirección si es el mismo campo
+      setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
+    } else {
+      // Nuevo campo, empezar con descendente
+      setSortField(field);
+      setSortDirection('desc');
+    }
+    // Resetear a primera página cuando se cambia el ordenamiento
+    setCurrentPage(1);
+  };
+
+  // Función para obtener icono de ordenamiento
+  const getSortIcon = (field: keyof DashboardOrder) => {
+    if (sortField !== field) {
+      return null;
+    }
+    return sortDirection === 'asc' ? (
+      <ArrowUp className="h-4 w-4 inline ml-1 text-blue-600" />
+    ) : (
+      <ArrowDown className="h-4 w-4 inline ml-1 text-blue-600" />
+    );
+  };
+
+  // Aplicar filtros primero
+  const filteredOrders = orders.filter(order => {
+    // Solo datos reales - no más datos legacy/dummy
+    const realOrder = order as DashboardOrder;
+    const matchesSearch = realOrder.cliente_nombre.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                         realOrder.cliente_telefono.includes(searchTerm) ||
+                         realOrder.id_display.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                         realOrder.direccion.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesStatus = statusFilter === 'all' || realOrder.estado === statusFilter;
+    return matchesSearch && matchesStatus;
+  });
+
+  // Aplicar ordenamiento a las órdenes filtradas
+  const sortedOrders = [...filteredOrders].sort((a, b) => {
+    const aVal = a[sortField];
+    const bVal = b[sortField];
+    
+    // Manejar diferentes tipos de datos
+    let comparison = 0;
+    if (typeof aVal === 'string' && typeof bVal === 'string') {
+      comparison = aVal.localeCompare(bVal);
+    } else if (typeof aVal === 'number' && typeof bVal === 'number') {
+      comparison = aVal - bVal;
+    } else {
+      // Convertir a string para comparar
+      comparison = String(aVal || '').localeCompare(String(bVal || ''));
+    }
+    
+    return sortDirection === 'asc' ? comparison : -comparison;
+  });
+
+  // Aplicar paginación
+  const totalItems = sortedOrders.length;
+  const totalPages = Math.ceil(totalItems / itemsPerPage);
+  const startIndex = (currentPage - 1) * itemsPerPage;
+  const endIndex = startIndex + itemsPerPage;
+  const paginatedOrders = sortedOrders.slice(startIndex, endIndex);
+
   // Función para aplicar filtros de fecha
   const applyDateFilter = async () => {
     let filters: any = {};
     
     if (dateFilter === 'today') {
-      // Ejecutar diagnóstico completo
-      console.log('🔍 DASHBOARD: Iniciando diagnóstico de filtro "hoy"');
-      debugTodayFilter();
+      console.log('🔍 DASHBOARD: Aplicando filtro "hoy"');
       
-      // Filtrar solo hoy usando zona horaria local
       const today = new Date();
-      console.log('🕐 Fecha actual del sistema:', {
-        fecha: today.toLocaleDateString('es-CO'),
-        hora: today.toLocaleTimeString('es-CO'),
-        timestamp: today.toISOString(),
-        timezone: today.getTimezoneOffset()
+      console.log('🕐 Fecha de hoy:', today.toLocaleDateString('es-CO'));
+      
+      // Crear rango simple: desde las 00:00 hasta las 23:59 del día actual
+      // IMPORTANTE: usar zona horaria local sin conversiones UTC problemáticas
+      const startOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 0, 0, 0, 0);
+      const endOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 23, 59, 59, 999);
+      
+      // Crear las fechas de consulta en formato ISO pero ajustadas a zona horaria local
+      // Esto evita el problema de "+1 día" causado por conversiones UTC
+      const year = today.getFullYear();
+      const month = String(today.getMonth() + 1).padStart(2, '0');
+      const day = String(today.getDate()).padStart(2, '0');
+      
+      const fechaInicio = `${year}-${month}-${day}T00:00:00Z`;
+      const fechaFin = `${year}-${month}-${day}T23:59:59Z`;
+      
+      console.log('🗺 Rango de consulta (corregido):', {
+        fechaHoy: today.toLocaleDateString('es-CO'),
+        fechaInicio,
+        fechaFin
       });
       
-      const dateRange = createDateRangeForQuery(today, today);
-      
-      filters.fechaInicio = dateRange.fechaInicio;
-      filters.fechaFin = dateRange.fechaFin;
+      filters.fechaInicio = fechaInicio;
+      filters.fechaFin = fechaFin;
       
       console.log('📅 DASHBOARD: Filtros finales aplicados:', { 
         fechaInicio: filters.fechaInicio, 
@@ -453,13 +590,24 @@ export const Dashboard: React.FC<DashboardProps> = ({
         fechaSistema: today.toLocaleDateString('es-CO')
       });
     } else if (dateFilter === 'custom' && dateRange.from && dateRange.to) {
-      // Filtro personalizado con rango de fechas usando zona horaria local
-      const rangeQuery = createDateRangeForQuery(dateRange.from, dateRange.to);
+      // Filtro personalizado con rango de fechas
+      const fromYear = dateRange.from.getFullYear();
+      const fromMonth = String(dateRange.from.getMonth() + 1).padStart(2, '0');
+      const fromDay = String(dateRange.from.getDate()).padStart(2, '0');
       
-      filters.fechaInicio = rangeQuery.fechaInicio;
-      filters.fechaFin = rangeQuery.fechaFin;
+      const toYear = dateRange.to.getFullYear();
+      const toMonth = String(dateRange.to.getMonth() + 1).padStart(2, '0');
+      const toDay = String(dateRange.to.getDate()).padStart(2, '0');
       
-      console.log('📅 Aplicando filtro personalizado (Colombia):', { fechaInicio: filters.fechaInicio, fechaFin: filters.fechaFin });
+      filters.fechaInicio = `${fromYear}-${fromMonth}-${fromDay}T00:00:00Z`;
+      filters.fechaFin = `${toYear}-${toMonth}-${toDay}T23:59:59Z`;
+      
+      console.log('📅 Aplicando filtro personalizado:', { 
+        desde: dateRange.from.toLocaleDateString('es-CO'),
+        hasta: dateRange.to.toLocaleDateString('es-CO'),
+        fechaInicio: filters.fechaInicio, 
+        fechaFin: filters.fechaFin 
+      });
     }
     
     // Aplicar también el filtro de estado actual si existe
@@ -501,17 +649,6 @@ export const Dashboard: React.FC<DashboardProps> = ({
       clearTimeout(timeoutId);
     };
   }, [dateFilter, dateRange, profile?.sede_id, statusFilter]);
-
-  const filteredOrders = orders.filter(order => {
-    // Solo datos reales - no más datos legacy/dummy
-    const realOrder = order as DashboardOrder;
-    const matchesSearch = realOrder.cliente_nombre.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         realOrder.cliente_telefono.includes(searchTerm) ||
-                         realOrder.id_display.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         realOrder.direccion.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesStatus = statusFilter === 'all' || realOrder.estado === statusFilter;
-    return matchesSearch && matchesStatus;
-  });
 
   const getStatusIcon = (status: string) => {
     switch (status) {
@@ -580,7 +717,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
   const handleSelectAll = (checked: boolean) => {
     if (checked) {
-      setSelectedOrders(filteredOrders.map(order => order.id));
+      setSelectedOrders(paginatedOrders.map(order => order.orden_id.toString()));
     } else {
       setSelectedOrders([]);
     }
@@ -894,7 +1031,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
             <CardTitle>Pedidos</CardTitle>
             <div className="flex items-center gap-2">
               <Checkbox
-                checked={selectedOrders.length === filteredOrders.length && filteredOrders.length > 0}
+                checked={selectedOrders.length === paginatedOrders.length && paginatedOrders.length > 0}
                 onCheckedChange={handleSelectAll}
               />
               <span className="text-sm text-muted-foreground">Seleccionar todos</span>
@@ -907,16 +1044,36 @@ export const Dashboard: React.FC<DashboardProps> = ({
               <thead>
                 <tr className="border-b">
                   <th className="text-left p-2 w-12"></th>
-                  <th className="text-left p-2">ID</th>
-                  <th className="text-left p-2">Cliente</th>
-                  <th className="text-left p-2">Dirección</th>
-                  <th className="text-left p-2">Sede</th>
-                  <th className="text-left p-2">Estado</th>
-                  <th className="text-left p-2">Pago</th>
-                  <th className="text-left p-2">Repartidor</th>
-                  <th className="text-left p-2">Total</th>
-                  <th className="text-left p-2">Entrega</th>
-                  <th className="text-left p-2">Creado</th>
+                  <th className="text-left p-2 cursor-pointer hover:bg-gray-100" onClick={() => handleSort('id_display')}>
+                    ID {getSortIcon('id_display')}
+                  </th>
+                  <th className="text-left p-2 cursor-pointer hover:bg-gray-100" onClick={() => handleSort('cliente_nombre')}>
+                    Cliente {getSortIcon('cliente_nombre')}
+                  </th>
+                  <th className="text-left p-2 cursor-pointer hover:bg-gray-100" onClick={() => handleSort('direccion')}>
+                    Dirección {getSortIcon('direccion')}
+                  </th>
+                  <th className="text-left p-2 cursor-pointer hover:bg-gray-100" onClick={() => handleSort('sede')}>
+                    Sede {getSortIcon('sede')}
+                  </th>
+                  <th className="text-left p-2 cursor-pointer hover:bg-gray-100" onClick={() => handleSort('estado')}>
+                    Estado {getSortIcon('estado')}
+                  </th>
+                  <th className="text-left p-2 cursor-pointer hover:bg-gray-100" onClick={() => handleSort('pago_tipo')}>
+                    Pago {getSortIcon('pago_tipo')}
+                  </th>
+                  <th className="text-left p-2 cursor-pointer hover:bg-gray-100" onClick={() => handleSort('repartidor')}>
+                    Repartidor {getSortIcon('repartidor')}
+                  </th>
+                  <th className="text-left p-2 cursor-pointer hover:bg-gray-100" onClick={() => handleSort('total')}>
+                    Total {getSortIcon('total')}
+                  </th>
+                  <th className="text-left p-2 cursor-pointer hover:bg-gray-100" onClick={() => handleSort('entrega_hora')}>
+                    Entrega {getSortIcon('entrega_hora')}
+                  </th>
+                  <th className="text-left p-2 cursor-pointer hover:bg-gray-100" onClick={() => handleSort('creado_fecha')}>
+                    Creado {getSortIcon('creado_fecha')}
+                  </th>
                   <th className="text-left p-2">Acciones</th>
                 </tr>
               </thead>
@@ -930,14 +1087,14 @@ export const Dashboard: React.FC<DashboardProps> = ({
                       </div>
                     </td>
                   </tr>
-                ) : filteredOrders.length === 0 ? (
+                ) : paginatedOrders.length === 0 ? (
                   <tr>
                     <td colSpan={13} className="p-8 text-center text-muted-foreground">
                       No se encontraron órdenes
                     </td>
                   </tr>
                 ) : (
-                  filteredOrders.map((order) => {
+                  paginatedOrders.map((order) => {
                     const realOrder = order as DashboardOrder;
                     return (
                       <tr key={realOrder.orden_id} className="border-b hover:bg-muted/50">
@@ -1017,6 +1174,19 @@ export const Dashboard: React.FC<DashboardProps> = ({
                               </Button>
                             )}
                             
+                            {/* Botón para ver motivo de cancelación - solo para pedidos cancelados */}
+                            {realOrder.estado === 'Cancelado' && (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => handleViewCancelReason(realOrder.orden_id.toString())}
+                                className="h-8 w-8 p-0 border-orange-300 text-orange-600 hover:bg-orange-50"
+                                title={`Ver motivo de cancelación de ${realOrder.id_display}`}
+                              >
+                                <MessageCircle className="h-4 w-4" />
+                              </Button>
+                            )}
+                            
                             {/* Botón de eliminar - solo para admins */}
                             {profile?.role === 'admin' && (
                               <Button
@@ -1038,6 +1208,66 @@ export const Dashboard: React.FC<DashboardProps> = ({
               </tbody>
             </table>
           </div>
+          
+          {/* Controles de paginación */}
+          {totalPages > 1 && (
+            <div className="flex items-center justify-between mt-6 pt-4 border-t">
+              <div className="text-sm text-muted-foreground">
+                Mostrando {startIndex + 1}-{Math.min(endIndex, totalItems)} de {totalItems} registros
+              </div>
+              <div className="flex items-center gap-2">
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  onClick={() => setCurrentPage(currentPage - 1)}
+                  disabled={currentPage === 1}
+                  className="flex items-center gap-1"
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                  Anterior
+                </Button>
+                
+                {/* Números de página */}
+                <div className="flex items-center gap-1">
+                  {Array.from({ length: Math.min(totalPages, 7) }, (_, i) => {
+                    let pageNum;
+                    if (totalPages <= 7) {
+                      pageNum = i + 1;
+                    } else if (currentPage <= 4) {
+                      pageNum = i + 1;
+                    } else if (currentPage > totalPages - 4) {
+                      pageNum = totalPages - 6 + i;
+                    } else {
+                      pageNum = currentPage - 3 + i;
+                    }
+                    
+                    return (
+                      <Button
+                        key={pageNum}
+                        variant={currentPage === pageNum ? "default" : "outline"}
+                        size="sm"
+                        onClick={() => setCurrentPage(pageNum)}
+                        className="w-8 h-8 p-0"
+                      >
+                        {pageNum}
+                      </Button>
+                    );
+                  })}
+                </div>
+                
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  onClick={() => setCurrentPage(currentPage + 1)}
+                  disabled={currentPage === totalPages}
+                  className="flex items-center gap-1"
+                >
+                  Siguiente
+                  <ChevronRight className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+          )}
         </CardContent>
       </Card>
 
@@ -1158,6 +1388,68 @@ export const Dashboard: React.FC<DashboardProps> = ({
                     Confirmar Cancelación
                   </>
                 )}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Modal para Ver Motivo de Cancelación */}
+      <Dialog open={viewCancelModalOpen} onOpenChange={setViewCancelModalOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <MessageCircle className="h-5 w-5 text-orange-600" />
+              Motivo de Cancelación
+            </DialogTitle>
+            <DialogDescription>
+              Información sobre por qué fue cancelado este pedido
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            {viewCancelData && (
+              <>
+                <div className="space-y-2">
+                  <Label className="text-sm font-medium text-gray-900">Pedido:</Label>
+                  <p className="text-sm text-gray-700 font-mono bg-gray-50 px-2 py-1 rounded">
+                    {viewCancelData.orderId}
+                  </p>
+                </div>
+                
+                <div className="space-y-2">
+                  <Label className="text-sm font-medium text-gray-900">Motivo de Cancelación:</Label>
+                  <div className="min-h-[100px] p-3 border border-gray-300 rounded-md bg-gray-50">
+                    <p className="text-sm text-gray-800 whitespace-pre-wrap">
+                      {viewCancelData.reason}
+                    </p>
+                  </div>
+                </div>
+
+                {viewCancelData.canceledAt && (
+                  <div className="space-y-2">
+                    <Label className="text-sm font-medium text-gray-900">Fecha de Cancelación:</Label>
+                    <p className="text-sm text-gray-600">
+                      {new Date(viewCancelData.canceledAt).toLocaleString('es-CO', {
+                        year: 'numeric',
+                        month: '2-digit',
+                        day: '2-digit',
+                        hour: '2-digit',
+                        minute: '2-digit',
+                        hour12: false
+                      })}
+                    </p>
+                  </div>
+                )}
+              </>
+            )}
+            
+            <div className="flex justify-end">
+              <Button 
+                variant="outline"
+                onClick={() => setViewCancelModalOpen(false)}
+                className="flex items-center gap-2"
+              >
+                Cerrar
               </Button>
             </div>
           </div>

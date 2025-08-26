@@ -39,29 +39,43 @@ export const getEndOfDay = (date: Date): Date => {
 };
 
 /**
- * Formatea una fecha para consultas de base de datos (inicio del día)
+ * Formatea una fecha para consultas de base de datos
+ * Solución simplificada que funciona correctamente con la zona horaria local
  */
 export const formatDateForQuery = (date: Date, isEndOfDay: boolean = false): string => {
-  const targetDate = isEndOfDay ? getEndOfDay(date) : getStartOfDay(date);
+  // Crear una nueva fecha basada en la fecha de entrada
+  const year = date.getFullYear();
+  const month = date.getMonth(); // 0-based
+  const day = date.getDate();
   
-  // IMPORTANTE: Colombia está en UTC-5. Supabase almacena en UTC.
-  // Para consultar correctamente, necesitamos ajustar por la diferencia de zona horaria
-  const colombiaOffset = -5 * 60; // -5 horas en minutos
-  const currentOffset = targetDate.getTimezoneOffset(); // Offset actual del sistema
-  const adjustmentMinutes = colombiaOffset - currentOffset;
+  // Crear fecha en zona horaria local  
+  let targetDate: Date;
+  if (isEndOfDay) {
+    // Fin del día: 23:59:59.999
+    targetDate = new Date(year, month, day, 23, 59, 59, 999);
+  } else {
+    // Inicio del día: 00:00:00.000
+    targetDate = new Date(year, month, day, 0, 0, 0, 0);
+  }
   
-  // Ajustar la fecha por la diferencia de zona horaria
-  const adjustedDate = new Date(targetDate.getTime() + (adjustmentMinutes * 60 * 1000));
+  // Crear manualmente la fecha en formato ISO sin conversión automática de zona horaria
+  const localYear = targetDate.getFullYear();
+  const localMonth = String(targetDate.getMonth() + 1).padStart(2, '0');
+  const localDay = String(targetDate.getDate()).padStart(2, '0');
+  const localHour = String(targetDate.getHours()).padStart(2, '0');
+  const localMinute = String(targetDate.getMinutes()).padStart(2, '0');
+  const localSecond = String(targetDate.getSeconds()).padStart(2, '0');
   
-  // Formatear como YYYY-MM-DDTHH:mm:ss.sssZ (con Z para UTC)
-  const year = adjustedDate.getUTCFullYear();
-  const month = String(adjustedDate.getUTCMonth() + 1).padStart(2, '0');
-  const day = String(adjustedDate.getUTCDate()).padStart(2, '0');
-  const hour = String(adjustedDate.getUTCHours()).padStart(2, '0');
-  const minute = String(adjustedDate.getUTCMinutes()).padStart(2, '0');
-  const second = String(adjustedDate.getUTCSeconds()).padStart(2, '0');
+  // Formato: YYYY-MM-DDTHH:mm:ssZ (agregamos Z para indicar UTC)
+  const result = `${localYear}-${localMonth}-${localDay}T${localHour}:${localMinute}:${localSecond}Z`;
   
-  return `${year}-${month}-${day}T${hour}:${minute}:${second}Z`;
+  console.log(`🔍 formatDateForQuery: ${isEndOfDay ? 'Final' : 'Inicio'} del día`, {
+    inputDate: date.toLocaleDateString('es-CO'),
+    targetLocal: `${localDay}/${localMonth}/${localYear} ${localHour}:${localMinute}:${localSecond}`,
+    result
+  });
+  
+  return result;
 };
 
 /**

@@ -437,7 +437,11 @@ const Index = () => {
         </div>
 
         {/* Status Bar - Solo visible para agentes */}
-        <StatusBar orders={orders} currentSede={currentUser.sede} />
+        <StatusBar 
+          orders={orders} 
+          currentSede={currentSedeName} 
+          effectiveSedeId={effectiveSedeId}
+        />
 
         <div className="container mx-auto p-6">
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
