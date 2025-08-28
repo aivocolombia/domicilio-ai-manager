@@ -78,7 +78,6 @@ export const DeliveryPersonHistory: React.FC<DeliveryPersonHistoryProps> = ({
   const completedOrders = filteredOrders.filter(order => order.status === 'Entregados');
   const totalAssigned = filteredOrders.length; // Todos los pedidos asignados
   const totalDelivered = completedOrders.reduce((sum, order) => sum + (order.pagos?.total_pago || 0), 0);
-  const totalEarnings = completedOrders.length * 4000; // $4000 por domicilio entregado
 
   // Calculate today's metrics
   const todayOrders = historialPedidos.filter(order => {
@@ -86,7 +85,6 @@ export const DeliveryPersonHistory: React.FC<DeliveryPersonHistoryProps> = ({
     return orderDate >= today && orderDate < tomorrow;
   });
   const todayCompleted = todayOrders.filter(order => order.status === 'Entregados');
-  const todayEarnings = todayCompleted.length * 4000; // $4000 por domicilio entregado hoy
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -157,7 +155,7 @@ export const DeliveryPersonHistory: React.FC<DeliveryPersonHistoryProps> = ({
 
           {/* Summary Cards */}
           {!loading && (
-            <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             <div className="bg-blue-50 p-4 rounded-lg">
               <p className="text-2xl font-bold text-blue-600">{activeOrders.length}</p>
               <p className="text-sm text-blue-700">Pedidos Activos</p>
@@ -182,14 +180,6 @@ export const DeliveryPersonHistory: React.FC<DeliveryPersonHistoryProps> = ({
                 {showTodayOnly ? 'Total Entregado Hoy' : 'Total Entregado'}
               </p>
             </div>
-            <div className="bg-emerald-50 p-4 rounded-lg">
-              <p className="text-2xl font-bold text-emerald-600">
-                {formatCurrency(totalEarnings)}
-              </p>
-              <p className="text-sm text-emerald-700">
-                {showTodayOnly ? 'Ganado Hoy' : 'Ganado ($4000/domicilio)'}
-              </p>
-            </div>
           </div>
           )}
 
@@ -197,7 +187,7 @@ export const DeliveryPersonHistory: React.FC<DeliveryPersonHistoryProps> = ({
           {!loading && !showTodayOnly && (
             <div className="bg-gradient-to-r from-brand-primary/10 to-brand-secondary/10 p-4 rounded-lg">
               <h3 className="font-semibold text-brand-primary mb-2">Métricas de Hoy</h3>
-              <div className="grid grid-cols-3 gap-4 text-sm">
+              <div className="grid grid-cols-2 gap-4 text-sm">
                 <div>
                   <p className="font-bold text-lg">{todayCompleted.length}</p>
                   <p className="text-muted-foreground">Entregados</p>
@@ -205,10 +195,6 @@ export const DeliveryPersonHistory: React.FC<DeliveryPersonHistoryProps> = ({
                 <div>
                   <p className="font-bold text-lg">{todayOrders.length}</p>
                   <p className="text-muted-foreground">Total Asignados</p>
-                </div>
-                <div>
-                  <p className="font-bold text-lg">{formatCurrency(todayEarnings)}</p>
-                  <p className="text-muted-foreground">Ganado ($4000/domicilio)</p>
                 </div>
               </div>
             </div>

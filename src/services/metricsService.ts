@@ -24,9 +24,44 @@ export interface SedeMetrics {
   pedidos_activos: number;
 }
 
+export interface CancelledOrderMetrics {
+  total: number;
+  porcentaje: number;
+  montoTotal: number;
+  porSede: Array<{
+    sede_id: string;
+    nombre: string;
+    cancelados: number;
+    porcentaje: number;
+    monto: number;
+  }>;
+}
+
 export interface HourlyMetrics {
   hora: string;
   cantidad_pedidos: number;
+}
+
+export interface DeliveryPersonMetrics {
+  repartidor_id: number;
+  repartidor_nombre: string;
+  total_asignados: number;
+  total_entregados: number;
+  total_cancelados: number;
+  porcentaje_exito: number;
+  promedio_tiempo_entrega: number;
+  dias_trabajados: number;
+  monto_total_entregado: number;
+}
+
+export interface DeliveryPersonPerformance {
+  repartidores: DeliveryPersonMetrics[];
+  resumen: {
+    total_repartidores: number;
+    mejor_repartidor: string;
+    promedio_entregas: number;
+    promedio_exito: number;
+  };
 }
 
 export interface DashboardMetrics {
@@ -34,6 +69,7 @@ export interface DashboardMetrics {
   productosMasVendidos: ProductMetrics[];
   metricasPorSede: SedeMetrics[];
   metricasPorHora: HourlyMetrics[];
+  pedidosCancelados: CancelledOrderMetrics;
   totalGeneral: {
     pedidos: number;
     ingresos: number;
@@ -473,6 +509,124 @@ export class MetricsService {
     }
   }
 
+  // Obtener métricas de pedidos cancelados
+  async getCancelledOrderMetrics(filters: MetricsFilters): Promise<CancelledOrderMetrics> {
+    try {
+      console.log('❌ Obteniendo métricas de pedidos cancelados:', filters);
+
+      // Query base para obtener pedidos cancelados
+      let query = supabase
+        .from('ordenes')
+        .select(`
+          id,
+          status,
+          sede_id,
+          motivo_cancelacion,
+          created_at,
+          sedes!left(name),
+          pagos!left(total_pago)
+        `)
+        .eq('status', 'Cancelado')
+        .order('created_at', { ascending: false });
+
+      // Aplicar filtros de fecha
+      if (filters.fecha_inicio && filters.fecha_fin) {
+        query = query
+          .gte('created_at', filters.fecha_inicio)
+          .lte('created_at', filters.fecha_fin);
+      }
+
+      // Las métricas de cancelación son globales - no se filtra por sede
+
+      const { data: cancelados, error } = await query;
+
+      if (error) {
+        console.error('❌ Error obteniendo pedidos cancelados:', error);
+        throw new Error(`Error obteniendo pedidos cancelados: ${error.message}`);
+      }
+
+      // También obtener el total de pedidos para calcular porcentaje
+      let totalQuery = supabase
+        .from('ordenes')
+        .select('id, pagos!left(total_pago)')
+        .neq('status', null);
+
+      // Solo aplicar filtros de fecha (las métricas de cancelación son globales)
+      if (filters.fecha_inicio && filters.fecha_fin) {
+        totalQuery = totalQuery
+          .gte('created_at', filters.fecha_inicio)
+          .lte('created_at', filters.fecha_fin);
+      }
+
+      const { data: totalPedidos, error: totalError } = await totalQuery;
+
+      if (totalError) {
+        console.error('❌ Error obteniendo total de pedidos:', totalError);
+        throw new Error(`Error obteniendo total de pedidos: ${totalError.message}`);
+      }
+
+      // Procesar datos
+      const totalCancelados = cancelados?.length || 0;
+      const totalGeneral = totalPedidos?.length || 0;
+      const porcentajeCancelacion = totalGeneral > 0 ? (totalCancelados / totalGeneral) * 100 : 0;
+
+      // Calcular monto total perdido
+      const montoTotal = cancelados?.reduce((sum, orden) => {
+        const monto = orden.pagos?.total_pago || 0;
+        return sum + monto;
+      }, 0) || 0;
+
+      // Agrupar por sede
+      const sedeMap = new Map<string, { nombre: string; cancelados: number; monto: number }>();
+
+      cancelados?.forEach(orden => {
+        const sedeId = orden.sede_id || 'sin-sede';
+        const sedeNombre = orden.sedes?.name || 'Sin sede';
+        const monto = orden.pagos?.total_pago || 0;
+
+        if (sedeMap.has(sedeId)) {
+          const existing = sedeMap.get(sedeId)!;
+          existing.cancelados += 1;
+          existing.monto += monto;
+        } else {
+          sedeMap.set(sedeId, {
+            nombre: sedeNombre,
+            cancelados: 1,
+            monto: monto
+          });
+        }
+      });
+
+      // Convertir a array y calcular porcentajes por sede
+      const porSede = Array.from(sedeMap.entries()).map(([sede_id, data]) => ({
+        sede_id,
+        nombre: data.nombre,
+        cancelados: data.cancelados,
+        porcentaje: totalCancelados > 0 ? (data.cancelados / totalCancelados) * 100 : 0,
+        monto: data.monto
+      })).sort((a, b) => b.cancelados - a.cancelados); // Ordenar por cantidad
+
+      const resultado: CancelledOrderMetrics = {
+        total: totalCancelados,
+        porcentaje: porcentajeCancelacion,
+        montoTotal,
+        porSede
+      };
+
+      console.log('✅ Métricas de cancelaciones obtenidas:', {
+        totalCancelados,
+        porcentajeCancelacion: `${porcentajeCancelacion.toFixed(1)}%`,
+        montoTotal,
+        sedesAfectadas: porSede.length
+      });
+
+      return resultado;
+    } catch (error) {
+      console.error('❌ Error en getCancelledOrderMetrics:', error);
+      throw error;
+    }
+  }
+
   // Obtener todas las métricas del dashboard
   async getDashboardMetrics(filters: MetricsFilters): Promise<DashboardMetrics> {
     try {
@@ -482,12 +636,14 @@ export class MetricsService {
         metricasPorDia,
         productosMasVendidos,
         metricasPorSede,
-        metricasPorHora
+        metricasPorHora,
+        pedidosCancelados
       ] = await Promise.all([
         this.getMetricsByDay(filters),
         this.getProductMetrics(filters),
         this.getSedeMetrics(filters),
-        this.getHourlyMetrics(filters)
+        this.getHourlyMetrics(filters),
+        this.getCancelledOrderMetrics(filters)
       ]);
 
       // Calcular totales generales
@@ -500,6 +656,7 @@ export class MetricsService {
         productosMasVendidos,
         metricasPorSede,
         metricasPorHora,
+        pedidosCancelados,
         totalGeneral: {
           pedidos: totalPedidos,
           ingresos: totalIngresos,
@@ -690,6 +847,160 @@ export class MetricsService {
       return trends.sort((a, b) => a.date.localeCompare(b.date));
     } catch (error) {
       console.error('❌ Error en getPhaseTimeTrends:', error);
+      throw error;
+    }
+  }
+
+  // ========== MÉTRICAS DE RENDIMIENTO DE REPARTIDORES ==========
+
+  // Obtener métricas de rendimiento de repartidores
+  async getDeliveryPersonPerformance(filters: MetricsFilters): Promise<DeliveryPersonPerformance> {
+    try {
+      console.log('🚚 Obteniendo métricas de rendimiento de repartidores:', filters);
+
+      // Query para obtener órdenes con repartidores asignados
+      let query = supabase
+        .from('ordenes')
+        .select(`
+          id,
+          status,
+          repartidor_id,
+          created_at,
+          hora_entrega,
+          repartidores!left(id, nombre),
+          pagos!left(total_pago)
+        `)
+        .not('repartidor_id', 'is', null)
+        .order('created_at', { ascending: false });
+
+      // Aplicar filtros de fecha
+      if (filters.fecha_inicio && filters.fecha_fin) {
+        // Asegurar formato correcto para rangos de fecha
+        const fechaInicio = filters.fecha_inicio.includes('T') 
+          ? filters.fecha_inicio 
+          : `${filters.fecha_inicio}T00:00:00Z`;
+        const fechaFin = filters.fecha_fin.includes('T') 
+          ? filters.fecha_fin 
+          : `${filters.fecha_fin}T23:59:59Z`;
+          
+        query = query
+          .gte('created_at', fechaInicio)
+          .lte('created_at', fechaFin);
+      }
+
+      // Aplicar filtro de sede si se especifica
+      if (filters.sede_id && filters.sede_id !== 'all') {
+        query = query.eq('sede_id', filters.sede_id);
+      }
+
+      const { data: ordenes, error } = await query;
+
+      if (error) {
+        console.error('❌ Error obteniendo órdenes para métricas de repartidores:', error);
+        throw new Error(`Error obteniendo órdenes: ${error.message}`);
+      }
+
+      // Procesar datos por repartidor
+      const repartidorMap = new Map<number, {
+        nombre: string;
+        asignados: number;
+        entregados: number;
+        cancelados: number;
+        monto_total: number;
+        tiempos_entrega: number[];
+        dias_trabajados: Set<string>;
+      }>();
+
+      ordenes?.forEach(orden => {
+        const repartidorId = orden.repartidor_id;
+        const repartidorNombre = orden.repartidores?.nombre || 'Sin nombre';
+        const fechaOrden = new Date(orden.created_at).toDateString();
+
+        if (!repartidorMap.has(repartidorId)) {
+          repartidorMap.set(repartidorId, {
+            nombre: repartidorNombre,
+            asignados: 0,
+            entregados: 0,
+            cancelados: 0,
+            monto_total: 0,
+            tiempos_entrega: [],
+            dias_trabajados: new Set()
+          });
+        }
+
+        const repartidorStats = repartidorMap.get(repartidorId)!;
+        repartidorStats.asignados += 1;
+        repartidorStats.dias_trabajados.add(fechaOrden);
+
+        if (orden.status === 'Entregados') {
+          repartidorStats.entregados += 1;
+          repartidorStats.monto_total += orden.pagos?.total_pago || 0;
+          
+          // Calcular tiempo de entrega si está disponible
+          if (orden.hora_entrega && orden.created_at) {
+            const tiempoEntrega = new Date(orden.hora_entrega).getTime() - new Date(orden.created_at).getTime();
+            const minutosEntrega = tiempoEntrega / (1000 * 60); // Convertir a minutos
+            if (minutosEntrega > 0 && minutosEntrega < 480) { // Filtrar tiempos razonables (menos de 8 horas)
+              repartidorStats.tiempos_entrega.push(minutosEntrega);
+            }
+          }
+        } else if (orden.status === 'Cancelado') {
+          repartidorStats.cancelados += 1;
+        }
+      });
+
+      // Convertir a array de métricas
+      const repartidores: DeliveryPersonMetrics[] = Array.from(repartidorMap.entries()).map(([id, stats]) => ({
+        repartidor_id: id,
+        repartidor_nombre: stats.nombre,
+        total_asignados: stats.asignados,
+        total_entregados: stats.entregados,
+        total_cancelados: stats.cancelados,
+        porcentaje_exito: stats.asignados > 0 ? (stats.entregados / stats.asignados) * 100 : 0,
+        promedio_tiempo_entrega: stats.tiempos_entrega.length > 0 
+          ? stats.tiempos_entrega.reduce((sum, time) => sum + time, 0) / stats.tiempos_entrega.length
+          : 0,
+        dias_trabajados: stats.dias_trabajados.size,
+        monto_total_entregado: stats.monto_total
+      }));
+
+      // Calcular resumen
+      const totalRepartidores = repartidores.length;
+      const promedioEntregas = totalRepartidores > 0 
+        ? repartidores.reduce((sum, r) => sum + r.total_entregados, 0) / totalRepartidores
+        : 0;
+      const promedioExito = totalRepartidores > 0
+        ? repartidores.reduce((sum, r) => sum + r.porcentaje_exito, 0) / totalRepartidores
+        : 0;
+      
+      // Encontrar mejor repartidor (por porcentaje de éxito y cantidad de entregas)
+      const mejorRepartidor = repartidores.length > 0
+        ? repartidores.reduce((mejor, actual) => {
+            const puntajeMejor = mejor.porcentaje_exito * 0.7 + mejor.total_entregados * 0.3;
+            const puntajeActual = actual.porcentaje_exito * 0.7 + actual.total_entregados * 0.3;
+            return puntajeActual > puntajeMejor ? actual : mejor;
+          }).repartidor_nombre
+        : 'N/A';
+
+      const resultado: DeliveryPersonPerformance = {
+        repartidores: repartidores.sort((a, b) => b.total_entregados - a.total_entregados),
+        resumen: {
+          total_repartidores: totalRepartidores,
+          mejor_repartidor: mejorRepartidor,
+          promedio_entregas: Math.round(promedioEntregas * 100) / 100,
+          promedio_exito: Math.round(promedioExito * 100) / 100
+        }
+      };
+
+      console.log('✅ Métricas de repartidores obtenidas:', {
+        totalRepartidores,
+        mejorRepartidor,
+        promedioEntregas: resultado.resumen.promedio_entregas
+      });
+
+      return resultado;
+    } catch (error) {
+      console.error('❌ Error en getDeliveryPersonPerformance:', error);
       throw error;
     }
   }

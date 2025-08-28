@@ -6,7 +6,9 @@ import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Search, Package, Plus, Loader2, AlertCircle, RefreshCw } from 'lucide-react';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
+import { Search, Package, Plus, Loader2, AlertCircle, RefreshCw, Trash2, X } from 'lucide-react';
 import { useMenu } from '@/hooks/useMenu';
 import { useInventoryEvents } from '@/contexts/InventoryContext';
 import { useAuth } from '@/hooks/useAuth';
@@ -17,6 +19,8 @@ import { menuService } from '@/services/menuService';
 import { PlatoConSede, BebidaConSede } from '@/types/menu';
 import { debugUtils } from '@/utils/debug';
 import { supabase } from '@/lib/supabase';
+import { AddToppingsModal } from '@/components/AddToppingsModal';
+import { CreateProductModal } from '@/components/CreateProductModal';
 
 interface InventoryProps {
   effectiveSedeId: string;
@@ -46,6 +50,11 @@ export const Inventory: React.FC<InventoryProps> = ({
 
   // Estado para controlar cargas concurrentes
   const [isLoadingInventory, setIsLoadingInventory] = useState(false);
+  
+  // Estado para los modales
+  const [showAddProductModal, setShowAddProductModal] = useState(false);
+  const [showAddToppingsModal, setShowAddToppingsModal] = useState(false);
+  const [showCreateProductModal, setShowCreateProductModal] = useState(false);
 
   // Función para cargar el inventario con información de sede
   const loadInventoryConSede = async () => {
@@ -462,6 +471,62 @@ export const Inventory: React.FC<InventoryProps> = ({
     }
   };
 
+  // Eliminar producto completo
+  const deleteProduct = async (productId: number, type: 'plato' | 'bebida', productName: string) => {
+    try {
+      console.log('🗑️ Eliminando producto:', { productId, type, productName });
+      
+      await menuService.deleteProduct(productId, type);
+      
+      // Recargar inventario
+      await loadInventoryConSede();
+      
+      // Disparar evento de actualización para el StatusBar
+      triggerUpdate();
+      
+      toast({
+        title: "Producto eliminado",
+        description: `${productName} eliminado exitosamente.`,
+      });
+      
+    } catch (error) {
+      console.error('❌ Error eliminando producto:', error);
+      toast({
+        title: "Error",
+        description: error instanceof Error ? error.message : "No se pudo eliminar el producto.",
+        variant: "destructive"
+      });
+    }
+  };
+
+  // Eliminar relación topping-plato
+  const removeToppingFromPlato = async (platoId: number, toppingId: number, toppingName: string, platoName: string) => {
+    try {
+      console.log('🗑️ Eliminando relación topping-plato:', { platoId, toppingId, toppingName, platoName });
+      
+      await menuService.removeToppingFromPlato(platoId, toppingId);
+      
+      // Recargar inventario
+      await loadInventoryConSede();
+      
+      // Disparar evento de actualización para el StatusBar
+      triggerUpdate();
+      
+      toast({
+        title: "Topping removido",
+        description: `${toppingName} removido de ${platoName} exitosamente.`,
+      });
+      
+    } catch (error) {
+      console.error('❌ Error removiendo topping:', error);
+      toast({
+        title: "Error",
+        description: error instanceof Error ? error.message : "No se pudo remover el topping.",
+        variant: "destructive"
+      });
+    }
+  };
+
   // Cargar nombre de la sede como fallback
   const loadSedeName = async () => {
     if (!effectiveSedeId) return;
@@ -521,12 +586,11 @@ export const Inventory: React.FC<InventoryProps> = ({
           </p>
         </div>
         <div className="flex gap-2">
-          <Button className="flex items-center gap-2" disabled={loading} onClick={() => {
-            toast({
-              title: "Funcionalidad en desarrollo",
-              description: "La funcionalidad de agregar productos estará disponible pronto.",
-            });
-          }}>
+          <Button 
+            className="flex items-center gap-2" 
+            disabled={loading} 
+            onClick={() => setShowAddProductModal(true)}
+          >
             <Plus className="h-4 w-4" />
             Agregar Producto
           </Button>
@@ -630,14 +694,58 @@ export const Inventory: React.FC<InventoryProps> = ({
                     <CardTitle className="text-lg">{item.name}</CardTitle>
                     <p className="text-sm text-muted-foreground mt-1">{item.description}</p>
                   </div>
-                  <Switch
-                    checked={item.available}
-                    onCheckedChange={() => {
-                      console.log('🖱️ Switch clicked para producto:', item.name, 'ID:', item.id, 'Type:', item.type, 'Loading:', loading);
-                      toggleProductAvailability(item.id, item.type);
-                    }}
-                    disabled={loading}
-                  />
+                  <div className="flex items-center gap-2">
+                    <Switch
+                      checked={item.available}
+                      onCheckedChange={() => {
+                        console.log('🖱️ Switch clicked para producto:', item.name, 'ID:', item.id, 'Type:', item.type, 'Loading:', loading);
+                        toggleProductAvailability(item.id, item.type);
+                      }}
+                      disabled={loading}
+                    />
+                    <AlertDialog>
+                      <AlertDialogTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8 text-destructive hover:text-destructive hover:bg-destructive/10"
+                          disabled={loading}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </AlertDialogTrigger>
+                      <AlertDialogContent>
+                        <AlertDialogHeader>
+                          <AlertDialogTitle>¿Eliminar producto?</AlertDialogTitle>
+                          <AlertDialogDescription>
+                            Esta acción eliminará permanentemente "{item.name}" y no se puede deshacer.
+                            {item.type === 'plato' && item.toppings && item.toppings.length > 0 && (
+                              <span className="block mt-2 font-medium text-orange-600">
+                                También se eliminarán todas las relaciones con toppings asociados.
+                              </span>
+                            )}
+                          </AlertDialogDescription>
+                        </AlertDialogHeader>
+                        <AlertDialogFooter>
+                          <AlertDialogCancel disabled={loading}>Cancelar</AlertDialogCancel>
+                          <AlertDialogAction
+                            onClick={() => deleteProduct(item.id, item.type, item.name)}
+                            disabled={loading}
+                            className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                          >
+                            {loading ? (
+                              <>
+                                <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                                Eliminando...
+                              </>
+                            ) : (
+                              'Eliminar'
+                            )}
+                          </AlertDialogAction>
+                        </AlertDialogFooter>
+                      </AlertDialogContent>
+                    </AlertDialog>
+                  </div>
                 </div>
                 <div className="flex items-center justify-between">
                   <Badge variant={item.available ? "default" : "destructive"}>
@@ -670,6 +778,46 @@ export const Inventory: React.FC<InventoryProps> = ({
                             disabled={loading}
                             size="sm"
                           />
+                          <AlertDialog>
+                            <AlertDialogTrigger asChild>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-6 w-6 text-destructive hover:text-destructive hover:bg-destructive/10"
+                                disabled={loading}
+                              >
+                                <X className="h-3 w-3" />
+                              </Button>
+                            </AlertDialogTrigger>
+                            <AlertDialogContent>
+                              <AlertDialogHeader>
+                                <AlertDialogTitle>¿Remover topping?</AlertDialogTitle>
+                                <AlertDialogDescription>
+                                  Esta acción removerá "{topping.name}" de "{item.name}".
+                                  <span className="block mt-2 text-muted-foreground">
+                                    Nota: Solo se elimina la relación, el topping seguirá existiendo para otros platos.
+                                  </span>
+                                </AlertDialogDescription>
+                              </AlertDialogHeader>
+                              <AlertDialogFooter>
+                                <AlertDialogCancel disabled={loading}>Cancelar</AlertDialogCancel>
+                                <AlertDialogAction
+                                  onClick={() => removeToppingFromPlato(item.id, topping.id, topping.name, item.name)}
+                                  disabled={loading}
+                                  className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                                >
+                                  {loading ? (
+                                    <>
+                                      <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                                      Removiendo...
+                                    </>
+                                  ) : (
+                                    'Remover'
+                                  )}
+                                </AlertDialogAction>
+                              </AlertDialogFooter>
+                            </AlertDialogContent>
+                          </AlertDialog>
                         </div>
                       </div>
                     ))}
@@ -691,6 +839,64 @@ export const Inventory: React.FC<InventoryProps> = ({
           </p>
         </div>
       )}
+
+      {/* Modal para agregar productos */}
+      <Dialog open={showAddProductModal} onOpenChange={setShowAddProductModal}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>¿Qué deseas hacer?</DialogTitle>
+            <DialogDescription>
+              Elige una opción para agregar productos al inventario
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex flex-col gap-4 py-4">
+            <Button
+              onClick={() => {
+                setShowAddProductModal(false);
+                setShowAddToppingsModal(true);
+              }}
+              className="flex items-center justify-center gap-2 h-20"
+              variant="outline"
+            >
+              <Package className="h-6 w-6" />
+              <div className="text-left">
+                <div className="font-medium">Agregar Toppings</div>
+                <div className="text-sm text-muted-foreground">A productos ya creados</div>
+              </div>
+            </Button>
+            
+            <Button
+              onClick={() => {
+                setShowAddProductModal(false);
+                setShowCreateProductModal(true);
+              }}
+              className="flex items-center justify-center gap-2 h-20"
+            >
+              <Plus className="h-6 w-6" />
+              <div className="text-left">
+                <div className="font-medium">Crear Producto Nuevo</div>
+                <div className="text-sm">Desde cero</div>
+              </div>
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Modal para agregar toppings a productos existentes */}
+      <AddToppingsModal
+        open={showAddToppingsModal}
+        onOpenChange={setShowAddToppingsModal}
+        effectiveSedeId={effectiveSedeId}
+        onSuccess={loadInventoryConSede}
+      />
+
+      {/* Modal para crear productos nuevos */}
+      <CreateProductModal
+        open={showCreateProductModal}
+        onOpenChange={setShowCreateProductModal}
+        effectiveSedeId={effectiveSedeId}
+        onSuccess={loadInventoryConSede}
+      />
     </div>
   );
 };

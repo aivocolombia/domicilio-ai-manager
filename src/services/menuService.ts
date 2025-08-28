@@ -992,6 +992,164 @@ class MenuService {
       throw new Error(`Error al inicializar productos para la sede: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
+
+  // Agregar topping a un plato existente
+  async addToppingToPlato(platoId: number, toppingId: number): Promise<void> {
+    try {
+      console.log('🔗 Agregando topping a plato:', { platoId, toppingId });
+
+      const { data, error } = await supabase
+        .from(TABLES.PLATO_TOPPINGS)
+        .insert({
+          plato_id: platoId,
+          topping_id: toppingId
+        })
+        .select();
+
+      if (error) {
+        console.error('❌ Error agregando topping a plato:', error);
+        throw error;
+      }
+
+      console.log('✅ Topping agregado al plato exitosamente:', data);
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      console.error('❌ Error completo en addToppingToPlato:', error);
+      throw new Error(`Error al agregar topping al plato: ${msg}`);
+    }
+  }
+
+  // Crear registro en sede_platos
+  async createSedePlatoRecord(sedeId: string, platoId: number, price: number, available: boolean = true): Promise<void> {
+    try {
+      console.log('🏢 Creando registro sede_platos:', { sedeId, platoId, price, available });
+
+      const { data, error } = await supabase
+        .from('sede_platos')
+        .insert({
+          sede_id: sedeId,
+          plato_id: platoId,
+          available,
+          price_override: price,
+          updated_at: new Date().toISOString()
+        })
+        .select();
+
+      if (error) {
+        console.error('❌ Error creando sede_platos:', error);
+        throw error;
+      }
+
+      console.log('✅ Registro sede_platos creado exitosamente:', data);
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      console.error('❌ Error completo en createSedePlatoRecord:', error);
+      throw new Error(`Error al crear registro sede_platos: ${msg}`);
+    }
+  }
+
+  // Crear registro en sede_bebidas
+  async createSedeBebidaRecord(sedeId: string, bebidaId: number, price: number, available: boolean = true): Promise<void> {
+    try {
+      console.log('🏢 Creando registro sede_bebidas:', { sedeId, bebidaId, price, available });
+
+      const { data, error } = await supabase
+        .from('sede_bebidas')
+        .insert({
+          sede_id: sedeId,
+          bebida_id: bebidaId,
+          available,
+          price_override: price,
+          updated_at: new Date().toISOString()
+        })
+        .select();
+
+      if (error) {
+        console.error('❌ Error creando sede_bebidas:', error);
+        throw error;
+      }
+
+      console.log('✅ Registro sede_bebidas creado exitosamente:', data);
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      console.error('❌ Error completo en createSedeBebidaRecord:', error);
+      throw new Error(`Error al crear registro sede_bebidas: ${msg}`);
+    }
+  }
+
+  // Eliminar producto (plato o bebida)
+  async deleteProduct(productId: number, type: 'plato' | 'bebida'): Promise<void> {
+    try {
+      console.log('🗑️ Eliminando producto:', { productId, type });
+
+      if (type === 'plato') {
+        // Primero eliminar todas las relaciones con toppings
+        await supabase
+          .from(TABLES.PLATO_TOPPINGS)
+          .delete()
+          .eq('plato_id', productId);
+
+        // Eliminar registros de sede_platos
+        await supabase
+          .from('sede_platos')
+          .delete()
+          .eq('plato_id', productId);
+
+        // Eliminar el plato
+        const { error } = await supabase
+          .from(TABLES.PLATOS)
+          .delete()
+          .eq('id', productId);
+
+        if (error) throw error;
+
+      } else {
+        // Eliminar registros de sede_bebidas
+        await supabase
+          .from('sede_bebidas')
+          .delete()
+          .eq('bebida_id', productId);
+
+        // Eliminar la bebida
+        const { error } = await supabase
+          .from(TABLES.BEBIDAS)
+          .delete()
+          .eq('id', productId);
+
+        if (error) throw error;
+      }
+
+      console.log('✅ Producto eliminado exitosamente');
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      console.error('❌ Error completo en deleteProduct:', error);
+      throw new Error(`Error al eliminar producto: ${msg}`);
+    }
+  }
+
+  // Eliminar relación topping-plato (solo la relación, no el topping)
+  async removeToppingFromPlato(platoId: number, toppingId: number): Promise<void> {
+    try {
+      console.log('🗑️ Eliminando relación topping-plato:', { platoId, toppingId });
+
+      const { error } = await supabase
+        .from(TABLES.PLATO_TOPPINGS)
+        .delete()
+        .eq('plato_id', platoId)
+        .eq('topping_id', toppingId);
+
+      if (error) {
+        console.error('❌ Error eliminando relación topping-plato:', error);
+        throw error;
+      }
+
+      console.log('✅ Relación topping-plato eliminada exitosamente');
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      console.error('❌ Error completo en removeToppingFromPlato:', error);
+      throw new Error(`Error al eliminar relación topping-plato: ${msg}`);
+    }
+  }
 }
 
 export const menuService = new MenuService();

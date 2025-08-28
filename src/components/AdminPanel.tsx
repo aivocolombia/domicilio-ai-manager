@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { Plus, Search, Edit, Trash2, Users, Building2, UserCheck, UserX, TrendingUp, DollarSign, Package, Clock, LayoutDashboard, Phone, MapPin, Settings, RefreshCw, Cog, ChartLine, Timer, BarChart3, Truck, Eye, AlertTriangle, ChevronLeft, ChevronRight, XCircle } from 'lucide-react'
+import { Plus, Search, Edit, Trash2, Users, Building2, UserCheck, UserX, TrendingUp, DollarSign, Package, Clock, LayoutDashboard, Phone, MapPin, Settings, RefreshCw, Cog, ChartLine, Timer, BarChart3, Truck, Eye, AlertTriangle, ChevronLeft, ChevronRight, XCircle, MessageSquareWarning, Star, User } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -27,8 +27,32 @@ import { CalendarIcon } from 'lucide-react'
 import { format } from 'date-fns'
 import { es } from 'date-fns/locale'
 import { logger } from '@/utils/logger'
+import { CancelledOrdersModal } from '@/components/CancelledOrdersModal'
+import { useRealtimeMetrics } from '@/hooks/useRealtimeMetrics'
+import { DeliveryPersonMetrics } from '@/components/DeliveryPersonMetrics'
 
 type Profile = User
+
+interface Complaint {
+  id: string;
+  customer_name: string;
+  customer_email: string;
+  customer_phone: string;
+  sede_id: string;
+  sede_name: string;
+  order_id?: string;
+  type: 'queja' | 'reclamo';
+  category: 'servicio' | 'producto' | 'entrega' | 'personal' | 'otros';
+  subject: string;
+  description: string;
+  priority: 'baja' | 'media' | 'alta' | 'critica';
+  status: 'nuevo' | 'en_proceso' | 'resuelto' | 'cerrado';
+  created_at: string;
+  updated_at: string;
+  resolved_at?: string;
+  resolution_notes?: string;
+  rating?: number; // 1-5 stars for customer satisfaction after resolution
+}
 
 interface AdminPanelProps {
   onBack?: () => void;
@@ -41,6 +65,13 @@ export function AdminPanel({ onBack, onNavigateToTimeMetrics }: AdminPanelProps)
   const [sedes, setSedes] = useState<Sede[]>([])
   const [sedesSimple, setSedesSimple] = useState<Array<{ id: string; name: string }>>([])
   const [repartidores, setRepartidores] = useState<Repartidor[]>([])
+  const [complaints, setComplaints] = useState<Complaint[]>([])
+  
+  // Complaints filters
+  const [complaintsSedeFilter, setComplaintsSedeFilter] = useState<string>('todas')
+  const [complaintsStatusFilter, setComplaintsStatusFilter] = useState<string>('todos')
+  const [complaintsTypeFilter, setComplaintsTypeFilter] = useState<string>('todos')
+  const [complaintsSearchTerm, setComplaintsSearchTerm] = useState('')
   
   // Loading states management
   const {
@@ -66,11 +97,16 @@ export function AdminPanel({ onBack, onNavigateToTimeMetrics }: AdminPanelProps)
     placas: '',
     sede_id: ''
   })
+  
+  // Cancelled orders modal state
+  const [isCancelledOrdersModalOpen, setIsCancelledOrdersModalOpen] = useState(false)
+  const [selectedSedeForCancelled, setSelectedSedeForCancelled] = useState<{id: string, nombre: string} | null>(null)
   const [searchTerm, setSearchTerm] = useState('')
   // Removed global loading state - now using section-specific states
   const [isCreateUserOpen, setIsCreateUserOpen] = useState(false)
   const [isCreateSedeOpen, setIsCreateSedeOpen] = useState(false)
   const [isEditSedeOpen, setIsEditSedeOpen] = useState(false)
+  const [isCreatingSede, setIsCreatingSede] = useState(false)
   const [isUserSedeEditOpen, setIsUserSedeEditOpen] = useState(false)
   const [isCreatingUser, setIsCreatingUser] = useState(false)
   const [selectedUser, setSelectedUser] = useState<Profile | null>(null)
@@ -157,6 +193,9 @@ export function AdminPanel({ onBack, onNavigateToTimeMetrics }: AdminPanelProps)
       } else {
         finishLoading('repartidores', result.repartidores.error)
       }
+      
+      // Load mock complaints data
+      loadMockComplaints(result.sedes.data?.simple || [])
       
       logger.info('Initial data load completed', {
         totalAttempts: result.totalAttempts,
@@ -254,6 +293,42 @@ export function AdminPanel({ onBack, onNavigateToTimeMetrics }: AdminPanelProps)
       finishLoading('metrics', 'Error de conexión')
     }
   }, [dateRange, selectedSedeFilter, startLoading, finishLoading, toast])
+
+  // Cancelled orders modal handler
+  const handleShowCancelledOrders = (sedeId: string, sedeNombre: string) => {
+    setSelectedSedeForCancelled({ id: sedeId, nombre: sedeNombre });
+    setIsCancelledOrdersModalOpen(true);
+  };
+
+  // Real-time metrics updates
+  useRealtimeMetrics({
+    sedeId: selectedSedeFilter === 'all' ? undefined : selectedSedeFilter,
+    onMetricsUpdated: () => {
+      console.log('📊 AdminPanel: Métricas actualizadas en tiempo real, recargando...');
+      // Recargar métricas automáticamente sin mostrar loading
+      if (!loadingStates.metrics?.loading) {
+        loadMetrics();
+      }
+    },
+    onOrderInserted: (order) => {
+      console.log('📝 AdminPanel: Nueva orden detectada:', order);
+      toast({
+        title: "Nueva orden",
+        description: `Orden #${order.id} creada`,
+      });
+    },
+    onOrderUpdated: (order) => {
+      console.log('✏️ AdminPanel: Orden actualizada:', order);
+    },
+    onOrderDeleted: (orderId) => {
+      console.log('🗑️ AdminPanel: Orden eliminada:', orderId);
+      toast({
+        title: "Orden eliminada",
+        description: `Orden #${orderId} eliminada`,
+      });
+    },
+    enabled: activeSection === 'dashboard' // Solo activar cuando estemos en la sección de dashboard/métricas
+  });
 
   // Optimistic CRUD operations
   const handleCreateUser = async (e: React.FormEvent) => {
@@ -397,6 +472,8 @@ export function AdminPanel({ onBack, onNavigateToTimeMetrics }: AdminPanelProps)
   const handleCreateSede = async (e: React.FormEvent) => {
     e.preventDefault()
     
+    setIsCreatingSede(true)
+    
     try {
       logger.info('Creating sede with optimistic updates...')
       
@@ -468,6 +545,8 @@ export function AdminPanel({ onBack, onNavigateToTimeMetrics }: AdminPanelProps)
         description: error.message || "No se pudo crear la sede",
         variant: "destructive",
       })
+    } finally {
+      setIsCreatingSede(false)
     }
   }
 
@@ -1478,10 +1557,28 @@ export function AdminPanel({ onBack, onNavigateToTimeMetrics }: AdminPanelProps)
                             <Label htmlFor="sede-active">Sede activa</Label>
                           </div>
                           <div className="flex justify-end space-x-2">
-                            <Button type="button" variant="outline" onClick={() => setIsCreateSedeOpen(false)}>
+                            <Button 
+                              type="button" 
+                              variant="outline" 
+                              onClick={() => setIsCreateSedeOpen(false)}
+                              disabled={isCreatingSede}
+                            >
                               Cancelar
                             </Button>
-                            <Button type="submit">Crear Sede</Button>
+                            <Button 
+                              type="submit" 
+                              disabled={isCreatingSede}
+                              className="min-w-[100px]"
+                            >
+                              {isCreatingSede ? (
+                                <>
+                                  <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
+                                  Creando...
+                                </>
+                              ) : (
+                                'Crear Sede'
+                              )}
+                            </Button>
                           </div>
                         </form>
                       </DialogContent>
@@ -2071,7 +2168,12 @@ export function AdminPanel({ onBack, onNavigateToTimeMetrics }: AdminPanelProps)
                           <div className="space-y-3">
                             <h4 className="font-semibold text-sm">Cancelaciones por Sede:</h4>
                             {metricsData.pedidosCancelados.porSede.map((sede, index) => (
-                              <div key={index} className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
+                              <div 
+                                key={index} 
+                                className="flex items-center justify-between p-3 bg-muted/50 rounded-lg hover:bg-red-100 cursor-pointer transition-colors border-l-4 border-red-500"
+                                onClick={() => handleShowCancelledOrders(sede.sede_id, sede.nombre)}
+                                title="Click para ver detalles de las órdenes canceladas"
+                              >
                                 <div className="flex items-center gap-3">
                                   <div className="w-3 h-3 bg-red-500 rounded-full"></div>
                                   <span className="font-medium">{sede.nombre}</span>
@@ -2096,28 +2198,15 @@ export function AdminPanel({ onBack, onNavigateToTimeMetrics }: AdminPanelProps)
               </div>
             )}
 
-            {/* Acceso a Métricas de Tiempo */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Timer className="h-5 w-5" />
-                  Análisis de Tiempos por Fases
-                </CardTitle>
-                <CardDescription>
-                  Accede al análisis detallado de tiempos de procesamiento de pedidos por fase
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <Button 
-                  onClick={onNavigateToTimeMetrics}
-                  className="flex items-center gap-2"
-                  variant="outline"
-                >
-                  <BarChart3 className="h-4 w-4" />
-                  Abrir Métricas de Tiempo
-                </Button>
-              </CardContent>
-            </Card>
+            {/* Métricas de Rendimiento de Repartidores */}
+            <DeliveryPersonMetrics
+              filters={{
+                fecha_inicio: format(dateRange.from, 'yyyy-MM-dd'),
+                fecha_fin: format(dateRange.to, 'yyyy-MM-dd'),
+                sede_id: selectedSedeFilter === 'all' ? undefined : selectedSedeFilter
+              }}
+              onNavigateToTimeMetrics={onNavigateToTimeMetrics}
+            />
           </div>
         )}
 
@@ -2354,6 +2443,23 @@ export function AdminPanel({ onBack, onNavigateToTimeMetrics }: AdminPanelProps)
         </Dialog>
 
       </div>
+      
+      {/* Cancelled Orders Modal */}
+      {selectedSedeForCancelled && (
+        <CancelledOrdersModal
+          isOpen={isCancelledOrdersModalOpen}
+          onClose={() => {
+            setIsCancelledOrdersModalOpen(false);
+            setSelectedSedeForCancelled(null);
+          }}
+          sedeId={selectedSedeForCancelled.id}
+          sedeNombre={selectedSedeForCancelled.nombre}
+          dateFilters={{
+            fecha_inicio: format(dateRange.from, 'yyyy-MM-dd'),
+            fecha_fin: format(dateRange.to, 'yyyy-MM-dd')
+          }}
+        />
+      )}
     </div>
   )
 }

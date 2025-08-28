@@ -347,10 +347,6 @@ export const DeliveryPersonnel: React.FC<DeliveryPersonnelProps> = ({
                   <span className="text-sm text-muted-foreground">Total entregado:</span>
                   <span className="font-medium text-green-600">${(person.total_entregado || 0).toLocaleString()}</span>
                 </div>
-                <div className="flex justify-between">
-                  <span className="text-sm text-muted-foreground">Ganado:</span>
-                  <span className="font-medium text-emerald-600">${((person.entregados || 0) * 4000).toLocaleString()}</span>
-                </div>
                 {person.placas && (
                   <div className="flex justify-between">
                     <span className="text-sm text-muted-foreground">Placas:</span>

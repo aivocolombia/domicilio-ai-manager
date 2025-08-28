@@ -361,12 +361,17 @@ export class AdminService {
         throw new Error('Solo los administradores pueden crear sedes');
       }
 
-      // Verificar que el nombre no exista
-      const { data: existingSede } = await supabase
+      // Verificar que el nombre no exista (usar maybeSingle para evitar error 406)
+      const { data: existingSede, error: checkError } = await supabase
         .from('sedes')
         .select('id')
         .eq('name', sedeData.name)
-        .single();
+        .maybeSingle();
+      
+      if (checkError) {
+        console.error('❌ Error verificando sede existente:', checkError);
+        throw new Error(`Error verificando sede existente: ${checkError.message}`);
+      }
 
       if (existingSede) {
         throw new Error('Ya existe una sede con este nombre');
@@ -380,6 +385,7 @@ export class AdminService {
           address: sedeData.address,
           phone: sedeData.phone,
           current_capacity: 0, // Inicia en 0
+          max_capacity: 50, // Capacidad máxima por defecto
           is_active: sedeData.is_active
         })
         .select()

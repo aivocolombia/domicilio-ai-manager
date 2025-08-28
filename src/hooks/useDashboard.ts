@@ -3,6 +3,15 @@ import { dashboardService, DashboardOrder, DashboardFilters } from '@/services/d
 import { useToast } from '@/hooks/use-toast';
 import { useRealtimeOrders } from '@/hooks/useRealtimeOrders';
 
+// Simple debounce function
+const debounce = <T extends (...args: any[]) => any>(func: T, wait: number) => {
+  let timeout: NodeJS.Timeout;
+  return (...args: Parameters<T>) => {
+    clearTimeout(timeout);
+    timeout = setTimeout(() => func(...args), wait);
+  };
+};
+
 export interface DashboardStats {
   total: number;
   recibidos: number;
@@ -95,31 +104,13 @@ export const useDashboard = (sede_id?: string | number) => {
     }
   }, [toast]); // Removemos sede_id de las dependencias para evitar re-creaciones
 
-  // Cargar datos al montar el componente con protección contra bucles
-  // MODIFICADO: Solo cargar datos iniciales si no hay filtros externos pendientes
+  // NO cargar datos iniciales automáticamente - dejar que el Dashboard maneje todos los filtros
+  // MODIFICADO: Eliminado carga inicial automática para evitar conflictos con filtros del Dashboard
   useEffect(() => {
-    let timeoutId: NodeJS.Timeout;
-    
-    const loadInitialData = () => {
-      // Pequeno delay para evitar bucles en el render inicial
-      timeoutId = setTimeout(() => {
-        const currentSedeId = sedeIdRef.current;
-        if (currentSedeId && !loadingRef.current) {
-          console.log('🔄 UseDashboard: Cargando datos iniciales para sede:', currentSedeId);
-          // IMPORTANTE: Solo cargar si no hay órdenes ya cargadas (evita conflicto con filtros del Dashboard)
-          if (orders.length === 0) {
-            loadDashboardOrders();
-          }
-        }
-      }, 200); // Aumentamos el delay para que el Dashboard pueda aplicar su filtro inicial primero
-    };
-    
-    loadInitialData();
-    
-    return () => {
-      clearTimeout(timeoutId);
-    };
-  }, [sede_id, orders.length]); // Agregamos orders.length como dependencia
+    console.log('🔄 UseDashboard: Hook inicializado para sede:', sede_id);
+    console.log('ℹ️ UseDashboard: NO carga datos automáticamente - esperando filtros del Dashboard');
+    // Simplemente log - no cargar datos automáticamente
+  }, [sede_id]); // Solo dependencia de sede_id
 
   // Filtrar órdenes por estado
   const filterOrdersByStatus = useCallback(async (status: string | null) => {
@@ -162,29 +153,45 @@ export const useDashboard = (sede_id?: string | number) => {
     }
   }, [toast, loadDashboardOrders]);
 
-  // Configurar suscripción en tiempo real
-  useRealtimeOrders({
-    sedeId: sedeIdRef.current?.toString(),
-    onOrderUpdated: () => {
-      console.log('🔄 Dashboard: Orden actualizada, recargando datos...');
-      // Verificar que no estemos ya cargando
-      if (!loadingRef.current) {
+  // Configurar suscripción en tiempo real con debounce para evitar recargas excesivas
+  const debouncedReload = useCallback(
+    debounce(() => {
+      if (!loadingRef.current && sedeIdRef.current) {
+        console.log('🔄 Dashboard: Recarga programada ejecutándose...');
         loadDashboardOrders();
       }
+    }, 1000), // Esperar 1 segundo antes de recargar
+    [loadDashboardOrders]
+  );
+
+  const realtimeStatus = useRealtimeOrders({
+    sedeId: sedeIdRef.current?.toString(),
+    onOrderUpdated: () => {
+      console.log('🔄 Dashboard: Orden actualizada, programando recarga...');
+      // Usar debounce para evitar múltiples recargas consecutivas
+      debouncedReload();
     },
     onNewOrder: (order) => {
       console.log('📝 Dashboard: Nueva orden recibida:', order);
       toast({
         title: "Nueva orden",
         description: `Orden #${order.id} recibida`,
+        duration: 3000,
       });
+      // Recarga inmediata para nuevas órdenes (más importante)
+      if (!loadingRef.current && sedeIdRef.current) {
+        setTimeout(() => loadDashboardOrders(), 500);
+      }
     },
     onOrderStatusChanged: (orderId, newStatus) => {
       console.log(`📊 Dashboard: Orden #${orderId} cambió a ${newStatus}`);
       toast({
         title: "Estado actualizado",
         description: `Orden #${orderId} → ${newStatus}`,
+        duration: 2000,
       });
+      // Para cambios de estado, usar debounce
+      debouncedReload();
     }
   });
 
@@ -196,6 +203,7 @@ export const useDashboard = (sede_id?: string | number) => {
     loadDashboardOrders,
     filterOrdersByStatus,
     refreshData,
-    deleteOrder
+    deleteOrder,
+    realtimeStatus // Exponer estado de conexión realtime
   };
 }; 

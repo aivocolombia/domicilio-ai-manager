@@ -54,6 +54,7 @@ import { sedeOrdersService } from '@/services/sedeOrdersService';
 import { supabase } from '@/lib/supabase';
 import { useDebouncedCallback } from '@/hooks/useDebounce';
 import { useAgentDebug } from '@/hooks/useAgentDebug';
+import { RealtimeStatus } from '@/components/RealtimeStatus';
 
 interface DashboardProps {
   orders: Order[];
@@ -490,7 +491,8 @@ export const Dashboard: React.FC<DashboardProps> = ({
     loadDashboardOrders,
     filterOrdersByStatus, 
     refreshData,
-    deleteOrder
+    deleteOrder,
+    realtimeStatus
   } = useDashboard(sedeIdToUse);
 
   // Usar SOLO datos reales - NUNCA datos legacy para evitar mostrar datos dummy
@@ -964,6 +966,14 @@ export const Dashboard: React.FC<DashboardProps> = ({
           </Button>
         </div>
       </div>
+
+      {/* Realtime Connection Status */}
+      {realtimeStatus && (
+        <RealtimeStatus 
+          realtimeStatus={realtimeStatus} 
+          className="max-w-md" 
+        />
+      )}
 
       {/* Status Overview */}
       <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
