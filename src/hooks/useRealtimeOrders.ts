@@ -1,5 +1,6 @@
 import { useEffect, useCallback, useRef } from 'react';
 import { supabase } from '@/lib/supabase';
+import { logDebug, logError, logWarn } from '@/utils/logger';
 
 interface UseRealtimeOrdersProps {
   sedeId?: string;
@@ -18,21 +19,23 @@ export const useRealtimeOrders = ({
   const isConnectedRef = useRef(false);
   
   const handleOrderChange = useCallback((payload: any) => {
-    console.log('🔄 Orden actualizada en tiempo real:', payload.eventType, 'ID:', payload.new?.id || payload.old?.id);
+    const orderId = payload.new?.id || payload.old?.id;
     
     if (payload.eventType === 'INSERT') {
-      console.log('📝 Nueva orden creada:', payload.new);
+      logDebug('Realtime', 'Nueva orden creada', { orderId });
       onNewOrder?.(payload.new);
     } else if (payload.eventType === 'UPDATE') {
-      console.log('✏️ Orden actualizada:', payload.new);
-      
-      // Log cambios específicos para debugging
-      if (payload.old?.status !== payload.new?.status) {
-        console.log(`📊 Status cambió: ${payload.old?.status} → ${payload.new?.status}`);
+      const statusChanged = payload.old?.status !== payload.new?.status;
+      if (statusChanged) {
+        logDebug('Realtime', 'Status de orden cambió', { 
+          orderId, 
+          from: payload.old?.status, 
+          to: payload.new?.status 
+        });
         onOrderStatusChanged?.(payload.new.id, payload.new.status);
       }
       
-      // Log otros cambios importantes
+      // Solo loguear cambios importantes en debug
       const changedFields = [];
       if (payload.old?.repartidor_id !== payload.new?.repartidor_id) {
         changedFields.push('repartidor');
@@ -42,10 +45,10 @@ export const useRealtimeOrders = ({
       }
       
       if (changedFields.length > 0) {
-        console.log('🔄 Campos actualizados:', changedFields.join(', '));
+        logDebug('Realtime', 'Campos actualizados', { orderId, fields: changedFields });
       }
     } else if (payload.eventType === 'DELETE') {
-      console.log('🗑️ Orden eliminada:', payload.old);
+      logDebug('Realtime', 'Orden eliminada', { orderId });
     }
     
     // Notificar actualización general (esto puede disparar recargas)
@@ -54,16 +57,16 @@ export const useRealtimeOrders = ({
 
   useEffect(() => {
     if (!sedeId) {
-      console.log('⚠️ No hay sede_id, no configurando realtime');
+      logWarn('Realtime', 'No hay sede_id, no configurando realtime');
       return;
     }
 
-    console.log('🔔 Configurando suscripción realtime para sede:', sedeId);
+    logDebug('Realtime', 'Configurando suscripción realtime', { sedeId });
     isConnectedRef.current = false;
 
     // Verificar que Supabase esté configurado correctamente
     if (!supabase) {
-      console.error('❌ Supabase no está inicializado');
+      logError('Realtime', 'Supabase no está inicializado');
       return;
     }
 
@@ -81,28 +84,17 @@ export const useRealtimeOrders = ({
         handleOrderChange
       )
       .subscribe((status) => {
-        console.log('📡 Estado suscripción órdenes:', status, 'para sede:', sedeId);
-        
         if (status === 'SUBSCRIBED') {
-          console.log('✅ Realtime órdenes conectado exitosamente para sede:', sedeId);
+          logDebug('Realtime', 'Realtime conectado exitosamente', { sedeId, channel: `orders_${sedeId}` });
           isConnectedRef.current = true;
-          
-          // Verificar configuración de Supabase
-          console.log('🔍 Verificando configuración realtime...');
-          console.log('Supabase URL:', supabase.supabaseUrl);
-          console.log('Canal configurado:', `orders_${sedeId}`);
-          console.log('Filtro aplicado:', `sede_id=eq.${sedeId}`);
-          
         } else if (status === 'CHANNEL_ERROR') {
-          console.error('❌ Error en conexión realtime órdenes para sede:', sedeId);
-          console.error('Posibles causas:');
-          console.error('1. Realtime no habilitado en Supabase');
-          console.error('2. Filtros RLS bloqueando la suscripción');
-          console.error('3. Configuración de API keys incorrecta');
+          logError('Realtime', 'Error en conexión realtime', { 
+            sedeId, 
+            possibleCauses: ['Realtime no habilitado', 'RLS bloqueando suscripción', 'API keys incorrectas'] 
+          });
           isConnectedRef.current = false;
-          
         } else if (status === 'CLOSED') {
-          console.log('📴 Conexión realtime órdenes cerrada para sede:', sedeId);
+          logDebug('Realtime', 'Conexión realtime cerrada', { sedeId });
           isConnectedRef.current = false;
         }
       });
@@ -118,7 +110,7 @@ export const useRealtimeOrders = ({
           table: 'ordenes_platos'
         },
         (payload) => {
-          console.log('🍽️ Items de orden actualizados:', payload);
+          logDebug('Realtime', 'Items de orden actualizados', { table: 'ordenes_platos' });
           onOrderUpdated?.();
         }
       )
@@ -135,34 +127,30 @@ export const useRealtimeOrders = ({
           table: 'ordenes_bebidas'
         },
         (payload) => {
-          console.log('🥤 Bebidas de orden actualizadas:', payload);
+          logDebug('Realtime', 'Bebidas de orden actualizadas', { table: 'ordenes_bebidas' });
           onOrderUpdated?.();
         }
       )
-      .subscribe((status) => {
-        console.log('📡 Estado suscripción bebidas:', status);
-      });
+      .subscribe();
 
     // Almacenar referencias de canales para limpieza
     channelsRef.current = [ordersChannel, orderPlatosChannel, orderBebidasChannel];
 
     return () => {
-      console.log('🔌 Cerrando suscripciones realtime para sede:', sedeId);
+      logDebug('Realtime', 'Cerrando suscripciones realtime', { sedeId, channelCount: channelsRef.current.length });
       
       channelsRef.current.forEach((channel, index) => {
         if (channel) {
           try {
             supabase.removeChannel(channel);
-            console.log(`✅ Canal ${index + 1} cerrado exitosamente`);
           } catch (error) {
-            console.error(`❌ Error cerrando canal ${index + 1}:`, error);
+            logError('Realtime', `Error cerrando canal ${index + 1}`, error);
           }
         }
       });
       
       channelsRef.current = [];
       isConnectedRef.current = false;
-      console.log('🔌 Todas las suscripciones realtime cerradas');
     };
   }, [sedeId, handleOrderChange, onOrderUpdated]);
 

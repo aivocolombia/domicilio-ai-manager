@@ -2,6 +2,7 @@ import { useState, useCallback, useEffect, useRef } from 'react';
 import { dashboardService, DashboardOrder, DashboardFilters } from '@/services/dashboardService';
 import { useToast } from '@/hooks/use-toast';
 import { useRealtimeOrders } from '@/hooks/useRealtimeOrders';
+import { logDebug, logError, logWarn } from '@/utils/logger';
 
 // Simple debounce function
 const debounce = <T extends (...args: any[]) => any>(func: T, wait: number) => {
@@ -46,7 +47,7 @@ export const useDashboard = (sede_id?: string | number) => {
   const loadDashboardOrders = useCallback(async (filters: DashboardFilters = {}) => {
     // Prevenir cargas concurrentes
     if (loadingRef.current) {
-      console.log('🔄 Ya hay una carga en progreso, saltando...');
+      logDebug('Dashboard', 'Ya hay una carga en progreso, saltando...');
       return;
     }
 
@@ -54,22 +55,19 @@ export const useDashboard = (sede_id?: string | number) => {
       loadingRef.current = true;
       setLoading(true);
       setError(null);
-      console.log('🔄 Cargando órdenes del dashboard...');
-      console.log('🏢 UseDashboard Sede ID:', sede_id);
-      console.log('🔍 UseDashboard Filtros:', filters);
+      logDebug('Dashboard', 'Cargando órdenes del dashboard', { sede_id, filters });
 
       // Usar la referencia actualizada de sede_id
       const currentSedeId = sedeIdRef.current;
       
       // Verificar que tenemos sede_id antes de proceder
       if (!currentSedeId) {
-        console.warn('⚠️ No hay sede_id, saltando carga de dashboard');
+        logWarn('Dashboard', 'No hay sede_id, saltando carga de dashboard');
         return;
       }
 
       // Agregar sede_id a los filtros si existe
       const filtersWithSede = { ...filters, sede_id: currentSedeId };
-      console.log('🔍 UseDashboard Filtros finales:', filtersWithSede);
 
       const [ordersData, statsData] = await Promise.all([
         dashboardService.getDashboardOrders(filtersWithSede),
@@ -79,19 +77,17 @@ export const useDashboard = (sede_id?: string | number) => {
       setOrders(ordersData);
       setStats(statsData);
 
-      console.log('✅ Dashboard cargado exitosamente');
-      console.log('📊 Órdenes recibidas:', ordersData.length);
-      console.log('📈 Estadísticas:', statsData);
+      logDebug('Dashboard', 'Dashboard cargado exitosamente', { 
+        ordersCount: ordersData.length, 
+        stats: statsData 
+      });
       
-      // Debug: Mostrar algunas órdenes de ejemplo
-      if (ordersData.length > 0) {
-        console.log('📋 Primeras 3 órdenes:', ordersData.slice(0, 3));
-      } else {
-        console.log('⚠️ No se recibieron órdenes desde el servicio');
+      if (ordersData.length === 0) {
+        logWarn('Dashboard', 'No se recibieron órdenes desde el servicio');
       }
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Error desconocido al cargar dashboard';
-      console.error('❌ Error al cargar dashboard:', err);
+      logError('Dashboard', 'Error al cargar dashboard', err);
       setError(errorMessage);
       toast({
         title: "Error",
@@ -107,9 +103,7 @@ export const useDashboard = (sede_id?: string | number) => {
   // NO cargar datos iniciales automáticamente - dejar que el Dashboard maneje todos los filtros
   // MODIFICADO: Eliminado carga inicial automática para evitar conflictos con filtros del Dashboard
   useEffect(() => {
-    console.log('🔄 UseDashboard: Hook inicializado para sede:', sede_id);
-    console.log('ℹ️ UseDashboard: NO carga datos automáticamente - esperando filtros del Dashboard');
-    // Simplemente log - no cargar datos automáticamente
+    logDebug('Dashboard', 'Hook inicializado, esperando filtros del Dashboard', { sede_id });
   }, [sede_id]); // Solo dependencia de sede_id
 
   // Filtrar órdenes por estado

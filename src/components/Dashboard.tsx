@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -47,6 +47,7 @@ import { OrderConfigModal } from './OrderConfigModal';
 import { OrderDetailsModal } from './OrderDetailsModal';
 import { cn } from '@/lib/utils';
 import { useDashboard } from '@/hooks/useDashboard';
+import { logDebug, logError, logWarn } from '@/utils/logger';
 import { DashboardOrder } from '@/services/dashboardService';
 import { useAuth } from '@/hooks/useAuth';
 import { toast } from '@/hooks/use-toast';
@@ -135,10 +136,9 @@ export const Dashboard: React.FC<DashboardProps> = ({
   
   // Debug: Log user information (solo en desarrollo)
   if (process.env.NODE_ENV === 'development') {
-    console.log('🏠 Dashboard: Usuario autenticado:', user);
-    console.log('👤 Dashboard: Perfil del usuario:', profile);
-    console.log('🏢 Dashboard: Sede ID del usuario:', profile?.sede_id);
-    console.log('🏷️ Dashboard: Tipo de sede_id:', typeof profile?.sede_id);
+    logDebug('Dashboard', 'Usuario autenticado', { user: user?.id, email: user?.email });
+    logDebug('Dashboard', 'Perfil del usuario', { profile: profile?.id, role: profile?.role });
+    logDebug('Dashboard', 'Sede ID del usuario', { sede_id: profile?.sede_id, type: typeof profile?.sede_id });
   }
 
   // Hook para datos reales del dashboard
@@ -153,9 +153,11 @@ export const Dashboard: React.FC<DashboardProps> = ({
   }, [isTransferModalOpen]);
   
   // Debug: Log sede information
-  console.log('🏢 Dashboard: Effective Sede ID (Admin):', effectiveSedeId);
-  console.log('🏢 Dashboard: Sede ID del usuario:', profile?.sede_id);
-  console.log('🎯 Dashboard: Sede ID a usar:', sedeIdToUse);
+  logDebug('Dashboard', 'IDs de sede calculados', { 
+    effectiveSedeId, 
+    userSedeId: profile?.sede_id, 
+    finalSedeId: sedeIdToUse 
+  });
 
   // Cargar sedes disponibles
   const loadSedes = async () => {
@@ -167,13 +169,13 @@ export const Dashboard: React.FC<DashboardProps> = ({
         .order('name');
 
       if (error) {
-        console.error('❌ Error cargando sedes:', error);
+        logError('Dashboard', 'Error cargando sedes', error);
         return;
       }
 
       setSedes(sedesData || []);
     } catch (error) {
-      console.error('❌ Error al cargar sedes:', error);
+      logError('Dashboard', 'Error al cargar sedes', error);
     }
   };
 
@@ -216,7 +218,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
         loadDashboardOrders();
       }
     } catch (error) {
-      console.error('Error transfiriendo pedido:', error);
+      logError('Dashboard', 'Error transfiriendo pedido', error);
       toast({
         title: "Error",
         description: error instanceof Error ? error.message : "No se pudo transferir el pedido",
@@ -228,7 +230,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
   // Función para ver el motivo de cancelación
   const handleViewCancelReason = async (orderId: string) => {
     try {
-      console.log('🔍 Obteniendo motivo de cancelación para pedido:', orderId);
+      logDebug('Dashboard', 'Obteniendo motivo de cancelación', { orderId });
       
       const { data, error } = await supabase
         .from('ordenes')
@@ -237,7 +239,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
         .single();
 
       if (error) {
-        console.error('❌ Error obteniendo motivo de cancelación:', error);
+        logError('Dashboard', 'Error obteniendo motivo de cancelación', error);
         toast({
           title: "Error",
           description: "No se pudo obtener el motivo de cancelación",
@@ -255,7 +257,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
         setViewCancelModalOpen(true);
       }
     } catch (error) {
-      console.error('❌ Error inesperado:', error);
+      logError('Dashboard', 'Error inesperado', error);
       toast({
         title: "Error",
         description: "Error inesperado al obtener el motivo",
@@ -285,7 +287,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
     try {
       setIsCancelling(true);
       
-      console.log('🔍 DEBUG: Cancelando pedido:', {
+      logDebug('Dashboard', 'Cancelando pedido', {
         orderId: cancelOrderId,
         orderIdType: typeof cancelOrderId,
         reason: cancelReason.trim()
@@ -298,10 +300,10 @@ export const Dashboard: React.FC<DashboardProps> = ({
         throw new Error('ID de pedido inválido');
       }
 
-      console.log('🔍 DEBUG: Order ID convertido:', orderIdNumber);
+      logDebug('Dashboard', 'Order ID convertido', { orderIdNumber });
       
       // Primero verificar si la orden existe y obtener su estructura
-      console.log('🔍 DEBUG: Verificando orden antes de actualizar...');
+      logDebug('Dashboard', 'Verificando orden antes de actualizar');
       const { data: orderCheck, error: checkError } = await supabase
         .from('ordenes')
         .select('id, status, created_at')
@@ -309,7 +311,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
         .single();
 
       if (checkError) {
-        console.error('❌ Error verificando orden:', checkError);
+        logError('Dashboard', 'Error verificando orden', checkError);
         throw new Error('No se pudo verificar la orden');
       }
 
@@ -317,10 +319,10 @@ export const Dashboard: React.FC<DashboardProps> = ({
         throw new Error('Orden no encontrada');
       }
 
-      console.log('✅ Orden encontrada:', orderCheck);
+      logDebug('Dashboard', 'Orden encontrada', { orderCheck });
       
       // Primero verificar qué valores válidos tiene el campo status
-      console.log('🔍 DEBUG: Verificando valores válidos para status...');
+      logDebug('Dashboard', 'Verificando valores válidos para status');
       
       // Verificar valores existentes en la tabla
       const { data: existingOrders, error: existingError } = await supabase
@@ -329,21 +331,21 @@ export const Dashboard: React.FC<DashboardProps> = ({
         .limit(10);
       
       if (existingError) {
-        console.log('❌ Error obteniendo status existentes:', existingError);
+        logError('Dashboard', 'Error obteniendo status existentes', existingError);
       } else {
-        console.log('✅ Status existentes en la tabla:', existingOrders?.map(o => o.status));
+        logDebug('Dashboard', 'Status existentes en la tabla', { statuses: existingOrders?.map(o => o.status) });
         
         // Verificar si hay algún status que contenga "Cancelado"
         const cancelStatuses = existingOrders?.filter(o => 
           o.status && o.status.includes('Cancelado')
         );
-        console.log('🔍 Status que contienen "Cancelado":', cancelStatuses);
+        logDebug('Dashboard', 'Status que contienen "Cancelado"', { cancelStatuses });
       }
       
       let statusUpdated = false;
       
       // Intentar actualizar el status a 'Cancelado'
-      console.log(`🔍 Intentando actualizar status a: "Cancelado"`);
+      logDebug('Dashboard', 'Intentando actualizar status a Cancelado');
       
       const { error: statusError } = await supabase
         .from('ordenes')
@@ -351,23 +353,22 @@ export const Dashboard: React.FC<DashboardProps> = ({
         .eq('id', orderIdNumber);
       
       if (statusError) {
-        console.log(`❌ Status "Cancelado" falló:`, statusError.message);
-        console.log(`🔍 Detalles del error:`, statusError);
+        logError('Dashboard', 'Status Cancelado falló', { message: statusError.message, details: statusError });
         throw statusError;
       } else {
-        console.log(`✅ Status actualizado exitosamente a: "Cancelado"`);
+        logDebug('Dashboard', 'Status actualizado exitosamente a Cancelado');
         statusUpdated = true;
       }
       
       if (!statusUpdated) {
-        console.error('❌ No se pudo actualizar el status con ningún valor válido');
+        logError('Dashboard', 'No se pudo actualizar el status con ningún valor válido');
         throw lastError || new Error('No se pudo actualizar el status');
       }
 
-      console.log('✅ Status actualizado exitosamente');
+      logDebug('Dashboard', 'Status actualizado exitosamente');
 
       // Ahora intentar actualizar los campos adicionales
-      console.log('🔍 DEBUG: Intentando actualizar campos adicionales...');
+      logDebug('Dashboard', 'Intentando actualizar campos adicionales');
       
       const additionalData: any = {};
       
@@ -381,7 +382,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
         if (motivoError) {
           console.warn('⚠️ Campo motivo_cancelacion no disponible:', motivoError.message);
         } else {
-          console.log('✅ Motivo de cancelación guardado');
+          logDebug('Dashboard', 'Motivo de cancelación guardado');
         }
       } catch (e) {
         console.warn('⚠️ No se pudo guardar motivo de cancelación:', e);
@@ -397,14 +398,14 @@ export const Dashboard: React.FC<DashboardProps> = ({
         if (canceladoError) {
           console.warn('⚠️ Campo cancelado_at no disponible:', canceladoError.message);
         } else {
-          console.log('✅ Timestamp de cancelación guardado');
+          logDebug('Dashboard', 'Timestamp de cancelación guardado');
         }
       } catch (e) {
         console.warn('⚠️ No se pudo guardar timestamp de cancelación:', e);
       }
 
       // La actualización se completó exitosamente
-      console.log('✅ Cancelación completada');
+      logDebug('Dashboard', 'Cancelación completada');
 
       toast({
         title: "Pedido cancelado",
@@ -421,7 +422,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
         loadDashboardOrders();
       }
     } catch (error) {
-      console.error('Error cancelando pedido:', error);
+      logError('Dashboard', 'Error cancelando pedido', error);
       toast({
         title: "Error",
         description: error instanceof Error ? error.message : "No se pudo cancelar el pedido",
@@ -503,21 +504,25 @@ export const Dashboard: React.FC<DashboardProps> = ({
   const debouncedLoadOrders = useDebouncedCallback(loadDashboardOrders, 500);
 
   // Función de ordenamiento
-  const handleSort = (field: keyof DashboardOrder) => {
-    if (sortField === field) {
-      // Cambiar dirección si es el mismo campo
-      setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
-    } else {
-      // Nuevo campo, empezar con descendente
-      setSortField(field);
-      setSortDirection('desc');
-    }
+  // OPTIMIZACIÓN: useCallback para evitar re-renders de componentes hijos
+  const handleSort = useCallback((field: keyof DashboardOrder) => {
+    setSortField(prevField => {
+      if (prevField === field) {
+        // Cambiar dirección si es el mismo campo
+        setSortDirection(prev => prev === 'asc' ? 'desc' : 'asc');
+        return field;
+      } else {
+        // Nuevo campo, empezar con descendente
+        setSortDirection('desc');
+        return field;
+      }
+    });
     // Resetear a primera página cuando se cambia el ordenamiento
     setCurrentPage(1);
-  };
+  }, []); // Sin dependencias - usa functional updates
 
-  // Función para obtener icono de ordenamiento
-  const getSortIcon = (field: keyof DashboardOrder) => {
+  // OPTIMIZACIÓN: Memoización de función de iconos
+  const getSortIcon = useCallback((field: keyof DashboardOrder) => {
     if (sortField !== field) {
       return null;
     }
@@ -526,55 +531,78 @@ export const Dashboard: React.FC<DashboardProps> = ({
     ) : (
       <ArrowDown className="h-4 w-4 inline ml-1 text-blue-600" />
     );
-  };
+  }, [sortField, sortDirection]);
 
-  // Aplicar filtros primero
-  const filteredOrders = orders.filter(order => {
-    // Solo datos reales - no más datos legacy/dummy
-    const realOrder = order as DashboardOrder;
-    const matchesSearch = realOrder.cliente_nombre.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         realOrder.cliente_telefono.includes(searchTerm) ||
-                         realOrder.id_display.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         realOrder.direccion.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesStatus = statusFilter === 'all' || realOrder.estado === statusFilter;
-    return matchesSearch && matchesStatus;
-  });
+  // OPTIMIZACIÓN CRÍTICA: Memoización de filtrado y ordenamiento
+  // Esto evita re-procesar las órdenes en cada render
+  const filteredAndSortedOrders = useMemo(() => {
+    // Paso 1: Filtrar (solo cuando cambian las dependencias)
+    const searchLower = searchTerm.toLowerCase();
+    const filtered = orders.filter(order => {
+      const realOrder = order as DashboardOrder;
+      
+      // Optimizar búsqueda: solo buscar en campos necesarios si hay término de búsqueda
+      const matchesSearch = !searchTerm || (
+        realOrder.cliente_nombre.toLowerCase().includes(searchLower) ||
+        realOrder.cliente_telefono.includes(searchTerm) ||
+        realOrder.id_display.toLowerCase().includes(searchLower) ||
+        realOrder.direccion.toLowerCase().includes(searchLower)
+      );
+      
+      const matchesStatus = statusFilter === 'all' || realOrder.estado === statusFilter;
+      return matchesSearch && matchesStatus;
+    });
 
-  // Aplicar ordenamiento a las órdenes filtradas
-  const sortedOrders = [...filteredOrders].sort((a, b) => {
-    const aVal = a[sortField];
-    const bVal = b[sortField];
+    // Paso 2: Ordenar (usando spread operator optimizado)
+    return filtered.sort((a, b) => {
+      const aVal = a[sortField];
+      const bVal = b[sortField];
+      
+      let comparison = 0;
+      if (typeof aVal === 'string' && typeof bVal === 'string') {
+        comparison = aVal.localeCompare(bVal);
+      } else if (typeof aVal === 'number' && typeof bVal === 'number') {
+        comparison = aVal - bVal;
+      } else {
+        comparison = String(aVal || '').localeCompare(String(bVal || ''));
+      }
+      
+      return sortDirection === 'asc' ? comparison : -comparison;
+    });
+  }, [orders, searchTerm, statusFilter, sortField, sortDirection]);
+
+  // Alias para compatibilidad con código existente
+  const sortedOrders = filteredAndSortedOrders;
+
+  // Memoized pagination calculations
+  const paginationData = useMemo(() => {
+    const totalItems = sortedOrders.length;
+    const totalPages = Math.ceil(totalItems / itemsPerPage);
+    const startIndex = (currentPage - 1) * itemsPerPage;
+    const endIndex = startIndex + itemsPerPage;
+    const paginatedOrders = sortedOrders.slice(startIndex, endIndex);
     
-    // Manejar diferentes tipos de datos
-    let comparison = 0;
-    if (typeof aVal === 'string' && typeof bVal === 'string') {
-      comparison = aVal.localeCompare(bVal);
-    } else if (typeof aVal === 'number' && typeof bVal === 'number') {
-      comparison = aVal - bVal;
-    } else {
-      // Convertir a string para comparar
-      comparison = String(aVal || '').localeCompare(String(bVal || ''));
-    }
-    
-    return sortDirection === 'asc' ? comparison : -comparison;
-  });
+    return {
+      totalItems,
+      totalPages,
+      startIndex,
+      endIndex,
+      paginatedOrders
+    };
+  }, [sortedOrders, currentPage, itemsPerPage]);
 
-  // Aplicar paginación
-  const totalItems = sortedOrders.length;
-  const totalPages = Math.ceil(totalItems / itemsPerPage);
-  const startIndex = (currentPage - 1) * itemsPerPage;
-  const endIndex = startIndex + itemsPerPage;
-  const paginatedOrders = sortedOrders.slice(startIndex, endIndex);
+  // Extract for compatibility
+  const { totalItems, totalPages, paginatedOrders } = paginationData;
 
   // Función para aplicar filtros de fecha
   const applyDateFilter = async () => {
     let filters: any = {};
     
     if (dateFilter === 'today') {
-      console.log('🔍 DASHBOARD: Aplicando filtro "hoy"');
+      logDebug('Dashboard', 'Aplicando filtro hoy');
       
       const today = new Date();
-      console.log('🕐 Fecha de hoy:', today.toLocaleDateString('es-CO'));
+      logDebug('Dashboard', 'Fecha de hoy', { fecha: today.toLocaleDateString('es-CO') });
       
       // Crear rango simple: desde las 00:00 hasta las 23:59 del día actual
       // IMPORTANTE: usar zona horaria local sin conversiones UTC problemáticas
@@ -590,7 +618,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
       const fechaInicio = `${year}-${month}-${day}T00:00:00Z`;
       const fechaFin = `${year}-${month}-${day}T23:59:59Z`;
       
-      console.log('🗺 Rango de consulta (corregido):', {
+      logDebug('Dashboard', 'Rango de consulta corregido', {
         fechaHoy: today.toLocaleDateString('es-CO'),
         fechaInicio,
         fechaFin
@@ -599,7 +627,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
       filters.fechaInicio = fechaInicio;
       filters.fechaFin = fechaFin;
       
-      console.log('📅 DASHBOARD: Filtros finales aplicados:', { 
+      logDebug('Dashboard', 'Filtros finales aplicados', { 
         fechaInicio: filters.fechaInicio, 
         fechaFin: filters.fechaFin,
         fechaSistema: today.toLocaleDateString('es-CO')
@@ -617,7 +645,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
       filters.fechaInicio = `${fromYear}-${fromMonth}-${fromDay}T00:00:00Z`;
       filters.fechaFin = `${toYear}-${toMonth}-${toDay}T23:59:59Z`;
       
-      console.log('📅 Aplicando filtro personalizado:', { 
+      logDebug('Dashboard', 'Aplicando filtro personalizado', { 
         desde: dateRange.from.toLocaleDateString('es-CO'),
         hasta: dateRange.to.toLocaleDateString('es-CO'),
         fechaInicio: filters.fechaInicio, 
@@ -651,7 +679,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
           try {
             await applyDateFilter();
           } catch (error) {
-            console.error('❌ Error aplicando filtros:', error);
+            logError('Dashboard', 'Error aplicando filtros', error);
           }
         }
       }, 300);
@@ -668,7 +696,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
   // Aplicar filtro inicial cuando el componente se monta (solo una vez)
   useEffect(() => {
     if (sedeIdToUse && !hasAppliedInitialFilter) {
-      console.log('🔄 DASHBOARD: Aplicando filtro inicial por defecto (Solo Hoy)');
+      logDebug('Dashboard', 'Aplicando filtro inicial por defecto (Solo Hoy)');
       setHasAppliedInitialFilter(true);
       // Aplicar el filtro de "Solo Hoy" inmediatamente
       setTimeout(() => {
@@ -837,7 +865,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
       await deleteOrder(orderId);
     } catch (error) {
       // El error ya se maneja en el hook useDashboard
-      console.error('Error eliminando orden:', error);
+      logError('Dashboard', 'Error eliminando orden', error);
     }
   };
 

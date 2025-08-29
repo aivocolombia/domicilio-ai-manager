@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { Plus, Search, Edit, Trash2, Users, Building2, UserCheck, UserX, TrendingUp, DollarSign, Package, Clock, LayoutDashboard, Phone, MapPin, Settings, RefreshCw, Cog, ChartLine, Timer, BarChart3, Truck, Eye, AlertTriangle, ChevronLeft, ChevronRight, XCircle, MessageSquareWarning, Star, User } from 'lucide-react'
+import { Plus, Search, Edit, Trash2, Users, Building2, UserCheck, UserX, TrendingUp, DollarSign, Package, Clock, LayoutDashboard, Phone, MapPin, Settings, RefreshCw, Cog, ChartLine, Timer, BarChart3, Truck, Eye, AlertTriangle, ChevronLeft, ChevronRight, XCircle, MessageSquareWarning, Star } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -211,6 +211,120 @@ export function AdminPanel({ onBack, onNavigateToTimeMetrics }: AdminPanelProps)
       finishLoading('repartidores', 'Error de conexión')
     }
   }, [finishLoading])
+
+  // Load mock complaints data
+  const loadMockComplaints = useCallback((sedesData: Array<{ id: string; name: string }>) => {
+    const mockComplaints: Complaint[] = [
+      {
+        id: 'complaint-001',
+        customer_name: 'María García',
+        customer_email: 'maria.garcia@email.com',
+        customer_phone: '3001234567',
+        sede_id: sedesData[0]?.id || 'sede1',
+        sede_name: sedesData[0]?.name || 'Sede Centro',
+        order_id: 'ORD-2024-001',
+        type: 'queja',
+        category: 'producto',
+        subject: 'Comida fría al momento de entrega',
+        description: 'La comida llegó completamente fría, especialmente la bandeja paisa. Los frijoles estaban duros y la carne no tenía buen sabor.',
+        priority: 'alta',
+        status: 'nuevo',
+        created_at: '2024-01-15T14:30:00Z',
+        updated_at: '2024-01-15T14:30:00Z'
+      },
+      {
+        id: 'complaint-002',
+        customer_name: 'Carlos Rodríguez',
+        customer_email: 'carlos.rodriguez@email.com',
+        customer_phone: '3109876543',
+        sede_id: sedesData[1]?.id || 'sede2',
+        sede_name: sedesData[1]?.name || 'Sede Norte',
+        order_id: 'ORD-2024-002',
+        type: 'reclamo',
+        category: 'entrega',
+        subject: 'Entrega tardía y producto incorrecto',
+        description: 'La entrega se demoró más de 2 horas y además trajeron un producto diferente al ordenado. Pedí pollo a la plancha y trajeron pescado.',
+        priority: 'critica',
+        status: 'en_proceso',
+        created_at: '2024-01-14T19:15:00Z',
+        updated_at: '2024-01-15T09:00:00Z'
+      },
+      {
+        id: 'complaint-003',
+        customer_name: 'Ana Martínez',
+        customer_email: 'ana.martinez@email.com',
+        customer_phone: '3201234567',
+        sede_id: sedesData[0]?.id || 'sede1',
+        sede_name: sedesData[0]?.name || 'Sede Centro',
+        type: 'queja',
+        category: 'personal',
+        subject: 'Atención al cliente deficiente',
+        description: 'El personal fue muy grosero al momento de tomar la orden telefónica. La persona que me atendió fue muy impaciente y cortante.',
+        priority: 'media',
+        status: 'resuelto',
+        created_at: '2024-01-13T16:45:00Z',
+        updated_at: '2024-01-14T10:30:00Z',
+        resolved_at: '2024-01-14T10:30:00Z',
+        resolution_notes: 'Se contactó al cliente para disculparse. Se capacitó al personal sobre atención al cliente.',
+        rating: 4
+      },
+      {
+        id: 'complaint-004',
+        customer_name: 'Luis Hernández',
+        customer_email: 'luis.hernandez@email.com',
+        customer_phone: '3157654321',
+        sede_id: sedesData[1]?.id || 'sede2',
+        sede_name: sedesData[1]?.name || 'Sede Norte',
+        order_id: 'ORD-2024-003',
+        type: 'reclamo',
+        category: 'producto',
+        subject: 'Intoxicación alimentaria',
+        description: 'Después de consumir la comida ordenada, tanto yo como mi familia presentamos síntomas de intoxicación alimentaria. Solicitamos reembolso completo.',
+        priority: 'critica',
+        status: 'nuevo',
+        created_at: '2024-01-15T22:00:00Z',
+        updated_at: '2024-01-15T22:00:00Z'
+      },
+      {
+        id: 'complaint-005',
+        customer_name: 'Patricia López',
+        customer_email: 'patricia.lopez@email.com',
+        customer_phone: '3008765432',
+        sede_id: sedesData[2]?.id || 'sede3',
+        sede_name: sedesData[2]?.name || 'Sede Sur',
+        order_id: 'ORD-2024-004',
+        type: 'queja',
+        category: 'servicio',
+        subject: 'Demora excesiva en el servicio',
+        description: 'El tiempo de entrega fue de 3 horas cuando prometieron 45 minutos. No hubo comunicación sobre la demora.',
+        priority: 'alta',
+        status: 'en_proceso',
+        created_at: '2024-01-12T20:30:00Z',
+        updated_at: '2024-01-13T08:15:00Z'
+      },
+      {
+        id: 'complaint-006',
+        customer_name: 'Roberto Silva',
+        customer_email: 'roberto.silva@email.com',
+        customer_phone: '3112345678',
+        sede_id: sedesData[0]?.id || 'sede1',
+        sede_name: sedesData[0]?.name || 'Sede Centro',
+        type: 'queja',
+        category: 'otros',
+        subject: 'Problema con la aplicación móvil',
+        description: 'La aplicación móvil no permite completar pedidos correctamente, se cuelga en el paso de pago.',
+        priority: 'baja',
+        status: 'cerrado',
+        created_at: '2024-01-10T14:20:00Z',
+        updated_at: '2024-01-11T16:45:00Z',
+        resolved_at: '2024-01-11T16:45:00Z',
+        resolution_notes: 'Se solucionó el problema técnico. Se actualizó la aplicación.',
+        rating: 5
+      }
+    ]
+    
+    setComplaints(mockComplaints)
+  }, [])
 
   // Retry functions for individual sections
   const retrySection = useCallback(async (section: 'users' | 'sedes' | 'repartidores') => {
@@ -1857,6 +1971,7 @@ export function AdminPanel({ onBack, onNavigateToTimeMetrics }: AdminPanelProps)
               </CardContent>
             </Card>
           </TabsContent>
+
         </Tabs>
           </div>
         ) : (
@@ -2191,6 +2306,240 @@ export function AdminPanel({ onBack, onNavigateToTimeMetrics }: AdminPanelProps)
                             <p>No hay cancelaciones en el período seleccionado</p>
                           </div>
                         )}
+                      </div>
+                    </CardContent>
+                  </Card>
+
+                  {/* Sección de Quejas y Reclamos */}
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="flex items-center gap-2">
+                        <MessageSquareWarning className="h-5 w-5 text-orange-500" />
+                        Quejas y Reclamos
+                      </CardTitle>
+                      <CardDescription>
+                        Gestión y análisis de quejas y reclamos de clientes
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      {/* Filtros para quejas */}
+                      <div className="flex flex-col lg:flex-row gap-4 mb-6">
+                        <div className="flex-1">
+                          <div className="relative">
+                            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                            <Input
+                              placeholder="Buscar por cliente, asunto o descripción..."
+                              value={complaintsSearchTerm}
+                              onChange={(e) => setComplaintsSearchTerm(e.target.value)}
+                              className="pl-10"
+                            />
+                          </div>
+                        </div>
+                        
+                        <div className="flex flex-wrap gap-2">
+                          <Select value={complaintsSedeFilter} onValueChange={setComplaintsSedeFilter}>
+                            <SelectTrigger className="w-48">
+                              <SelectValue placeholder="Filtrar por sede" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="todas">Todas las sedes</SelectItem>
+                              {sedesSimple.map((sede) => (
+                                <SelectItem key={sede.id} value={sede.id}>
+                                  {sede.name}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+
+                          <Select value={complaintsStatusFilter} onValueChange={setComplaintsStatusFilter}>
+                            <SelectTrigger className="w-40">
+                              <SelectValue placeholder="Estado" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="todos">Todos</SelectItem>
+                              <SelectItem value="nuevo">Nuevo</SelectItem>
+                              <SelectItem value="en_proceso">En Proceso</SelectItem>
+                              <SelectItem value="resuelto">Resuelto</SelectItem>
+                              <SelectItem value="cerrado">Cerrado</SelectItem>
+                            </SelectContent>
+                          </Select>
+
+                          <Select value={complaintsTypeFilter} onValueChange={setComplaintsTypeFilter}>
+                            <SelectTrigger className="w-36">
+                              <SelectValue placeholder="Tipo" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="todos">Todos</SelectItem>
+                              <SelectItem value="queja">Queja</SelectItem>
+                              <SelectItem value="reclamo">Reclamo</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      </div>
+
+                      {/* Resumen estadístico de quejas */}
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+                        <Card>
+                          <CardContent className="p-4">
+                            <div className="flex items-center gap-2">
+                              <MessageSquareWarning className="h-4 w-4 text-blue-500" />
+                              <div>
+                                <div className="text-2xl font-bold">{complaints.length}</div>
+                                <div className="text-sm text-muted-foreground">Total</div>
+                              </div>
+                            </div>
+                          </CardContent>
+                        </Card>
+                        
+                        <Card>
+                          <CardContent className="p-4">
+                            <div className="flex items-center gap-2">
+                              <AlertTriangle className="h-4 w-4 text-red-500" />
+                              <div>
+                                <div className="text-2xl font-bold">
+                                  {complaints.filter(c => c.status === 'nuevo').length}
+                                </div>
+                                <div className="text-sm text-muted-foreground">Nuevas</div>
+                              </div>
+                            </div>
+                          </CardContent>
+                        </Card>
+                        
+                        <Card>
+                          <CardContent className="p-4">
+                            <div className="flex items-center gap-2">
+                              <Clock className="h-4 w-4 text-yellow-500" />
+                              <div>
+                                <div className="text-2xl font-bold">
+                                  {complaints.filter(c => c.status === 'en_proceso').length}
+                                </div>
+                                <div className="text-sm text-muted-foreground">En Proceso</div>
+                              </div>
+                            </div>
+                          </CardContent>
+                        </Card>
+                        
+                        <Card>
+                          <CardContent className="p-4">
+                            <div className="flex items-center gap-2">
+                              <UserCheck className="h-4 w-4 text-green-500" />
+                              <div>
+                                <div className="text-2xl font-bold">
+                                  {complaints.filter(c => c.status === 'resuelto' || c.status === 'cerrado').length}
+                                </div>
+                                <div className="text-sm text-muted-foreground">Resueltas</div>
+                              </div>
+                            </div>
+                          </CardContent>
+                        </Card>
+                      </div>
+
+                      {/* Tabla de quejas */}
+                      <div className="rounded-md border">
+                        <Table>
+                          <TableHeader>
+                            <TableRow>
+                              <TableHead>Cliente</TableHead>
+                              <TableHead>Sede</TableHead>
+                              <TableHead>Tipo</TableHead>
+                              <TableHead>Asunto</TableHead>
+                              <TableHead>Prioridad</TableHead>
+                              <TableHead>Estado</TableHead>
+                              <TableHead>Fecha</TableHead>
+                              <TableHead>Rating</TableHead>
+                              <TableHead className="text-right">Acciones</TableHead>
+                            </TableRow>
+                          </TableHeader>
+                          <TableBody>
+                            {complaints
+                              .filter(complaint => {
+                                const matchesSearch = complaintsSearchTerm === '' || 
+                                  complaint.customer_name.toLowerCase().includes(complaintsSearchTerm.toLowerCase()) ||
+                                  complaint.subject.toLowerCase().includes(complaintsSearchTerm.toLowerCase()) ||
+                                  complaint.description.toLowerCase().includes(complaintsSearchTerm.toLowerCase());
+                                
+                                const matchesSede = complaintsSedeFilter === 'todas' || complaint.sede_id === complaintsSedeFilter;
+                                const matchesStatus = complaintsStatusFilter === 'todos' || complaint.status === complaintsStatusFilter;
+                                const matchesType = complaintsTypeFilter === 'todos' || complaint.type === complaintsTypeFilter;
+                                
+                                return matchesSearch && matchesSede && matchesStatus && matchesType;
+                              })
+                              .map((complaint) => (
+                                <TableRow key={complaint.id}>
+                                  <TableCell>
+                                    <div className="flex items-center gap-2">
+                                      <div>
+                                        <div className="font-medium">{complaint.customer_name}</div>
+                                        <div className="text-sm text-muted-foreground">{complaint.customer_phone}</div>
+                                      </div>
+                                    </div>
+                                  </TableCell>
+                                  <TableCell>
+                                    <Badge variant="outline">{complaint.sede_name}</Badge>
+                                  </TableCell>
+                                  <TableCell>
+                                    <Badge variant={complaint.type === 'reclamo' ? 'destructive' : 'default'}>
+                                      {complaint.type === 'reclamo' ? 'Reclamo' : 'Queja'}
+                                    </Badge>
+                                  </TableCell>
+                                  <TableCell className="max-w-xs">
+                                    <div className="truncate" title={complaint.subject}>
+                                      {complaint.subject}
+                                    </div>
+                                    <div className="text-xs text-muted-foreground mt-1">
+                                      {complaint.category}
+                                    </div>
+                                  </TableCell>
+                                  <TableCell>
+                                    <Badge variant={
+                                      complaint.priority === 'critica' ? 'destructive' :
+                                      complaint.priority === 'alta' ? 'default' :
+                                      complaint.priority === 'media' ? 'secondary' : 'outline'
+                                    }>
+                                      {complaint.priority === 'critica' ? 'Crítica' :
+                                       complaint.priority === 'alta' ? 'Alta' :
+                                       complaint.priority === 'media' ? 'Media' : 'Baja'}
+                                    </Badge>
+                                  </TableCell>
+                                  <TableCell>
+                                    <Badge variant={
+                                      complaint.status === 'nuevo' ? 'destructive' :
+                                      complaint.status === 'en_proceso' ? 'default' :
+                                      complaint.status === 'resuelto' ? 'secondary' : 'outline'
+                                    }>
+                                      {complaint.status === 'nuevo' ? 'Nuevo' :
+                                       complaint.status === 'en_proceso' ? 'En Proceso' :
+                                       complaint.status === 'resuelto' ? 'Resuelto' : 'Cerrado'}
+                                    </Badge>
+                                  </TableCell>
+                                  <TableCell>
+                                    <div className="text-sm">
+                                      {new Date(complaint.created_at).toLocaleDateString('es-CO')}
+                                    </div>
+                                  </TableCell>
+                                  <TableCell>
+                                    {complaint.rating && (
+                                      <div className="flex items-center gap-1">
+                                        {Array.from({ length: complaint.rating }, (_, i) => (
+                                          <Star key={i} className="h-3 w-3 fill-yellow-400 text-yellow-400" />
+                                        ))}
+                                        <span className="text-xs text-muted-foreground ml-1">
+                                          ({complaint.rating}/5)
+                                        </span>
+                                      </div>
+                                    )}
+                                  </TableCell>
+                                  <TableCell className="text-right">
+                                    <Button variant="outline" size="sm">
+                                      <Eye className="h-4 w-4 mr-1" />
+                                      Ver Detalles
+                                    </Button>
+                                  </TableCell>
+                                </TableRow>
+                              ))
+                            }
+                          </TableBody>
+                        </Table>
                       </div>
                     </CardContent>
                   </Card>
