@@ -64,6 +64,7 @@ export const SedeOrders: React.FC<SedeOrdersProps> = ({
   // Hook para manejar pedidos de sede con datos reales
   const {
     orders: realOrders,
+    todayOrders,
     customer,
     loading,
     error,
@@ -829,8 +830,9 @@ export const SedeOrders: React.FC<SedeOrdersProps> = ({
             <div className="p-4 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg border border-blue-200">
               <div className="flex items-center gap-2 mb-3">
                 <Package className="h-4 w-4 text-blue-600" />
-                <span className="font-medium text-blue-900">Estado de Pedidos</span>
+                <span className="font-medium text-blue-900">Estado de Pedidos (Hoy)</span>
               </div>
+              
               
               <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                 {/* Recibidos */}
@@ -840,7 +842,7 @@ export const SedeOrders: React.FC<SedeOrdersProps> = ({
                     <span className="text-xs font-medium text-blue-700">Recibidos</span>
                   </div>
                   <div className="text-lg font-bold text-blue-900 mt-1">
-                    {realOrders.filter(order => order.estado === 'received').length}
+                    {todayOrders.filter(order => order.estado === 'Recibidos').length}
                   </div>
                 </div>
 
@@ -851,7 +853,7 @@ export const SedeOrders: React.FC<SedeOrdersProps> = ({
                     <span className="text-xs font-medium text-yellow-700">En Cocina</span>
                   </div>
                   <div className="text-lg font-bold text-yellow-900 mt-1">
-                    {realOrders.filter(order => order.estado === 'kitchen').length}
+                    {todayOrders.filter(order => order.estado === 'Cocina').length}
                   </div>
                 </div>
 
@@ -859,10 +861,10 @@ export const SedeOrders: React.FC<SedeOrdersProps> = ({
                 <div className="bg-white rounded-md p-3 shadow-sm border border-purple-100">
                   <div className="flex items-center gap-2">
                     <div className="w-2 h-2 bg-purple-500 rounded-full"></div>
-                    <span className="text-xs font-medium text-purple-700">Domicilio</span>
+                    <span className="text-xs font-medium text-purple-700">Camino</span>
                   </div>
                   <div className="text-lg font-bold text-purple-900 mt-1">
-                    {realOrders.filter(order => order.estado === 'delivery').length}
+                    {todayOrders.filter(order => order.estado === 'Camino').length}
                   </div>
                 </div>
 
@@ -873,7 +875,7 @@ export const SedeOrders: React.FC<SedeOrdersProps> = ({
                     <span className="text-xs font-medium text-orange-700">Pickup</span>
                   </div>
                   <div className="text-lg font-bold text-orange-900 mt-1">
-                    {realOrders.filter(order => order.estado === 'ready_pickup').length}
+                    {todayOrders.filter(order => order.estado === 'Listos para Recogida').length}
                   </div>
                 </div>
               </div>
@@ -883,8 +885,9 @@ export const SedeOrders: React.FC<SedeOrdersProps> = ({
                 <div className="flex items-center justify-between">
                   <span className="text-sm text-blue-700">Total pedidos activos:</span>
                   <span className="font-bold text-blue-900">
-                    {realOrders.filter(order => 
-                      order.estado !== 'delivered' && 
+                    {todayOrders.filter(order => 
+                      order.estado !== 'Entregados' && 
+                      order.estado !== 'delivered' &&
                       order.estado !== 'Cancelado' && 
                       order.estado !== 'cancelled'
                     ).length}

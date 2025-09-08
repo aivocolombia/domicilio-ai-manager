@@ -1,10 +1,11 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { sedeOrdersService, CustomerData, SedeOrder, CreateOrderData } from '@/services/sedeOrdersService';
 import { useToast } from '@/hooks/use-toast';
 import { useRealtimeOrders } from '@/hooks/useRealtimeOrders';
 
 export const useSedeOrders = (sedeId?: string) => {
   const [orders, setOrders] = useState<SedeOrder[]>([]);
+  const [todayOrders, setTodayOrders] = useState<SedeOrder[]>([]);
   const [customer, setCustomer] = useState<CustomerData | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -50,6 +51,52 @@ export const useSedeOrders = (sedeId?: string) => {
       setLoading(false);
     }
   }, [toast]);
+
+  // Cargar pedidos del día de la sede
+  const loadTodayOrders = useCallback(async () => {
+    if (!sedeId) {
+      console.log('⚠️ useSedeOrders: No hay sede_id para pedidos del día');
+      return;
+    }
+
+    try {
+      setLoading(true);
+      setError(null);
+      console.log('📊 useSedeOrders: Cargando pedidos del día de sede:', sedeId);
+
+      const orders = await sedeOrdersService.getTodaySedeOrders(sedeId);
+      setTodayOrders(orders);
+
+      console.log('✅ Pedidos del día cargados:', orders.length);
+      console.log('📋 DEBUG: Pedidos del día detalle:', orders.map(o => ({ 
+        id: o.id, 
+        estado: o.estado, 
+        fecha: o.created_at,
+        cliente: o.cliente_nombre
+      })));
+      
+      // Debug contador por estado - usar valores reales de la BD
+      const estadoCounts = {
+        recibidos: orders.filter(order => order.estado === 'Recibidos').length,
+        cocina: orders.filter(order => order.estado === 'Cocina').length,
+        camino: orders.filter(order => order.estado === 'Camino').length,
+        ready_pickup: orders.filter(order => order.estado === 'Listos para Recogida' || order.estado === 'ready_pickup').length,
+        total_activos: orders.filter(order => 
+          order.estado !== 'Entregados' && 
+          order.estado !== 'delivered' &&
+          order.estado !== 'Cancelado' && 
+          order.estado !== 'cancelled'
+        ).length
+      };
+      console.log('🔢 DEBUG: Contadores por estado:', estadoCounts);
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Error desconocido al cargar pedidos del día';
+      console.error('❌ Error cargando pedidos del día:', err);
+      setError(errorMessage);
+    } finally {
+      setLoading(false);
+    }
+  }, [sedeId, toast]);
 
   // Cargar pedidos de la sede
   const loadSedeOrders = useCallback(async (limit?: number) => {
@@ -164,6 +211,15 @@ export const useSedeOrders = (sedeId?: string) => {
     setError(null);
   }, []);
 
+  // Cargar pedidos automáticamente cuando se proporciona sedeId
+  useEffect(() => {
+    if (sedeId) {
+      console.log('🔄 useSedeOrders: Cargando pedidos inicial para sede:', sedeId);
+      loadSedeOrders();
+      loadTodayOrders(); // También cargar pedidos del día para el contador
+    }
+  }, [sedeId, loadSedeOrders, loadTodayOrders]);
+
   // Configurar suscripción en tiempo real
   useRealtimeOrders({
     sedeId,
@@ -171,6 +227,7 @@ export const useSedeOrders = (sedeId?: string) => {
       console.log('🔄 SedeOrders: Orden actualizada, recargando datos...');
       if (sedeId) {
         loadSedeOrders();
+        loadTodayOrders(); // También recargar pedidos del día
       }
     },
     onNewOrder: (order) => {
@@ -184,6 +241,7 @@ export const useSedeOrders = (sedeId?: string) => {
         // Recargar para obtener datos completos
         if (sedeId) {
           loadSedeOrders();
+          loadTodayOrders(); // También recargar pedidos del día
         }
       }
     },
@@ -194,11 +252,13 @@ export const useSedeOrders = (sedeId?: string) => {
 
   return {
     orders,
+    todayOrders,
     customer,
     loading,
     error,
     searchCustomer,
     loadSedeOrders,
+    loadTodayOrders,
     createOrder,
     transferOrder,
     clearCustomer,

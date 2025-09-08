@@ -18,6 +18,7 @@ import { Loading } from '@/components/Loading';
 import { InventoryProvider } from '@/contexts/InventoryContext';
 import { SedeProvider } from '@/contexts/SedeContext';
 import { useAuth } from '@/hooks/useAuth';
+import { usePermissions } from '@/hooks/usePermissions';
 import { useActiveTab } from '@/hooks/useActiveTab';
 import { useAppState } from '@/hooks/useAppState';
 import { Button } from '@/components/ui/button';
@@ -168,6 +169,7 @@ const generateMockDeliveryPersonnel = (): DeliveryPerson[] => {
 
 const Index = () => {
   const { profile } = useAuth();
+  const { permissions, isAdmin, isAdministradorPunto, isAgent, userSedeId } = usePermissions();
   const { activeTab, setActiveTab, resetToDashboard } = useActiveTab();
   const { showAdminPanel, showTimeMetrics, navigateToAdmin, navigateToTimeMetrics, navigateToMain, navigateToMainView } = useAppState();
   const [orders, setOrders] = useState<Order[]>([]);
@@ -177,10 +179,10 @@ const Index = () => {
   const [sedesLoading, setSedesLoading] = useState(false);
 
   
-  // Estado para sede seleccionada por admin (solo para admins)
+  // Estado para sede seleccionada (solo admins pueden cambiar de sede)
   const [selectedSedeId, setSelectedSedeId] = useState<string>(() => {
-    // Admin empieza con la primera sede disponible, agentes usan su sede asignada
-    return profile?.role === 'admin' ? profile?.sede_id || sedes[0]?.id : profile?.sede_id || '';
+    // Admin puede seleccionar cualquier sede, otros roles usan su sede asignada
+    return permissions.canViewAllSedes ? profile?.sede_id || sedes[0]?.id : (userSedeId || '');
   });
   const [settings, setSettings] = useState<DeliverySettings>({
     acceptingOrders: true,
@@ -189,8 +191,8 @@ const Index = () => {
     deliveryFee: 3000
   });
 
-  // Sede efectiva: la seleccionada por admin o la asignada al agente
-  const effectiveSedeId = profile?.role === 'admin' ? selectedSedeId : profile?.sede_id;
+  // Sede efectiva: admins pueden cambiar sede, otros usan su sede asignada
+  const effectiveSedeId = permissions.canViewAllSedes ? selectedSedeId : userSedeId;
   
   // Nombre de la sede (buscar en array de sedes cargadas o usar nombre del perfil)
   const currentSedeName = sedes.find(s => s.id === effectiveSedeId)?.name || 
@@ -199,7 +201,7 @@ const Index = () => {
 
   // Cargar sedes reales desde la base de datos
   const loadSedes = async () => {
-    if (profile?.role !== 'admin') return; // Solo admins necesitan cargar todas las sedes
+    if (!permissions.canViewAllSedes) return; // Solo usuarios con permiso pueden cargar todas las sedes
     
     try {
       setSedesLoading(true);
@@ -339,10 +341,10 @@ const Index = () => {
 
   // Cargar sedes cuando el perfil esté disponible (solo para admins)
   useEffect(() => {
-    if (profile?.role === 'admin') {
+    if (permissions.canViewAllSedes) {
       loadSedes();
     }
-  }, [profile?.role]);
+  }, [permissions.canViewAllSedes]);
 
 
 
@@ -409,8 +411,8 @@ const Index = () => {
               </div>
               
               <div className="flex items-center gap-2">
-                {/* Selector de Sede - Solo visible para administradores */}
-                {profile?.role === 'admin' && (
+                {/* Selector de Sede - Solo visible para usuarios con permiso para ver todas las sedes */}
+                {permissions.canViewAllSedes && (
                   <div className="flex items-center gap-2 text-white">
                     <Building2 className="h-4 w-4" />
                     <Select value={selectedSedeId} onValueChange={setSelectedSedeId}>
@@ -429,7 +431,7 @@ const Index = () => {
                 )}
 
                 {/* Admin Panel Button - Solo visible para administradores */}
-                {profile?.role === 'admin' && (
+                {isAdmin && (
                   <Button
                     variant="outline"
                     onClick={navigateToAdmin}
@@ -457,7 +459,7 @@ const Index = () => {
 
         <div className="container mx-auto p-6">
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-          <TabsList className="grid w-full grid-cols-5 lg:w-auto lg:grid-cols-5 bg-brand-secondary">
+          <TabsList className={`grid w-full ${permissions.canViewCallCenter ? 'grid-cols-5' : 'grid-cols-4'} lg:w-auto ${permissions.canViewCallCenter ? 'lg:grid-cols-5' : 'lg:grid-cols-4'} bg-brand-secondary`}>
             <TabsTrigger value="dashboard" className="flex items-center gap-2 data-[state=active]:bg-brand-primary data-[state=active]:text-white">
               <LayoutDashboard className="h-4 w-4" />
               Dashboard
@@ -470,10 +472,13 @@ const Index = () => {
               <Users className="h-4 w-4" />
               Repartidores
             </TabsTrigger>
-            <TabsTrigger value="callcenter" className="flex items-center gap-2 data-[state=active]:bg-brand-primary data-[state=active]:text-white">
-              <Phone className="h-4 w-4" />
-              Call Center
-            </TabsTrigger>
+            {/* Call Center - Ocultar para agentes */}
+            {permissions.canViewCallCenter && (
+              <TabsTrigger value="callcenter" className="flex items-center gap-2 data-[state=active]:bg-brand-primary data-[state=active]:text-white">
+                <Phone className="h-4 w-4" />
+                Call Center
+              </TabsTrigger>
+            )}
             <TabsTrigger value="sede" className="flex items-center gap-2 data-[state=active]:bg-brand-primary data-[state=active]:text-white">
               <Store className="h-4 w-4" />
               Sede Local
@@ -506,16 +511,19 @@ const Index = () => {
             />
           </TabsContent>
 
-          <TabsContent value="callcenter">
-            <CallCenter
-              orders={orders}
-              sedes={sedes}
-              settings={settings}
-              effectiveSedeId={effectiveSedeId}
-              currentSedeName={currentSedeName}
-              onCreateOrder={handleCreateOrder}
-            />
-          </TabsContent>
+          {/* Call Center Content - Solo visible para usuarios con permiso */}
+          {permissions.canViewCallCenter && (
+            <TabsContent value="callcenter">
+              <CallCenter
+                orders={orders}
+                sedes={sedes}
+                settings={settings}
+                effectiveSedeId={effectiveSedeId}
+                currentSedeName={currentSedeName}
+                onCreateOrder={handleCreateOrder}
+              />
+            </TabsContent>
+          )}
 
           <TabsContent value="sede">
             <SedeOrders

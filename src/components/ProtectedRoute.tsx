@@ -1,31 +1,28 @@
 import { ReactNode } from 'react'
 import { useAuth } from '@/hooks/useAuth'
+import { usePermissions, UserRole } from '@/hooks/usePermissions'
 import { Login } from '@/components/Login'
-import { AdminPanel } from '@/components/AdminPanel'
 import { Loader2 } from 'lucide-react'
+import { logDebug, logWarn, logError } from '@/utils/logger'
 
 interface ProtectedRouteProps {
   children: ReactNode
-  requiredRole?: 'admin' | 'agent'
+  requiredRole?: UserRole
 }
 
 export function ProtectedRoute({ children, requiredRole }: ProtectedRouteProps) {
   const { user, profile, loading } = useAuth()
+  const { userRole, permissions } = usePermissions()
 
-  // Reducir logs excesivos en producción
-  if (process.env.NODE_ENV === 'development') {
-    console.log('🛡️ ProtectedRoute renderizando:', {
-      user: user?.email,
-      profile: profile?.name,
-      loading,
-      requiredRole
-    })
-  }
+  logDebug('ProtectedRoute', 'Renderizando ruta protegida', {
+    user: user?.email,
+    profile: profile?.name,
+    userRole,
+    loading,
+    requiredRole
+  })
 
   if (loading) {
-    if (process.env.NODE_ENV === 'development') {
-      console.log('⏳ Mostrando pantalla de carga...')
-    }
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
         <div className="text-center space-y-4">
@@ -37,12 +34,12 @@ export function ProtectedRoute({ children, requiredRole }: ProtectedRouteProps) 
   }
 
   if (!user || !profile) {
-    console.log('❌ No hay usuario o perfil, mostrando Login')
+    logWarn('ProtectedRoute', 'Usuario o perfil no encontrado, redirecting a login')
     return <Login />
   }
 
   if (!profile.is_active) {
-    console.log('⚠️ Usuario inactivo, mostrando pantalla de cuenta desactivada')
+    logWarn('ProtectedRoute', 'Usuario inactivo', { userId: user.id })
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
         <div className="text-center space-y-4 max-w-md">
@@ -58,8 +55,12 @@ export function ProtectedRoute({ children, requiredRole }: ProtectedRouteProps) 
     )
   }
 
-  if (requiredRole && profile.role !== requiredRole) {
-    console.log('🚫 Acceso denegado por rol:', profile.role, '!=', requiredRole)
+  if (requiredRole && userRole !== requiredRole) {
+    logWarn('ProtectedRoute', 'Acceso denegado por rol', { 
+      userRole, 
+      requiredRole, 
+      userId: user.id 
+    })
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
         <div className="text-center space-y-4 max-w-md">
@@ -75,8 +76,6 @@ export function ProtectedRoute({ children, requiredRole }: ProtectedRouteProps) 
     )
   }
 
-  // Show the main app for both admin and agent users
-  // Admin users can navigate to AdminPanel through the UI
-  console.log('👤 Usuario autenticado, mostrando aplicación principal')
+  logDebug('ProtectedRoute', 'Usuario autorizado', { userRole, userId: user.id })
   return <>{children}</>
 }

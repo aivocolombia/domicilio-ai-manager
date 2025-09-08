@@ -19,7 +19,11 @@
       "Bash(if rg -q \"$dep\" src/)",
       "Bash(timeout 10s npm run dev)",
       "Bash(timeout 15s npm run dev)",
-      "Bash(grep:*)"
+      "Bash(grep:*)",
+      "Bash(set VITE_SUPABASE_URL=https://hcyxhuvyqvtlvfsnrhjw.supabase.co)",
+      "Bash(set:*)",
+      "Bash(VITE_SUPABASE_URL=https://hcyxhuvyqvtlvfsnrhjw.supabase.co VITE_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhjeXhodXZ5cXZ0bHZmc25yaGp3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTIxNjA2NTksImV4cCI6MjA2NzczNjY1OX0.NvBEq1Nofeu04OMRtd7Bwn_Je5MkmALSIm3kN-HkT0Y node check-roles.js)",
+      "Bash(VITE_SUPABASE_URL=https://hcyxhuvyqvtlvfsnrhjw.supabase.co VITE_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhjeXhodXZ5cXZ0bHZmc25yaGp3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTIxNjA2NTksImV4cCI6MjA2NzczNjY1OX0.NvBEq1Nofeu04OMRtd7Bwn_Je5MkmALSIm3kN-HkT0Y node check-orders.js)"
     ],
     "additionalDirectories": [
       "C:\\c\\Users\\USER\\Documents\\GitHub"

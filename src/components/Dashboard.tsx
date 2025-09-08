@@ -79,7 +79,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
   const [selectedOrders, setSelectedOrders] = useState<string[]>([]);
   const [isConfigModalOpen, setIsConfigModalOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
-  const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [statusFilter, setStatusFilter] = useState<string>('active'); // Solo pedidos activos por defecto
   
   // Estados para filtros de fecha
   const [dateFilter, setDateFilter] = useState<'today' | 'custom'>('today'); // Default: Solo hoy
@@ -549,7 +549,19 @@ export const Dashboard: React.FC<DashboardProps> = ({
         realOrder.direccion.toLowerCase().includes(searchLower)
       );
       
-      const matchesStatus = statusFilter === 'all' || realOrder.estado === statusFilter;
+      // Filtro de estado mejorado
+      let matchesStatus = false;
+      if (statusFilter === 'all') {
+        matchesStatus = true;
+      } else if (statusFilter === 'active') {
+        // Pedidos activos: todos excepto entregados y cancelados
+        matchesStatus = realOrder.estado !== 'Entregado' && 
+                       realOrder.estado !== 'Cancelado' && 
+                       realOrder.estado !== 'delivered' && 
+                       realOrder.estado !== 'cancelled';
+      } else {
+        matchesStatus = realOrder.estado === statusFilter;
+      }
       return matchesSearch && matchesStatus;
     });
 
@@ -654,7 +666,8 @@ export const Dashboard: React.FC<DashboardProps> = ({
     }
     
     // Aplicar también el filtro de estado actual si existe
-    if (statusFilter && statusFilter !== 'all') {
+    // No enviar 'active' al servidor, solo filtros específicos
+    if (statusFilter && statusFilter !== 'all' && statusFilter !== 'active') {
       filters.estado = statusFilter;
     }
     
@@ -1126,6 +1139,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
               </div>
               <div className="flex gap-2">
                 {[
+                  { value: 'active', label: 'Activos' },
                   { value: 'all', label: 'Todos' },
                   { value: 'Recibidos', label: 'Recibidos' },
                   { value: 'Cocina', label: 'Cocina' },

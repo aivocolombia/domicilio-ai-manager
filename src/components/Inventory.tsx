@@ -12,6 +12,7 @@ import { Search, Package, Plus, Loader2, AlertCircle, RefreshCw, Trash2, X } fro
 import { useMenu } from '@/hooks/useMenu';
 import { useInventoryEvents } from '@/contexts/InventoryContext';
 import { useAuth } from '@/hooks/useAuth';
+import { usePermissions } from '@/hooks/usePermissions';
 import { useSede } from '@/contexts/SedeContext';
 import { toast } from '@/hooks/use-toast';
 import { formatCurrency } from '@/utils/format';
@@ -32,6 +33,7 @@ export const Inventory: React.FC<InventoryProps> = ({
   currentSedeName: propCurrentSedeName 
 }) => {
   const { profile } = useAuth();
+  const { permissions } = usePermissions();
   const { currentSedeName: contextSedeName } = useSede();
   const { triggerUpdate } = useInventoryEvents();
   
@@ -586,14 +588,17 @@ export const Inventory: React.FC<InventoryProps> = ({
           </p>
         </div>
         <div className="flex gap-2">
-          <Button 
-            className="flex items-center gap-2" 
-            disabled={loading} 
-            onClick={() => setShowAddProductModal(true)}
-          >
-            <Plus className="h-4 w-4" />
-            Agregar Producto
-          </Button>
+          {/* Botón Agregar Producto - Solo visible para usuarios con permisos */}
+          {permissions.canCreateProduct && (
+            <Button 
+              className="flex items-center gap-2" 
+              disabled={loading} 
+              onClick={() => setShowAddProductModal(true)}
+            >
+              <Plus className="h-4 w-4" />
+              Agregar Producto
+            </Button>
+          )}
           
           {/* Botón para inicializar productos si hay problemas */}
           <Button 
@@ -703,17 +708,19 @@ export const Inventory: React.FC<InventoryProps> = ({
                       }}
                       disabled={loading}
                     />
-                    <AlertDialog>
-                      <AlertDialogTrigger asChild>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-8 w-8 text-destructive hover:text-destructive hover:bg-destructive/10"
-                          disabled={loading}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </AlertDialogTrigger>
+                    {/* Botón eliminar - Solo visible para usuarios con permisos */}
+                    {permissions.canDeleteProduct && (
+                      <AlertDialog>
+                        <AlertDialogTrigger asChild>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8 text-destructive hover:text-destructive hover:bg-destructive/10"
+                            disabled={loading}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </AlertDialogTrigger>
                       <AlertDialogContent>
                         <AlertDialogHeader>
                           <AlertDialogTitle>¿Eliminar producto?</AlertDialogTitle>
@@ -745,6 +752,7 @@ export const Inventory: React.FC<InventoryProps> = ({
                         </AlertDialogFooter>
                       </AlertDialogContent>
                     </AlertDialog>
+                    )}
                   </div>
                 </div>
                 <div className="flex items-center justify-between">
@@ -778,17 +786,19 @@ export const Inventory: React.FC<InventoryProps> = ({
                             disabled={loading}
                             size="sm"
                           />
-                          <AlertDialog>
-                            <AlertDialogTrigger asChild>
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className="h-6 w-6 text-destructive hover:text-destructive hover:bg-destructive/10"
-                                disabled={loading}
-                              >
-                                <X className="h-3 w-3" />
-                              </Button>
-                            </AlertDialogTrigger>
+                          {/* Botón eliminar topping - Solo visible para usuarios con permisos */}
+                          {permissions.canDeleteTopping && (
+                            <AlertDialog>
+                              <AlertDialogTrigger asChild>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-6 w-6 text-destructive hover:text-destructive hover:bg-destructive/10"
+                                  disabled={loading}
+                                >
+                                  <X className="h-3 w-3" />
+                                </Button>
+                              </AlertDialogTrigger>
                             <AlertDialogContent>
                               <AlertDialogHeader>
                                 <AlertDialogTitle>¿Remover topping?</AlertDialogTitle>
@@ -818,6 +828,7 @@ export const Inventory: React.FC<InventoryProps> = ({
                               </AlertDialogFooter>
                             </AlertDialogContent>
                           </AlertDialog>
+                          )}
                         </div>
                       </div>
                     ))}

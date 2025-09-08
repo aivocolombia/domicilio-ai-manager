@@ -197,6 +197,55 @@ class SedeOrdersService {
     }
   }
 
+  // Obtener pedidos del día actual de una sede específica
+  async getTodaySedeOrders(sedeId: string): Promise<SedeOrder[]> {
+    try {
+      console.log('📊 SedeOrders: Obteniendo pedidos del día de sede:', sedeId);
+
+      // Crear fechas del día actual en zona horaria de Colombia
+      const today = new Date();
+      const startOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+      const endOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 23, 59, 59, 999);
+
+      console.log('📅 DEBUG: Filtrando pedidos desde:', startOfDay.toISOString(), 'hasta:', endOfDay.toISOString());
+
+      const { data, error } = await supabase
+        .from('ordenes')
+        .select(`
+          id,
+          status,
+          created_at,
+          observaciones,
+          clientes!inner(nombre, telefono, direccion),
+          pagos!left(type, status, total_pago),
+          ordenes_platos!left(
+            platos!inner(id, name, pricing)
+          ),
+          ordenes_bebidas!left(
+            bebidas!inner(id, name, pricing)
+          )
+        `)
+        .eq('sede_id', sedeId)
+        .gte('created_at', startOfDay.toISOString())
+        .lte('created_at', endOfDay.toISOString())
+        .order('created_at', { ascending: false });
+
+      console.log('📊 DEBUG: Query result - data length:', data?.length, 'error:', error);
+
+      if (error) {
+        console.error('❌ Error obteniendo pedidos del día de sede:', error);
+        throw error;
+      }
+
+      console.log('✅ Pedidos del día obtenidos:', data?.length || 0);
+      return this.processOrdersData(data || [], sedeId);
+
+    } catch (error) {
+      console.error('❌ Error en getTodaySedeOrders:', error);
+      throw error;
+    }
+  }
+
   // Obtener pedidos de una sede específica
   async getSedeOrders(sedeId: string, limit: number = 50): Promise<SedeOrder[]> {
     try {
@@ -227,7 +276,17 @@ class SedeOrdersService {
         throw error;
       }
 
-      const sedeOrders: SedeOrder[] = (data || []).map(order => {
+      return this.processOrdersData(data || [], sedeId);
+
+    } catch (error) {
+      console.error('❌ Error en getSedeOrders:', error);
+      throw error;
+    }
+  }
+
+  // Función auxiliar para procesar datos de órdenes
+  private processOrdersData(data: any[], sedeId: string): SedeOrder[] {
+    const sedeOrders: SedeOrder[] = data.map(order => {
         // Contar elementos agrupados por producto para obtener cantidades
         const platosMap = new Map();
         const bebidasMap = new Map();
@@ -301,13 +360,8 @@ class SedeOrdersService {
         };
       });
 
-      console.log('✅ Pedidos de sede obtenidos:', sedeOrders.length);
+      console.log('✅ Pedidos procesados:', sedeOrders.length);
       return sedeOrders;
-
-    } catch (error) {
-      console.error('❌ Error en getSedeOrders:', error);
-      throw error;
-    }
   }
 
   // Crear nuevo pedido
