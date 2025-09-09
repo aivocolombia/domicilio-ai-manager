@@ -2,6 +2,13 @@ import React, { createContext, useContext, useEffect, useState } from 'react'
 import { User as SupabaseUser } from '@supabase/supabase-js'
 import { supabase, type Database } from '@/lib/supabase'
 
+// Declarar función de emergencia en window para TypeScript
+declare global {
+  interface Window {
+    emergencyLogout?: () => Promise<void>;
+  }
+}
+
 type Profile = Database['public']['Tables']['profiles']['Row'] & {
   sede_name?: string; // Campo adicional para el nombre de la sede
 }
@@ -131,10 +138,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         return null
       }
       
-      // Timeout más corto para producción
+      // Timeout más largo para conectividad lenta
       const timeoutPromise = new Promise<never>((_, reject) => {
-        setTimeout(() => reject(new Error('Timeout')), 10000) // 10 segundos
+        setTimeout(() => reject(new Error('Timeout')), 20000) // 20 segundos
       })
+      
+      console.log('🔍 Intentando obtener perfil desde base de datos...')
       
       const fetchPromise = supabase
         .from('profiles')
@@ -189,6 +198,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       
       // Para errores de timeout/red, retornar null en lugar de crear perfil temporal
       console.warn('⚠️ Error de conexión/timeout, no creando perfil temporal:', error)
+      
+      if (error instanceof Error && error.message === 'Timeout') {
+        // Crear función de emergencia para logout global
+        window.emergencyLogout = async () => {
+          try {
+            console.log('🚨 LOGOUT DE EMERGENCIA ACTIVADO')
+            await supabase.auth.signOut()
+            localStorage.clear()
+            sessionStorage.clear()
+            window.location.href = '/'
+          } catch (e) {
+            console.error('Error en logout de emergencia:', e)
+            window.location.href = '/'
+          }
+        }
+        console.error('🚨 Para logout de emergencia desde consola, ejecuta: window.emergencyLogout()')
+      }
+      
       return null
     }
   }
@@ -305,10 +332,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       // Limpiar estado inmediatamente para evitar llamadas adicionales
       setProfile(null)
       
-      // Limpiar localStorage de vista activa
+      // Limpiar localStorage de vista activa y navegación (SEGURIDAD CRÍTICA)
       localStorage.removeItem('ajiaco-active-tab')
       localStorage.removeItem('ajiaco-admin-active-tab')
-      console.log('🧹 Vistas activas limpiadas del localStorage')
+      localStorage.removeItem('ajiaco-app-view')  // Limpiar vista guardada del useAppState
+      localStorage.removeItem('ajiaco-navigation-history')  // Limpiar historial de navegación
+      console.log('🧹 Vistas activas y navegación limpiadas del localStorage')
       
       // Cerrar sesión en Supabase
       const { error } = await supabase.auth.signOut()

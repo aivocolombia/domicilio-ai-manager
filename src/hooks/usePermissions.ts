@@ -34,7 +34,6 @@ export interface Permissions {
   
   // Dashboard y órdenes
   canViewAllOrders: boolean;
-  canViewCallCenter: boolean;
   canCancelOrder: boolean;
   canTransferOrder: boolean;
   
@@ -70,7 +69,6 @@ const ROLE_PERMISSIONS: Record<UserRole, Permissions> = {
     canEditTopping: true,
     canDeleteTopping: true,
     canViewAllOrders: true,
-    canViewCallCenter: true,
     canCancelOrder: true,
     canTransferOrder: true,
     canViewMetrics: true,
@@ -100,7 +98,6 @@ const ROLE_PERMISSIONS: Record<UserRole, Permissions> = {
     canEditTopping: true,
     canDeleteTopping: true,
     canViewAllOrders: false, // Solo órdenes de su sede
-    canViewCallCenter: true,
     canCancelOrder: true,
     canTransferOrder: false, // No puede transferir a otras sedes
     canViewMetrics: true,
@@ -130,7 +127,6 @@ const ROLE_PERMISSIONS: Record<UserRole, Permissions> = {
     canEditTopping: false,
     canDeleteTopping: false,
     canViewAllOrders: false,
-    canViewCallCenter: false, // No tiene acceso a call center
     canCancelOrder: false,
     canTransferOrder: false,
     canViewMetrics: false,

@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useAuth } from './useAuth';
 
 type AppView = 'main' | 'admin' | 'time-metrics';
 
@@ -6,6 +7,7 @@ const STORAGE_KEY = 'ajiaco-app-view';
 const NAVIGATION_HISTORY_KEY = 'ajiaco-navigation-history';
 
 export const useAppState = () => {
+  const { profile } = useAuth();
   const [showAdminPanel, setShowAdminPanel] = useState(false);
   const [showTimeMetrics, setShowTimeMetrics] = useState(false);
   const [navigationHistory, setNavigationHistory] = useState<AppView[]>([]);
@@ -16,14 +18,26 @@ export const useAppState = () => {
       const savedView = localStorage.getItem(STORAGE_KEY) as AppView;
       const savedHistory = localStorage.getItem(NAVIGATION_HISTORY_KEY);
       console.log('🔄 Cargando vista guardada:', savedView);
+      console.log('🔐 Rol del usuario:', profile?.role);
       
       if (savedHistory) {
         setNavigationHistory(JSON.parse(savedHistory));
       }
       
+      // VALIDACIÓN DE SEGURIDAD: Solo permitir vista admin si el usuario es admin
       if (savedView === 'admin') {
-        setShowAdminPanel(true);
-        setShowTimeMetrics(false);
+        if (profile?.role === 'admin') {
+          setShowAdminPanel(true);
+          setShowTimeMetrics(false);
+          console.log('✅ Usuario admin autorizado para vista admin');
+        } else {
+          console.warn('⚠️ SEGURIDAD: Usuario no-admin intentó acceder a vista admin, redirigiendo a vista principal');
+          // Limpiar localStorage malicioso y ir a vista principal
+          localStorage.setItem(STORAGE_KEY, 'main');
+          localStorage.removeItem(NAVIGATION_HISTORY_KEY);
+          setShowAdminPanel(false);
+          setShowTimeMetrics(false);
+        }
       } else if (savedView === 'time-metrics') {
         setShowAdminPanel(false);
         setShowTimeMetrics(true);
@@ -39,10 +53,16 @@ export const useAppState = () => {
       setShowTimeMetrics(false);
       setNavigationHistory([]);
     }
-  }, []);
+  }, [profile?.role]);
 
   // Función para mostrar AdminPanel
   const navigateToAdmin = () => {
+    // VALIDACIÓN DE SEGURIDAD: Solo permitir acceso a usuarios admin
+    if (profile?.role !== 'admin') {
+      console.error('🚫 ACCESO DENEGADO: Solo usuarios admin pueden acceder al panel de administración');
+      return;
+    }
+    
     console.log('📍 Navegando a Admin Panel');
     const newHistory = [...navigationHistory, 'admin'];
     setNavigationHistory(newHistory);

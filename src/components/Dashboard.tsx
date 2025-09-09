@@ -31,7 +31,8 @@ import {
   ChevronLeft,
   ChevronRight,
   Eye,
-  MessageCircle
+  MessageCircle,
+  Printer
 } from 'lucide-react';
 import { Calendar as CalendarComponent } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
@@ -45,6 +46,7 @@ import { createDateRangeForQuery, formatDateTimeForDisplay, debugTodayFilter } f
 import { Order, OrderStatus, OrderSource, DeliverySettings, DeliveryPerson, PaymentMethod } from '@/types/delivery';
 import { OrderConfigModal } from './OrderConfigModal';
 import { OrderDetailsModal } from './OrderDetailsModal';
+import { MinutaModal } from './MinutaModal';
 import { cn } from '@/lib/utils';
 import { useDashboard } from '@/hooks/useDashboard';
 import { logDebug, logError, logWarn } from '@/utils/logger';
@@ -79,7 +81,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
   const [selectedOrders, setSelectedOrders] = useState<string[]>([]);
   const [isConfigModalOpen, setIsConfigModalOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
-  const [statusFilter, setStatusFilter] = useState<string>('active'); // Solo pedidos activos por defecto
+  const [statusFilter, setStatusFilter] = useState<string>('todos'); // Todos los pedidos por defecto
   
   // Estados para filtros de fecha
   const [dateFilter, setDateFilter] = useState<'today' | 'custom'>('today'); // Default: Solo hoy
@@ -119,6 +121,10 @@ export const Dashboard: React.FC<DashboardProps> = ({
   // Estados para modal de detalles del pedido
   const [orderDetailsModalOpen, setOrderDetailsModalOpen] = useState(false);
   const [selectedOrderId, setSelectedOrderId] = useState<number | null>(null);
+
+  // Estados para modal de impresión de minuta
+  const [printMinutaModalOpen, setPrintMinutaModalOpen] = useState(false);
+  const [selectedOrderForMinuta, setSelectedOrderForMinuta] = useState<DashboardOrder | null>(null);
 
   // Estados para ordenamiento
   const [sortField, setSortField] = useState<keyof DashboardOrder>('creado_fecha');
@@ -551,11 +557,9 @@ export const Dashboard: React.FC<DashboardProps> = ({
       
       // Filtro de estado mejorado
       let matchesStatus = false;
-      if (statusFilter === 'all') {
-        matchesStatus = true;
-      } else if (statusFilter === 'active') {
-        // Pedidos activos: todos excepto entregados y cancelados
-        matchesStatus = realOrder.estado !== 'Entregado' && 
+      if (statusFilter === 'todos') {
+        // Por defecto solo mostrar pedidos activos (no entregados ni cancelados)
+        matchesStatus = realOrder.estado !== 'Entregados' && 
                        realOrder.estado !== 'Cancelado' && 
                        realOrder.estado !== 'delivered' && 
                        realOrder.estado !== 'cancelled';
@@ -604,7 +608,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
   }, [sortedOrders, currentPage, itemsPerPage]);
 
   // Extract for compatibility
-  const { totalItems, totalPages, paginatedOrders } = paginationData;
+  const { totalItems, totalPages, startIndex, endIndex, paginatedOrders } = paginationData;
 
   // Función para aplicar filtros de fecha
   const applyDateFilter = async () => {
@@ -666,8 +670,8 @@ export const Dashboard: React.FC<DashboardProps> = ({
     }
     
     // Aplicar también el filtro de estado actual si existe
-    // No enviar 'active' al servidor, solo filtros específicos
-    if (statusFilter && statusFilter !== 'all' && statusFilter !== 'active') {
+    // No enviar 'todos' al servidor, solo filtros específicos
+    if (statusFilter && statusFilter !== 'todos') {
       filters.estado = statusFilter;
     }
     
@@ -1139,8 +1143,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
               </div>
               <div className="flex gap-2">
                 {[
-                  { value: 'active', label: 'Activos' },
-                  { value: 'all', label: 'Todos' },
+                  { value: 'todos', label: 'Todos' },
                   { value: 'Recibidos', label: 'Recibidos' },
                   { value: 'Cocina', label: 'Cocina' },
                   { value: 'Camino', label: 'Camino' },
@@ -1212,6 +1215,9 @@ export const Dashboard: React.FC<DashboardProps> = ({
                   <th className="text-left p-2 cursor-pointer hover:bg-gray-100" onClick={() => handleSort('id_display')}>
                     ID {getSortIcon('id_display')}
                   </th>
+                  <th className="text-left p-2">
+                    Minuta
+                  </th>
                   <th className="text-left p-2 cursor-pointer hover:bg-gray-100" onClick={() => handleSort('cliente_nombre')}>
                     Cliente {getSortIcon('cliente_nombre')}
                   </th>
@@ -1245,7 +1251,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
               <tbody>
                 {loading ? (
                   <tr>
-                    <td colSpan={13} className="p-8 text-center text-muted-foreground">
+                    <td colSpan={14} className="p-8 text-center text-muted-foreground">
                       <div className="flex items-center justify-center gap-2">
                         <RefreshCw className="h-4 w-4 animate-spin" />
                         Cargando órdenes...
@@ -1254,7 +1260,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                   </tr>
                 ) : paginatedOrders.length === 0 ? (
                   <tr>
-                    <td colSpan={13} className="p-8 text-center text-muted-foreground">
+                    <td colSpan={14} className="p-8 text-center text-muted-foreground">
                       No se encontraron órdenes
                     </td>
                   </tr>
@@ -1281,6 +1287,17 @@ export const Dashboard: React.FC<DashboardProps> = ({
                           />
                         </td>
                         <td className="p-2 font-mono text-sm">{realOrder.id_display}</td>
+                        <td className="p-2">
+                          <div className="flex items-center justify-center">
+                            {realOrder.minuta_id ? (
+                              <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200 font-mono">
+                                #{realOrder.minuta_id}
+                              </Badge>
+                            ) : (
+                              <span className="text-gray-400 text-xs">Sin minuta</span>
+                            )}
+                          </div>
+                        </td>
                         <td className="p-2">
                           <div>
                             <div className="font-medium">{realOrder.cliente_nombre}</div>
@@ -1337,6 +1354,22 @@ export const Dashboard: React.FC<DashboardProps> = ({
                         </td>
                         <td className="p-2" onClick={(e) => e.stopPropagation()}>
                           <div className="flex items-center gap-1">
+                            {/* Botón de imprimir minuta - solo si tiene minuta_id */}
+                            {realOrder.minuta_id && (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => {
+                                  setSelectedOrderForMinuta(realOrder);
+                                  setPrintMinutaModalOpen(true);
+                                }}
+                                className="h-8 w-8 p-0 border-blue-300 text-blue-600 hover:bg-blue-50"
+                                title={`Imprimir minuta #${realOrder.minuta_id}`}
+                              >
+                                <Printer className="h-4 w-4" />
+                              </Button>
+                            )}
+                            
                             {/* Botón de cancelar - solo para pedidos que no estén cancelados o entregados */}
                             {realOrder.estado !== 'Cancelado' && realOrder.estado !== 'Entregados' && (
                               <Button
@@ -1756,6 +1789,16 @@ export const Dashboard: React.FC<DashboardProps> = ({
           setSelectedOrderId(null);
         }}
         orderId={selectedOrderId}
+      />
+
+      {/* Modal para imprimir minuta */}
+      <MinutaModal
+        isOpen={printMinutaModalOpen}
+        onClose={() => {
+          setPrintMinutaModalOpen(false);
+          setSelectedOrderForMinuta(null);
+        }}
+        orderId={selectedOrderForMinuta?.orden_id || 0}
       />
     </div>
   );

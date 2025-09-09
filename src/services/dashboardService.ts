@@ -17,6 +17,7 @@ export interface DashboardOrder {
   creado_fecha: string;
   orden_id: number;
   payment_id: number;
+  minuta_id?: string; // ID diario de la minuta (ej: "1", "2", "3")
 }
 
 export interface DashboardFilters {
@@ -53,10 +54,11 @@ export class DashboardService {
           cliente_id,
           repartidor_id,
           sede_id,
-          clientes!inner(nombre, telefono, direccion),
+          clientes!left(nombre, telefono, direccion),
           pagos!left(type, status, total_pago),
           repartidores!left(nombre),
-          sedes!left(name)
+          sedes!left(name),
+          minutas!left(daily_id)
         `)
         .order('created_at', { ascending: false });
 
@@ -171,7 +173,8 @@ export class DashboardService {
         }),
         creado_fecha: new Date(order.created_at).toLocaleDateString('es-CO'),
         orden_id: order.id,
-        payment_id: order.payment_id || 0
+        payment_id: order.payment_id || 0,
+        minuta_id: order.minutas && order.minutas.length > 0 ? order.minutas[0].daily_id.toString() : undefined
       }));
 
       console.log('✅ Órdenes del dashboard obtenidas:', transformedOrders.length);

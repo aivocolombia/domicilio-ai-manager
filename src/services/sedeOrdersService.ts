@@ -52,6 +52,8 @@ export interface CreateOrderData {
   sede_id: string;
   // Tiempo de entrega en minutos (opcional, por defecto 90)
   delivery_time_minutes?: number;
+  // Valor del domicilio (opcional, por defecto 6000)
+  delivery_cost?: number;
   // Datos para actualización de cliente
   update_customer_data?: {
     nombre: string;
@@ -441,7 +443,7 @@ class SedeOrdersService {
       }
 
       // Paso 2: Calcular total
-      const total = await this.calculateOrderTotal(orderData.items, orderData.tipo_entrega);
+      const total = await this.calculateOrderTotal(orderData.items, orderData.tipo_entrega, orderData.delivery_cost);
 
       // Paso 3: Crear pago
       const { data: pago, error: pagoError } = await supabase
@@ -476,6 +478,7 @@ class SedeOrdersService {
           sede_id: orderData.sede_id,
           observaciones: orderData.instrucciones,
           hora_entrega: horaEntrega.toISOString(),
+          precio_envio: orderData.tipo_entrega === 'delivery' ? (orderData.delivery_cost || 6000) : 0,
           // TODO: Agregar campos adicionales como tipo_entrega, sede_recogida cuando estén disponibles
         })
         .select('id')
@@ -508,7 +511,7 @@ class SedeOrdersService {
   }
 
   // Función auxiliar para calcular el total del pedido
-  private async calculateOrderTotal(items: CreateOrderData['items'], tipoEntrega: 'delivery' | 'pickup'): Promise<number> {
+  private async calculateOrderTotal(items: CreateOrderData['items'], tipoEntrega: 'delivery' | 'pickup', deliveryCost?: number): Promise<number> {
     let total = 0;
 
     for (const item of items) {
@@ -535,10 +538,11 @@ class SedeOrdersService {
       }
     }
 
-    // Add delivery fee of 6000 for delivery orders
+    // Add custom delivery fee or default 6000 for delivery orders
     if (tipoEntrega === 'delivery') {
-      total += 6000;
-      console.log('✅ Delivery fee of 6000 added to order total');
+      const finalDeliveryCost = deliveryCost !== undefined ? deliveryCost : 6000;
+      total += finalDeliveryCost;
+      console.log(`✅ Delivery fee of ${finalDeliveryCost} added to order total`);
     }
 
     return total;

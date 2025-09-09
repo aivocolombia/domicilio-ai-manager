@@ -3,7 +3,6 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Dashboard } from '@/components/Dashboard';
 import { Inventory } from '@/components/Inventory';
 import { DeliveryPersonnel } from '@/components/DeliveryPersonnel';
-import CallCenter from '@/components/CallCenter';
 import { UserProfile } from '@/components/UserProfile';
 import { SedeOrders } from '@/components/SedeOrders';
 
@@ -12,7 +11,7 @@ const AdminPanel = lazy(() => import('@/components/AdminPanel').then(module => (
 const TimeMetricsPage = lazy(() => import('@/components/TimeMetricsPage').then(module => ({ default: module.TimeMetricsPage })));
 
 import { Order, DeliverySettings, OrderSource, DeliveryPerson, PaymentMethod, PaymentStatus, User as UserType, Sede, OrderStatus, DeliveryType } from '@/types/delivery';
-import { LayoutDashboard, Package, Users, Phone, Store, Settings, Building2, ChevronDown } from 'lucide-react';
+import { LayoutDashboard, Package, Users, Store, Settings, Building2, ChevronDown } from 'lucide-react';
 import { StatusBar } from '@/components/StatusBar';
 import { Loading } from '@/components/Loading';
 import { InventoryProvider } from '@/contexts/InventoryContext';
@@ -459,7 +458,7 @@ const Index = () => {
 
         <div className="container mx-auto p-6">
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-          <TabsList className={`grid w-full ${permissions.canViewCallCenter ? 'grid-cols-5' : 'grid-cols-4'} lg:w-auto ${permissions.canViewCallCenter ? 'lg:grid-cols-5' : 'lg:grid-cols-4'} bg-brand-secondary`}>
+          <TabsList className={`grid w-full ${isAdmin ? 'grid-cols-3' : 'grid-cols-4'} lg:w-auto ${isAdmin ? 'lg:grid-cols-3' : 'lg:grid-cols-4'} bg-brand-secondary`}>
             <TabsTrigger value="dashboard" className="flex items-center gap-2 data-[state=active]:bg-brand-primary data-[state=active]:text-white">
               <LayoutDashboard className="h-4 w-4" />
               Dashboard
@@ -472,17 +471,13 @@ const Index = () => {
               <Users className="h-4 w-4" />
               Repartidores
             </TabsTrigger>
-            {/* Call Center - Ocultar para agentes */}
-            {permissions.canViewCallCenter && (
-              <TabsTrigger value="callcenter" className="flex items-center gap-2 data-[state=active]:bg-brand-primary data-[state=active]:text-white">
-                <Phone className="h-4 w-4" />
-                Call Center
+            {/* Sede Local - Solo para administrador de punto y agentes */}
+            {!isAdmin && (
+              <TabsTrigger value="sede" className="flex items-center gap-2 data-[state=active]:bg-brand-primary data-[state=active]:text-white">
+                <Store className="h-4 w-4" />
+                Sede Local
               </TabsTrigger>
             )}
-            <TabsTrigger value="sede" className="flex items-center gap-2 data-[state=active]:bg-brand-primary data-[state=active]:text-white">
-              <Store className="h-4 w-4" />
-              Sede Local
-            </TabsTrigger>
           </TabsList>
 
           <TabsContent value="dashboard">
@@ -511,33 +506,23 @@ const Index = () => {
             />
           </TabsContent>
 
-          {/* Call Center Content - Solo visible para usuarios con permiso */}
-          {permissions.canViewCallCenter && (
-            <TabsContent value="callcenter">
-              <CallCenter
+
+          {/* Sede Local Content - Solo para administrador de punto y agentes */}
+          {!isAdmin && (
+            <TabsContent value="sede">
+              <SedeOrders
                 orders={orders}
                 sedes={sedes}
+                currentUser={currentUser}
                 settings={settings}
                 effectiveSedeId={effectiveSedeId}
                 currentSedeName={currentSedeName}
                 onCreateOrder={handleCreateOrder}
+                onTransferOrder={handleTransferOrder}
+                onNavigateToDashboard={() => setActiveTab('dashboard')}
               />
             </TabsContent>
           )}
-
-          <TabsContent value="sede">
-            <SedeOrders
-              orders={orders}
-              sedes={sedes}
-              currentUser={currentUser}
-              settings={settings}
-              effectiveSedeId={effectiveSedeId}
-              currentSedeName={currentSedeName}
-              onCreateOrder={handleCreateOrder}
-              onTransferOrder={handleTransferOrder}
-              onNavigateToDashboard={() => setActiveTab('dashboard')}
-            />
-          </TabsContent>
         </Tabs>
         </div>
       </div>

@@ -1,30 +1,11 @@
 {
   "permissions": {
     "allow": [
-      "Bash(npm run:*)",
-      "Bash(git checkout:*)",
-      "Bash(node:*)",
-      "Bash(rm:*)",
-      "Bash(rg:*)",
-      "Bash(find:*)",
-      "Bash(for component in accordion aspect-ratio breadcrumb carousel chart collapsible command context-menu drawer form hover-card input-otp menubar navigation-menu pagination resizable scroll-area sheet sidebar skeleton slider toggle toggle-group)",
-      "Bash(do echo -n \"$component: \")",
-      "Bash(if rg -q \"import.*$component\" src/)",
-      "Bash(then echo \"USED\")",
-      "Bash(else echo \"UNUSED\")",
-      "Bash(fi)",
-      "Bash(done)",
-      "Bash(for dep in \"embla-carousel-react\" \"next-themes\" \"react-day-picker\" \"react-resizable-panels\" \"vaul\" \"input-otp\" \"cmdk\")",
-      "Bash(do echo -n \"$dep: \")",
-      "Bash(if rg -q \"$dep\" src/)",
-      "Bash(timeout 10s npm run dev)",
-      "Bash(timeout 15s npm run dev)",
-      "Bash(grep:*)",
-      "Bash(set VITE_SUPABASE_URL=https://hcyxhuvyqvtlvfsnrhjw.supabase.co)",
-      "Bash(set:*)",
-      "Bash(VITE_SUPABASE_URL=https://hcyxhuvyqvtlvfsnrhjw.supabase.co VITE_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhjeXhodXZ5cXZ0bHZmc25yaGp3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTIxNjA2NTksImV4cCI6MjA2NzczNjY1OX0.NvBEq1Nofeu04OMRtd7Bwn_Je5MkmALSIm3kN-HkT0Y node check-roles.js)",
-      "Bash(VITE_SUPABASE_URL=https://hcyxhuvyqvtlvfsnrhjw.supabase.co VITE_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhjeXhodXZ5cXZ0bHZmc25yaGp3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTIxNjA2NTksImV4cCI6MjA2NzczNjY1OX0.NvBEq1Nofeu04OMRtd7Bwn_Je5MkmALSIm3kN-HkT0Y node check-orders.js)"
+      "Bash(VITE_SUPABASE_URL=https://hcyxhuvyqvtlvfsnrhjw.supabase.co VITE_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhjeXhodXZ5cXZ0bHZmc25yaGp3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTIxNjA2NTksImV4cCI6MjA2NzczNjY1OX0.NvBEq1Nofeu04OMRtd7Bwn_Je5MkmALSIm3kN-HkT0Y node -e \"const { createClient } = require(''@supabase/supabase-js''); const supabase = createClient(process.env.VITE_SUPABASE_URL, process.env.VITE_SUPABASE_ANON_KEY); supabase.from(''ordenes'').select(''id, precio_envio, created_at'').order(''id'', { ascending: false }).limit(5).then(r => console.log(''Recent orders with precio_envio:'', JSON.stringify(r.data, null, 2)));\")",
+      "Bash(VITE_SUPABASE_URL=https://hcyxhuvyqvtlvfsnrhjw.supabase.co VITE_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhjeXhodXZ5cXZ0bHZmc25yaGp3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTIxNjA2NTksImV4cCI6MjA2NzczNjY1OX0.NvBEq1Nofeu04OMRtd7Bwn_Je5MkmALSIm3kN-HkT0Y node -e \"const { createClient } = require(''@supabase/supabase-js''); const supabase = createClient(process.env.VITE_SUPABASE_URL, process.env.VITE_SUPABASE_ANON_KEY); supabase.from(''ordenes'').select(''id, status, created_at, observaciones, precio_envio, clientes!inner(nombre, telefono, direccion), pagos!left(type, total_pago), repartidores!left(nombre), minutas!left(daily_id)'').eq(''id'', 61).single().then(r => console.log(''Order 61 full data:'', JSON.stringify(r.data, null, 2)));\")"
     ],
+    "deny": [],
+    "ask": [],
     "additionalDirectories": [
       "C:\\c\\Users\\USER\\Documents\\GitHub"
     ]

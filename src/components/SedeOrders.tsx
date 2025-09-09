@@ -27,7 +27,8 @@ import {
   Package,
   ShoppingCart,
   RefreshCw,
-  Building2
+  Building2,
+  Navigation
 } from 'lucide-react';
 import { Order, Sede, User as UserType, PaymentMethod, DeliveryType, DeliverySettings } from '@/types/delivery';
 import { useMenu } from '@/hooks/useMenu';
@@ -77,6 +78,7 @@ export const SedeOrders: React.FC<SedeOrdersProps> = ({
 
   const [searchPhone, setSearchPhone] = useState('');
   const [showCreateDialog, setShowCreateDialog] = useState(false);
+  const [showZeroDeliveryConfirm, setShowZeroDeliveryConfirm] = useState(false);
   const [customerData, setCustomerData] = useState({
     name: '',
     phone: '',
@@ -93,12 +95,26 @@ export const SedeOrders: React.FC<SedeOrdersProps> = ({
     pickupCustomerName: '',
     pickupCustomerPhone: '',
     // Tiempo de entrega en minutos (por defecto 90)
-    deliveryTimeMinutes: 90
+    deliveryTimeMinutes: 90,
+    // Valor del domicilio
+    deliveryCost: 0
   });
 
 
   // Usar SOLO pedidos reales - NUNCA legacy/dummy
   const orders = realOrders;
+
+  // Función para abrir Google Maps con navegación
+  const openGoogleMaps = (orderAddress: string) => {
+    // Dirección de la sede (se puede obtener del perfil o configurar por defecto)
+    const sedeAddress = profile?.sede_name || currentUser.sede || 'Restaurante Ajiaco, Bogotá, Colombia';
+    
+    // URL de Google Maps para navegación desde sede hasta dirección del pedido
+    const googleMapsUrl = `https://www.google.com/maps/dir/${encodeURIComponent(sedeAddress)}/${encodeURIComponent(orderAddress)}`;
+    
+    // Abrir en nueva pestaña
+    window.open(googleMapsUrl, '_blank');
+  };
 
   // Cargar pedidos al montar el componente usando effectiveSedeId
   useEffect(() => {
@@ -135,6 +151,20 @@ export const SedeOrders: React.FC<SedeOrdersProps> = ({
 
   // Función para abrir el modal de crear pedido con datos precargados
   const handleOpenCreateDialog = () => {
+    // Resetear completamente el formulario
+    setNewOrder({
+      address: '',
+      items: [],
+      paymentMethod: 'cash',
+      specialInstructions: '',
+      deliveryType: 'delivery',
+      pickupSede: '',
+      pickupCustomerName: '',
+      pickupCustomerPhone: '',
+      deliveryTimeMinutes: 90,
+      deliveryCost: 0
+    });
+    
     // Precargar datos del cliente si están disponibles
     if (customer) {
       setCustomerData({
@@ -146,6 +176,12 @@ export const SedeOrders: React.FC<SedeOrdersProps> = ({
       setCustomerData({
         name: '',
         phone: searchPhone.trim(),
+        address: ''
+      });
+    } else {
+      setCustomerData({
+        name: '',
+        phone: '',
         address: ''
       });
     }
@@ -238,8 +274,8 @@ export const SedeOrders: React.FC<SedeOrdersProps> = ({
       return total + (product ? product.pricing * item.quantity : 0);
     }, 0);
     
-    // Add delivery fee of 6000 for delivery orders
-    const deliveryFee = newOrder.deliveryType === 'delivery' ? 6000 : 0;
+    // Add delivery fee using custom value for delivery orders
+    const deliveryFee = newOrder.deliveryType === 'delivery' ? newOrder.deliveryCost : 0;
     return itemsTotal + deliveryFee;
   };
 
@@ -251,6 +287,16 @@ export const SedeOrders: React.FC<SedeOrdersProps> = ({
     if (!effectiveSedeId) return; // Validar que hay sede efectiva (seleccionada por admin o asignada al agente)
     if (!customerData.name || !customerData.phone) return;
 
+    // Validar valor de domicilio si es delivery
+    if (newOrder.deliveryType === 'delivery' && newOrder.deliveryCost === 0) {
+      setShowZeroDeliveryConfirm(true);
+      return;
+    }
+
+    await executeCreateOrder();
+  };
+
+  const executeCreateOrder = async () => {
     try {
       // Validar que todos los productos existan antes de crear el pedido
       console.log('🔍 Validando existencia de productos antes de crear pedido...');
@@ -292,6 +338,7 @@ export const SedeOrders: React.FC<SedeOrdersProps> = ({
                    newOrder.paymentMethod === 'nequi' ? 'nequi' : 'transferencia',
         instrucciones: newOrder.specialInstructions || undefined,
         delivery_time_minutes: newOrder.deliveryTimeMinutes,
+        delivery_cost: newOrder.deliveryType === 'delivery' ? newOrder.deliveryCost : undefined,
         items: newOrder.items.map(item => {
           // Extraer el ID real y tipo del productId único (formato: "tipo_id")
           const [productType, realProductId] = item.productId.split('_');
@@ -347,7 +394,8 @@ export const SedeOrders: React.FC<SedeOrdersProps> = ({
         pickupSede: '',
         pickupCustomerName: '',
         pickupCustomerPhone: '',
-        deliveryTimeMinutes: 90
+        deliveryTimeMinutes: 90,
+        deliveryCost: 0
       });
       setCustomerData({
         name: '',
@@ -514,7 +562,8 @@ export const SedeOrders: React.FC<SedeOrdersProps> = ({
                   pickupSede: '',
                   pickupCustomerName: '',
                   pickupCustomerPhone: '',
-                  deliveryTimeMinutes: 90
+                  deliveryTimeMinutes: 90,
+                  deliveryCost: 0
                 });
                 setCustomerData({
                   name: '',
@@ -589,7 +638,13 @@ export const SedeOrders: React.FC<SedeOrdersProps> = ({
                     <Label>Tipo de Entrega</Label>
                     <RadioGroup
                       value={newOrder.deliveryType}
-                      onValueChange={(value: DeliveryType) => setNewOrder({ ...newOrder, deliveryType: value, address: '', pickupSede: '' })}
+                      onValueChange={(value: DeliveryType) => setNewOrder({ 
+                        ...newOrder, 
+                        deliveryType: value, 
+                        address: '', 
+                        pickupSede: '',
+                        deliveryCost: value === 'delivery' ? newOrder.deliveryCost : 0
+                      })}
                       className="flex gap-6"
                     >
                       <div className="flex items-center space-x-2">
@@ -604,14 +659,63 @@ export const SedeOrders: React.FC<SedeOrdersProps> = ({
                   </div>
 
                   {newOrder.deliveryType === 'delivery' ? (
-                    <div>
-                      <Label htmlFor="address">Dirección de Entrega *</Label>
-                      <Input
-                        id="address"
-                        value={customerData.address}
-                        onChange={(e) => setCustomerData(prev => ({ ...prev, address: e.target.value }))}
-                        placeholder="Ingrese la dirección completa"
-                      />
+                    <div className="space-y-3">
+                      <div>
+                        <Label htmlFor="address">Dirección de Entrega *</Label>
+                        <div className="flex gap-2">
+                          <Input
+                            id="address"
+                            value={customerData.address}
+                            onChange={(e) => setCustomerData(prev => ({ ...prev, address: e.target.value }))}
+                            placeholder="Ingrese la dirección completa"
+                            className="flex-1"
+                          />
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={() => {
+                              if (customerData.address.trim()) {
+                                openGoogleMaps(customerData.address);
+                              } else {
+                                toast({
+                                  title: "Dirección requerida",
+                                  description: "Por favor ingrese una dirección antes de abrir el mapa",
+                                  variant: "destructive"
+                                });
+                              }
+                            }}
+                            disabled={!customerData.address.trim()}
+                            className="px-3"
+                            title="Ver ubicación en Google Maps"
+                          >
+                            <Navigation className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      </div>
+                      <div>
+                        <Label htmlFor="deliveryCost">Valor del Domicilio *</Label>
+                        <Input
+                          id="deliveryCost"
+                          type="text"
+                          value={newOrder.deliveryCost === 0 ? '' : newOrder.deliveryCost.toString()}
+                          onChange={(e) => {
+                            console.log('🔍 DEBUG: deliveryCost onChange:', e.target.value);
+                            const value = e.target.value.replace(/[^0-9]/g, '');
+                            const numericValue = value === '' ? 0 : parseInt(value, 10);
+                            console.log('🔍 DEBUG: deliveryCost set to:', numericValue);
+                            setNewOrder({ ...newOrder, deliveryCost: numericValue });
+                          }}
+                          onFocus={() => console.log('🔍 DEBUG: deliveryCost focused')}
+                          onBlur={() => console.log('🔍 DEBUG: deliveryCost blurred')}
+                          placeholder="Ingrese el valor del domicilio (ej: 6000)"
+                          disabled={false}
+                          readOnly={false}
+                        />
+                        <p className="text-xs text-gray-600 mt-1">
+                          Si es 0, se mostrará una confirmación antes de crear el pedido
+                        </p>
+                      </div>
                     </div>
                   ) : (
                     <div className="space-y-3">
@@ -772,6 +876,13 @@ export const SedeOrders: React.FC<SedeOrdersProps> = ({
                           );
                         })}
                         <div className="border-t pt-2">
+                          {newOrder.deliveryType === 'delivery' && newOrder.deliveryCost > 0 && (
+                            <div className="text-sm text-gray-600 mb-1">
+                              Subtotal productos: ${(calculateTotal() - newOrder.deliveryCost).toLocaleString()}
+                              <br />
+                              Domicilio: ${newOrder.deliveryCost.toLocaleString()}
+                            </div>
+                          )}
                           <p className="font-bold text-lg">Total: ${calculateTotal().toLocaleString()}</p>
                         </div>
                       </div>
@@ -933,12 +1044,13 @@ export const SedeOrders: React.FC<SedeOrdersProps> = ({
                 <TableHead>Total</TableHead>
                 <TableHead>Estado</TableHead>
                 <TableHead>Pago</TableHead>
+                <TableHead>Acciones</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {loading ? (
                 <TableRow>
-                  <TableCell colSpan={6} className="text-center py-8">
+                  <TableCell colSpan={7} className="text-center py-8">
                     <div className="flex items-center justify-center gap-2">
                       <RefreshCw className="h-4 w-4 animate-spin" />
                       Cargando pedidos...
@@ -947,7 +1059,7 @@ export const SedeOrders: React.FC<SedeOrdersProps> = ({
                 </TableRow>
               ) : sedeOrders.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
+                  <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
                     No hay pedidos para mostrar
                   </TableCell>
                 </TableRow>
@@ -989,6 +1101,22 @@ export const SedeOrders: React.FC<SedeOrdersProps> = ({
                           {order.pago_estado}
                         </Badge>
                       </TableCell>
+                      <TableCell>
+                        <div className="flex gap-2">
+                          {/* Botón de Google Maps solo para domicilios */}
+                          {order.direccion && !order.direccion.includes('Recogida en') && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => openGoogleMaps(order.direccion)}
+                              className="h-8 w-8 p-0"
+                              title="Abrir en Google Maps"
+                            >
+                              <Navigation className="h-4 w-4" />
+                            </Button>
+                          )}
+                        </div>
+                      </TableCell>
                     </TableRow>
                   );
                 })
@@ -997,6 +1125,43 @@ export const SedeOrders: React.FC<SedeOrdersProps> = ({
           </Table>
         </CardContent>
       </Card>
+
+      {/* Modal de confirmación para domicilio con valor 0 */}
+      <Dialog open={showZeroDeliveryConfirm} onOpenChange={setShowZeroDeliveryConfirm}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-amber-600">
+              <AlertTriangle className="h-5 w-5" />
+              Confirmar Domicilio Sin Costo
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <p className="text-gray-700">
+              Has ingresado <strong>$0</strong> como valor de domicilio para este pedido.
+            </p>
+            <p className="text-sm text-gray-600">
+              ¿Estás seguro de que deseas crear el pedido sin costo de domicilio?
+            </p>
+            <div className="flex gap-3 justify-end">
+              <Button 
+                variant="outline" 
+                onClick={() => setShowZeroDeliveryConfirm(false)}
+              >
+                Cancelar
+              </Button>
+              <Button 
+                onClick={async () => {
+                  setShowZeroDeliveryConfirm(false);
+                  await executeCreateOrder();
+                }}
+                className="bg-amber-600 hover:bg-amber-700"
+              >
+                Sí, Crear Pedido
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
