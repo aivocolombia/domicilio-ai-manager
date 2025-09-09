@@ -53,7 +53,7 @@ export const CacheProvider: React.FC<CacheProviderProps> = ({
     return () => clearInterval(cleanup);
   }, []);
 
-  const get = useCallback(<T>(key: string): T | null => {
+  const get = useCallback(<T extends unknown>(key: string): T | null => {
     const entry = cacheRef.current.get(key) as CacheEntry<T> | undefined;
     
     if (!entry) {
@@ -71,7 +71,7 @@ export const CacheProvider: React.FC<CacheProviderProps> = ({
     return entry.data;
   }, []);
 
-  const set = useCallback(<T>(key: string, data: T, ttl: number = defaultTTL) => {
+  const set = useCallback(<T extends unknown>(key: string, data: T, ttl: number = defaultTTL) => {
     const now = Date.now();
     const entry: CacheEntry<T> = {
       data,
@@ -155,11 +155,11 @@ export const useCache = (): CacheContextType => {
 export const useSedeCache = () => {
   const cache = useCache();
   
-  const getSedeData = useCallback(<T>(sedeId: string, type: 'info' | 'platos' | 'bebidas' | 'toppings'): T | null => {
+  const getSedeData = useCallback(<T extends unknown>(sedeId: string, type: 'info' | 'platos' | 'bebidas' | 'toppings'): T | null => {
     return cache.get(`sede:${sedeId}:${type}`);
   }, [cache]);
 
-  const setSedeData = useCallback(<T>(sedeId: string, type: 'info' | 'platos' | 'bebidas' | 'toppings', data: T) => {
+  const setSedeData = useCallback(<T extends unknown>(sedeId: string, type: 'info' | 'platos' | 'bebidas' | 'toppings', data: T) => {
     // TTL más largo para datos de sede (15 minutos)
     cache.set(`sede:${sedeId}:${type}`, data, 15 * 60 * 1000);
   }, [cache]);

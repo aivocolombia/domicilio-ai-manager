@@ -47,7 +47,7 @@ interface MemoEntry<T> {
   ttl: number;
 }
 
-export const usePersistentMemo = <T>(
+export const usePersistentMemo = <T extends unknown>(
   key: string,
   factory: () => T,
   deps: React.DependencyList,
