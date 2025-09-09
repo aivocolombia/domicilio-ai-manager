@@ -1,7 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
 import { SUPABASE_CONFIG } from '@/config/api';
 
-// Verificar configuraciÃ³n antes de crear el cliente
+// Verificar configuración antes de crear el cliente
 if (!SUPABASE_CONFIG.URL || !SUPABASE_CONFIG.ANON_KEY) {
   console.error('ERROR: Variables de entorno de Supabase no configuradas');
   throw new Error('Variables de entorno de Supabase no configuradas');
@@ -414,6 +414,49 @@ export interface Database {
           created_at?: string;
           orden_id?: number | null;
           bebidas_id?: number | null;
+        };
+      };
+      minutas: {
+        Row: {
+          id: number; // bigint
+          order_id: number | null; // bigint
+          sede_id: string | null; // uuid
+          dia: string | null; // date
+          daily_id: number | null; // integer
+          created_at: string;
+        };
+        Insert: {
+          id?: number;
+          order_id?: number | null;
+          sede_id?: string | null;
+          dia?: string | null;
+          daily_id?: number | null;
+          created_at?: string;
+        };
+        Update: {
+          id?: number;
+          order_id?: number | null;
+          sede_id?: string | null;
+          dia?: string | null;
+          daily_id?: number | null;
+          created_at?: string;
+        };
+      };
+      daily_minuta_counters_sede: {
+        Row: {
+          fecha: string; // date
+          sede_id: string; // uuid
+          last_value: number; // integer
+        };
+        Insert: {
+          fecha: string;
+          sede_id: string;
+          last_value: number;
+        };
+        Update: {
+          fecha?: string;
+          sede_id?: string;
+          last_value?: number;
         };
       };
     };

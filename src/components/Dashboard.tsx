@@ -82,6 +82,9 @@ export const Dashboard: React.FC<DashboardProps> = ({
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('todos'); // Todos los pedidos por defecto
   
+  // Estado para toggle entre delivery y pickup
+  const [viewMode, setViewMode] = useState<'delivery' | 'pickup'>('delivery');
+  
   // Estados para filtros de fecha
   const [dateFilter, setDateFilter] = useState<'today' | 'custom'>('today'); // Default: Solo hoy
   const [dateRange, setDateRange] = useState<{ from: Date | undefined; to: Date | undefined }>({
@@ -90,6 +93,8 @@ export const Dashboard: React.FC<DashboardProps> = ({
   });
   const [isDatePickerOpen, setIsDatePickerOpen] = useState(false);
   const [hasAppliedInitialFilter, setHasAppliedInitialFilter] = useState(false);
+  const [lastAppliedFilters, setLastAppliedFilters] = useState<string>('');
+  const [lastSedeId, setLastSedeId] = useState<string | undefined>(undefined);
   
   // Estados para transferir pedido
   const [transferOrderId, setTransferOrderId] = useState('');
@@ -457,7 +462,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
       'Teléfono': order.cliente_telefono || '',
       'Dirección': order.direccion || '',
       'Sede': order.sede || '',
-      'Estado': order.estado || '',
+      'Estado': getDisplayStatus(order.estado || '', order.type_order),
       'Total': order.total ? `$${order.total.toLocaleString()}` : '$0',
       'Tipo Pago': order.pago_tipo || '',
       'Estado Pago': order.pago_estado || '',
@@ -609,6 +614,12 @@ export const Dashboard: React.FC<DashboardProps> = ({
   // Extract for compatibility
   const { totalItems, totalPages, startIndex, endIndex, paginatedOrders } = paginationData;
 
+  // Función personalizada para recargar con filtros actuales
+  const refreshDataWithCurrentFilters = useCallback(() => {
+    logDebug('Dashboard', 'Recargando con filtros actuales', { viewMode, dateFilter, statusFilter });
+    applyDateFilter();
+  }, [viewMode, dateFilter, statusFilter]);
+
   // Función para aplicar filtros de fecha
   const applyDateFilter = async () => {
     let filters: any = {};
@@ -684,8 +695,32 @@ export const Dashboard: React.FC<DashboardProps> = ({
       filters.estado = statusFilter;
     }
     
+    // Aplicar filtro de tipo de orden
+    filters.type_order = viewMode;
+    
+    // Crear una clave única para los filtros actuales (incluyendo sede_id)
+    const currentFiltersKey = JSON.stringify({ ...filters, sede_id: sedeIdToUse });
+    
+    // Evitar cargas duplicadas si los filtros no han cambiado
+    if (currentFiltersKey === lastAppliedFilters) {
+      logDebug('Dashboard', 'Filtros no han cambiado, saltando carga', { 
+        currentFiltersKey,
+        lastAppliedFilters,
+        filters 
+      });
+      return;
+    }
+    
+    // Actualizar la clave de filtros aplicados
+    setLastAppliedFilters(currentFiltersKey);
+    logDebug('Dashboard', 'Filtros han cambiado, procediendo con carga', { 
+      previousFilters: lastAppliedFilters,
+      newFilters: currentFiltersKey 
+    });
+    
     // Llamar directamente a loadDashboardOrders sin timeout
     if (sedeIdToUse) {
+      logDebug('Dashboard', 'Cargando datos con filtros nuevos', { filters });
       loadDashboardOrders(filters);
     }
   };
@@ -701,31 +736,56 @@ export const Dashboard: React.FC<DashboardProps> = ({
       timeoutId = setTimeout(async () => {
         if (sedeIdToUse && isMounted) {
           try {
-            await applyDateFilter();
+            logDebug('Dashboard', 'Aplicando filtros por cambio de dependencias usando refreshDataWithCurrentFilters', { 
+              dateFilter, 
+              viewMode, 
+              statusFilter,
+              sedeIdToUse 
+            });
+            // Usar la función personalizada que incluye los filtros actuales
+            refreshDataWithCurrentFilters();
           } catch (error) {
             logError('Dashboard', 'Error aplicando filtros', error);
           }
         }
-      }, 50); // Reducido de 300ms a 50ms para cargas más rápidas
+      }, 10); // Reducido a 10ms para cargas más rápidas
     };
     
-    applyFilters();
+    // Solo aplicar filtros si ya se aplicó el filtro inicial
+    if (hasAppliedInitialFilter) {
+      applyFilters();
+    }
     
     return () => {
       isMounted = false;
       clearTimeout(timeoutId);
     };
-  }, [dateFilter, dateRange, sedeIdToUse, statusFilter]);
+  }, [dateFilter, dateRange, sedeIdToUse, statusFilter, viewMode, hasAppliedInitialFilter, refreshDataWithCurrentFilters]);
+
+  // Resetear filtros cuando cambie la sede
+  useEffect(() => {
+    if (sedeIdToUse !== lastSedeId) {
+      logDebug('Dashboard', 'Sede cambió, reseteando filtros', { 
+        previousSede: lastSedeId, 
+        newSede: sedeIdToUse 
+      });
+      setLastSedeId(sedeIdToUse);
+      setLastAppliedFilters('');
+      setHasAppliedInitialFilter(false);
+    }
+  }, [sedeIdToUse, lastSedeId]);
 
   // Aplicar filtro inicial cuando el componente se monta (solo una vez)
   useEffect(() => {
     if (sedeIdToUse && !hasAppliedInitialFilter) {
-      logDebug('Dashboard', 'Aplicando filtro inicial por defecto (Solo Hoy)');
+      logDebug('Dashboard', 'Aplicando filtro inicial usando refreshDataWithCurrentFilters');
       setHasAppliedInitialFilter(true);
-      // Aplicar el filtro de "Solo Hoy" inmediatamente
-      applyDateFilter();
+      // Usar la función personalizada que incluye los filtros actuales
+      setTimeout(() => {
+        refreshDataWithCurrentFilters();
+      }, 100);
     }
-  }, [sedeIdToUse, hasAppliedInitialFilter]);
+  }, [sedeIdToUse, hasAppliedInitialFilter, refreshDataWithCurrentFilters]);
 
   // Limpiar selecciones de pedidos cancelados/entregados
   useEffect(() => {
@@ -779,6 +839,22 @@ export const Dashboard: React.FC<DashboardProps> = ({
       case 'transfer': return <Building2 className="h-4 w-4" />;
       default: return <CreditCard className="h-4 w-4" />;
     }
+  };
+
+  // Función para mostrar el estado correcto según el tipo de orden
+  const getDisplayStatus = (status: string, orderType?: string) => {
+    if (status === 'Camino' && orderType === 'pickup') {
+      return 'En espera';
+    }
+    return status;
+  };
+
+  // Función para obtener el icono del tipo de orden
+  const getOrderTypeIcon = (orderType?: string) => {
+    if (orderType === 'pickup') {
+      return <Package className="h-3 w-3 text-green-600" title="Recolección en sede" />;
+    }
+    return <Truck className="h-3 w-3 text-blue-600" title="Delivery" />;
   };
 
   const getPaymentMethodLabel = (method: PaymentMethod) => {
@@ -912,7 +988,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
           <AlertCircle className="h-5 w-5" />
           <span>Error: {error}</span>
         </div>
-        <Button onClick={refreshData}>Reintentar</Button>
+        <Button onClick={refreshDataWithCurrentFilters}>Reintentar</Button>
       </div>
     );
   }
@@ -941,7 +1017,32 @@ export const Dashboard: React.FC<DashboardProps> = ({
       {/* Header Controls */}
       <div className="flex flex-col lg:flex-row gap-4 items-start lg:items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold">Dashboard de Domicilios</h1>
+          <div className="flex items-center gap-4">
+            <h1 className="text-3xl font-bold">Dashboard de Domicilios</h1>
+            
+            {/* Toggle Delivery/Pickup */}
+            <div className="flex bg-muted rounded-lg p-1">
+              <Button
+                onClick={() => setViewMode('delivery')}
+                variant={viewMode === 'delivery' ? 'default' : 'ghost'}
+                size="sm"
+                className="flex items-center gap-2"
+              >
+                <Truck className="h-4 w-4" />
+                Delivery
+              </Button>
+              <Button
+                onClick={() => setViewMode('pickup')}
+                variant={viewMode === 'pickup' ? 'default' : 'ghost'}
+                size="sm"
+                className="flex items-center gap-2"
+              >
+                <Package className="h-4 w-4" />
+                Recolección
+              </Button>
+            </div>
+          </div>
+          
           <p className="text-muted-foreground">
             {activeOrdersCount} pedidos activos • {stats.total} pedidos totales
           </p>
@@ -952,7 +1053,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
         
         <div className="flex gap-3">
           <Button
-            onClick={refreshData}
+            onClick={refreshDataWithCurrentFilters}
             disabled={loading}
             variant="outline"
             className="flex items-center gap-2"
@@ -1314,12 +1415,15 @@ export const Dashboard: React.FC<DashboardProps> = ({
                           </div>
                         </td>
                         <td className="p-2">
-                          <Badge className={cn("text-white", getStatusColor(realOrder.estado))}>
-                            <div className="flex items-center gap-1">
-                              {getStatusIcon(realOrder.estado)}
-                              {realOrder.estado}
-                            </div>
-                          </Badge>
+                          <div className="flex items-center gap-2">
+                            <Badge className={cn("text-white", getStatusColor(realOrder.estado))}>
+                              <div className="flex items-center gap-1">
+                                {getStatusIcon(realOrder.estado)}
+                                {getDisplayStatus(realOrder.estado, realOrder.type_order)}
+                              </div>
+                            </Badge>
+                            {getOrderTypeIcon(realOrder.type_order)}
+                          </div>
                         </td>
                         <td className="p-2">
                           <div className="space-y-1">
@@ -1486,7 +1590,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
         deliveryPersonnel={deliveryPersonnel}
         onUpdateOrders={onUpdateOrders}
         onClearSelection={() => setSelectedOrders([])}
-        onRefreshData={refreshData}
+        onRefreshData={refreshDataWithCurrentFilters}
         currentSedeId={profile?.sede_id}
       />
 

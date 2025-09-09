@@ -102,15 +102,26 @@ export const OrderConfigModal: React.FC<OrderConfigModalProps> = ({
     try {
       setIsUpdating(true);
       
-      // Validación: Si se cambia a "Camino" debe tener repartidor asignado
+      // Validación: Si se cambia a "Camino" debe tener repartidor asignado (solo para delivery)
       if (newStatus === 'Camino' && !assignedDeliveryPersonId) {
-        toast({
-          title: "Repartidor requerido",
-          description: "Para cambiar el estado a 'En Camino', debe asignar un repartidor primero.",
-          variant: "destructive"
+        // Verificar si alguna orden seleccionada es de tipo delivery
+        const hasDeliveryOrders = selectedOrderIds.some(orderId => {
+          const order = orders.find(o => ('id' in o ? o.id : o.id_display) === orderId);
+          const orderType = ('type_order' in order && order.type_order) || 
+                           ('tipo_orden' in order && (order as any).tipo_orden) || 
+                           'delivery';
+          return orderType === 'delivery';
         });
-        setIsUpdating(false);
-        return;
+        
+        if (hasDeliveryOrders) {
+          toast({
+            title: "Repartidor requerido",
+            description: "Para cambiar el estado a 'En Camino', debe asignar un repartidor primero.",
+            variant: "destructive"
+          });
+          setIsUpdating(false);
+          return;
+        }
       }
 
       // También validar órdenes existentes que ya están seleccionadas
@@ -120,9 +131,16 @@ export const OrderConfigModal: React.FC<OrderConfigModalProps> = ({
         
         // Si se va a cambiar a Camino y la orden no tiene repartidor asignado y no se está asignando uno ahora
         if (newStatus === 'Camino') {
-          const hasCurrentDeliveryPerson = ('assignedDeliveryPersonId' in order && order.assignedDeliveryPersonId) ||
-                                          ('repartidor' in order && order.repartidor && order.repartidor !== 'Sin asignar');
-          return !hasCurrentDeliveryPerson && !assignedDeliveryPersonId;
+          // Solo requerir repartidor para órdenes de delivery
+          const orderType = ('type_order' in order && order.type_order) || 
+                           ('tipo_orden' in order && (order as any).tipo_orden) || 
+                           'delivery';
+          
+          if (orderType === 'delivery') {
+            const hasCurrentDeliveryPerson = ('assignedDeliveryPersonId' in order && order.assignedDeliveryPersonId) ||
+                                            ('repartidor' in order && order.repartidor && order.repartidor !== 'Sin asignar');
+            return !hasCurrentDeliveryPerson && !assignedDeliveryPersonId;
+          }
         }
         
         return false;

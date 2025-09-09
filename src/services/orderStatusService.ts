@@ -241,11 +241,11 @@ export class OrderStatusService {
       'Entregados': [] // No se puede cambiar desde entregado
     };
 
-    // Definir el flujo secuencial para pickup (camino se reemplaza por en espera)
+    // Definir el flujo secuencial para pickup (usar Camino internamente pero mostrar como "En espera")
     const pickupStatusFlow = {
       'Recibidos': ['Cocina'],
-      'Cocina': ['En espera'],
-      'En espera': ['Entregados'],
+      'Cocina': ['Camino'], // Usar Camino internamente para pickup
+      'Camino': ['Entregados'],
       'Entregados': [] // No se puede cambiar desde entregado
     };
 
@@ -267,12 +267,11 @@ export class OrderStatusService {
       nextStates.forEach(state => validNextStates.add(state));
     });
 
-    // Mapear a formato de opciones
+    // Mapear a formato de opciones con lógica especial para pickup
     const stateLabels: Record<string, string> = {
       'Recibidos': 'Recibido',
       'Cocina': 'En Cocina',
-      'Camino': 'En Camino',
-      'En espera': 'En Espera',
+      'Camino': hasPickupOrders && !hasDeliveryOrders ? 'En Espera' : 'En Camino',
       'Entregados': 'Entregado'
     };
 

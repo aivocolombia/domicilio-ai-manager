@@ -29,6 +29,7 @@ export interface DashboardFilters {
   sede_id?: string | number; // Support both string (UUID) and number
   fechaInicio?: string; // Fecha de inicio en formato ISO
   fechaFin?: string;    // Fecha de fin en formato ISO
+  type_order?: 'delivery' | 'pickup'; // Filtro por tipo de orden
 }
 
 export class DashboardService {
@@ -87,6 +88,13 @@ export class DashboardService {
       console.log('🏢 DashboardService: Filtrando por sede_id:', filters.sede_id);
       query = query.eq('sede_id', filters.sede_id);
 
+      // Filtrar por tipo de orden
+      if (filters.type_order) {
+        console.log('📦 DashboardService: Filtrando por tipo de orden:', filters.type_order);
+        // Ahora que todas las órdenes tienen type_order asignado, filtrar directamente
+        query = query.eq('type_order', filters.type_order);
+      }
+
       // Filtros de fecha (usando filtros corregidos)
       if (correctedFilters.fechaInicio) {
         console.log('📅 DashboardService: Filtrando desde fecha:', correctedFilters.fechaInicio);
@@ -108,6 +116,19 @@ export class DashboardService {
       }
 
       console.log('🔍 DashboardService: Ejecutando query...');
+      
+      // Debug: Mostrar la query SQL que se va a ejecutar
+      console.log('🔍 DashboardService: Query SQL aproximada:', {
+        table: 'ordenes',
+        filters: {
+          sede_id: filters.sede_id,
+          estado: filters.estado,
+          type_order: filters.type_order,
+          fechaInicio: correctedFilters.fechaInicio,
+          fechaFin: correctedFilters.fechaFin
+        }
+      });
+      
       const { data, error } = await query;
 
       if (error) {
@@ -134,14 +155,55 @@ export class DashboardService {
         console.log('🔍 DashboardService: Intentando query simple para debug...');
         const { data: simpleData, error: simpleError } = await supabase
           .from('ordenes')
-          .select('id, status, sede_id, created_at')
+          .select('id, status, sede_id, created_at, type_order')
+          .eq('sede_id', filters.sede_id)
           .limit(5);
+        
+        // Debug: Query con los mismos filtros pero sin JOINs
+        console.log('🔍 DashboardService: Query con filtros pero sin JOINs...');
+        console.log('🔍 DashboardService: Filtros aplicados:', {
+          sede_id: filters.sede_id,
+          type_order: filters.type_order,
+          fechaInicio: correctedFilters.fechaInicio,
+          fechaFin: correctedFilters.fechaFin
+        });
+        
+        let debugQuery = supabase
+          .from('ordenes')
+          .select('id, status, sede_id, created_at, type_order')
+          .eq('sede_id', filters.sede_id);
+          
+        console.log('🔍 DashboardService: Después de filtrar por sede_id:', filters.sede_id);
+        
+        if (filters.type_order) {
+          console.log('🔍 DashboardService: Aplicando filtro type_order:', filters.type_order);
+          debugQuery = debugQuery.eq('type_order', filters.type_order);
+        }
+        
+        if (correctedFilters.fechaInicio) {
+          console.log('🔍 DashboardService: Aplicando filtro fechaInicio:', correctedFilters.fechaInicio);
+          debugQuery = debugQuery.gte('created_at', correctedFilters.fechaInicio);
+        }
+        
+        if (correctedFilters.fechaFin) {
+          console.log('🔍 DashboardService: Aplicando filtro fechaFin:', correctedFilters.fechaFin);
+          debugQuery = debugQuery.lte('created_at', correctedFilters.fechaFin);
+        }
+        
+        const { data: debugData, error: debugError } = await debugQuery.limit(5);
         
         if (simpleError) {
           console.error('❌ DashboardService: Error en query simple:', simpleError);
         } else {
           console.log('📊 DashboardService: Query simple encontró:', simpleData?.length || 0, 'órdenes');
           console.log('📋 DashboardService: Muestra de órdenes:', simpleData);
+        }
+        
+        if (debugError) {
+          console.error('❌ DashboardService: Error en query debug:', debugError);
+        } else {
+          console.log('📊 DashboardService: Query debug encontró:', debugData?.length || 0, 'órdenes');
+          console.log('📋 DashboardService: Órdenes debug:', debugData);
         }
         
         // Debug: verificar sedes disponibles
@@ -154,6 +216,20 @@ export class DashboardService {
           console.error('❌ DashboardService: Error al consultar sedes:', sedesError);
         } else {
           console.log('🏢 DashboardService: Sedes encontradas:', sedesData);
+        }
+        
+        // Debug: verificar valores de type_order en las órdenes
+        console.log('🔍 DashboardService: Verificando valores de type_order...');
+        const { data: typeOrderData, error: typeOrderError } = await supabase
+          .from('ordenes')
+          .select('id, type_order, created_at')
+          .eq('sede_id', filters.sede_id)
+          .limit(10);
+        
+        if (typeOrderError) {
+          console.error('❌ DashboardService: Error al consultar type_order:', typeOrderError);
+        } else {
+          console.log('📦 DashboardService: Valores de type_order encontrados:', typeOrderData);
         }
         
         return [];
