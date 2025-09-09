@@ -90,10 +90,7 @@ export const SedeOrders: React.FC<SedeOrdersProps> = ({
     paymentMethod: 'cash' as PaymentMethod,
     specialInstructions: '',
     deliveryType: 'delivery' as DeliveryType,
-    pickupSede: '',
-    // Campos adicionales para recogida en tienda
-    pickupCustomerName: '',
-    pickupCustomerPhone: '',
+    pickupSede: '', // Se auto-asignará con la sede del agente
     // Tiempo de entrega en minutos (por defecto 90)
     deliveryTimeMinutes: 90,
     // Valor del domicilio
@@ -158,9 +155,7 @@ export const SedeOrders: React.FC<SedeOrdersProps> = ({
       paymentMethod: 'cash',
       specialInstructions: '',
       deliveryType: 'delivery',
-      pickupSede: '',
-      pickupCustomerName: '',
-      pickupCustomerPhone: '',
+      pickupSede: '', // Se auto-asignará
       deliveryTimeMinutes: 90,
       deliveryCost: 0
     });
@@ -282,7 +277,7 @@ export const SedeOrders: React.FC<SedeOrdersProps> = ({
   const handleCreateOrder = async () => {
     // Validaciones básicas
     if (newOrder.deliveryType === 'delivery' && !customerData.address) return;
-    if (newOrder.deliveryType === 'pickup' && (!newOrder.pickupSede || !newOrder.pickupCustomerName || !newOrder.pickupCustomerPhone)) return;
+    // Para pickup, ya no validamos pickupSede (se auto-asigna), ni datos de persona (usa cliente principal)
     if (newOrder.items.length === 0) return;
     if (!effectiveSedeId) return; // Validar que hay sede efectiva (seleccionada por admin o asignada al agente)
     if (!customerData.name || !customerData.phone) return;
@@ -323,7 +318,7 @@ export const SedeOrders: React.FC<SedeOrdersProps> = ({
       const finalCustomerName = customerData.name;
       const finalCustomerPhone = customerData.phone;
       const finalAddress = newOrder.deliveryType === 'pickup' 
-        ? `Recogida en ${newOrder.pickupSede} - Cliente: ${newOrder.pickupCustomerName} (${newOrder.pickupCustomerPhone})`
+        ? `Recogida en ${currentSedeName} - Cliente: ${customerData.name} (${customerData.phone})`
         : customerData.address;
 
       // Preparar datos para el servicio con actualización de cliente
@@ -332,7 +327,7 @@ export const SedeOrders: React.FC<SedeOrdersProps> = ({
         cliente_telefono: finalCustomerPhone,
         direccion: finalAddress,
         tipo_entrega: newOrder.deliveryType,
-        sede_recogida: newOrder.deliveryType === 'pickup' ? newOrder.pickupSede : undefined,
+        sede_recogida: newOrder.deliveryType === 'pickup' ? currentSedeName : undefined,
         pago_tipo: newOrder.paymentMethod === 'cash' ? 'efectivo' : 
                    newOrder.paymentMethod === 'card' ? 'tarjeta' :
                    newOrder.paymentMethod === 'nequi' ? 'nequi' : 'transferencia',
@@ -391,9 +386,7 @@ export const SedeOrders: React.FC<SedeOrdersProps> = ({
         paymentMethod: 'cash',
         specialInstructions: '',
         deliveryType: 'delivery',
-        pickupSede: '',
-        pickupCustomerName: '',
-        pickupCustomerPhone: '',
+        pickupSede: '', // Se auto-asignará
         deliveryTimeMinutes: 90,
         deliveryCost: 0
       });
@@ -559,9 +552,7 @@ export const SedeOrders: React.FC<SedeOrdersProps> = ({
                   paymentMethod: 'cash',
                   specialInstructions: '',
                   deliveryType: 'delivery',
-                  pickupSede: '',
-                  pickupCustomerName: '',
-                  pickupCustomerPhone: '',
+                  pickupSede: '', // Se auto-asignará
                   deliveryTimeMinutes: 90,
                   deliveryCost: 0
                 });
@@ -719,52 +710,18 @@ export const SedeOrders: React.FC<SedeOrdersProps> = ({
                     </div>
                   ) : (
                     <div className="space-y-3">
-                      <div>
-                        <Label>Sede de Recogida *</Label>
-                        <Select 
-                          value={newOrder.pickupSede} 
-                          onValueChange={(value) => setNewOrder({ ...newOrder, pickupSede: value })}
-                        >
-                          <SelectTrigger>
-                            <SelectValue placeholder="Seleccionar sede" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {sedes.filter(sede => sede.isActive).map((sede) => (
-                              <SelectItem key={sede.id} value={sede.name}>
-                                <div className="flex items-center gap-2">
-                                  <Store className="h-4 w-4" />
-                                  {sede.name} - {sede.address}
-                                </div>
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      
-                      {/* Datos adicionales para recogida en tienda */}
-                      <div className="p-3 border rounded-lg bg-blue-50">
-                        <h5 className="font-medium text-blue-900 mb-2">Datos de la Persona que Recoge</h5>
-                        <div className="space-y-2">
-                          <div>
-                            <Label htmlFor="pickupName">Nombre *</Label>
-                            <Input
-                              id="pickupName"
-                              value={newOrder.pickupCustomerName}
-                              onChange={(e) => setNewOrder({ ...newOrder, pickupCustomerName: e.target.value })}
-                              placeholder="Nombre de quien recoge el pedido"
-                            />
-                          </div>
-                          <div>
-                            <Label htmlFor="pickupPhone">Teléfono *</Label>
-                            <Input
-                              id="pickupPhone"
-                              type="tel"
-                              value={newOrder.pickupCustomerPhone}
-                              onChange={(e) => setNewOrder({ ...newOrder, pickupCustomerPhone: e.target.value })}
-                              placeholder="Teléfono de quien recoge el pedido"
-                            />
-                          </div>
+                      <div className="p-3 border rounded-lg bg-green-50">
+                        <div className="flex items-center gap-2 mb-2">
+                          <Store className="h-4 w-4 text-green-600" />
+                          <h5 className="font-medium text-green-900">Recogida en Sede</h5>
                         </div>
+                        <p className="text-green-800 text-sm">
+                          El pedido se recogerá en: <span className="font-medium">{currentSedeName}</span>
+                        </p>
+                        <p className="text-green-700 text-xs mt-1">
+                          La persona que recoge será: <span className="font-medium">{customerData.name || 'Cliente'}</span>
+                          {customerData.phone && ` - ${customerData.phone}`}
+                        </p>
                       </div>
                     </div>
                   )}
@@ -923,7 +880,7 @@ export const SedeOrders: React.FC<SedeOrdersProps> = ({
                       !customerData.name ||
                       !customerData.phone ||
                       (newOrder.deliveryType === 'delivery' && !customerData.address) ||
-                      (newOrder.deliveryType === 'pickup' && (!newOrder.pickupSede || !newOrder.pickupCustomerName || !newOrder.pickupCustomerPhone)) ||
+                      // Para pickup ya no se validan campos adicionales
                       newOrder.items.length === 0 ||
                       loading
                     }
@@ -1018,15 +975,6 @@ export const SedeOrders: React.FC<SedeOrdersProps> = ({
               <Store className="h-5 w-5" />
               Pedidos de la Sede - {profile?.sede_name || currentUser.sede}
             </div>
-            <Button 
-              variant="outline" 
-              size="sm" 
-              onClick={() => loadSedeOrders()}
-              disabled={loading}
-            >
-              {loading ? <RefreshCw className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
-              Recargar
-            </Button>
           </CardTitle>
         </CardHeader>
         <CardContent>

@@ -28,6 +28,10 @@ export interface MinutaOrderDetails {
   cliente_telefono: string;
   cliente_direccion?: string;
   
+  // Sede
+  sede_nombre: string;
+  sede_direccion: string;
+  
   // Pago
   pago_tipo: string;
   pago_total: number;
@@ -42,6 +46,47 @@ export interface MinutaOrderDetails {
 }
 
 export class MinutaService {
+  
+  // Función para cambiar automáticamente el estado de "Recibidos" a "Cocina" al imprimir
+  async updateOrderStatusToCocina(orderId: number): Promise<boolean> {
+    try {
+      // Primero verificar el estado actual
+      const { data: orderData, error: checkError } = await supabase
+        .from('ordenes')
+        .select('status')
+        .eq('id', orderId)
+        .single();
+      
+      if (checkError || !orderData) {
+        console.error('Error verificando estado de orden:', checkError);
+        return false;
+      }
+      
+      // Solo cambiar si está en "Recibidos"
+      if (orderData.status === 'Recibidos') {
+        const { error: updateError } = await supabase
+          .from('ordenes')
+          .update({ 
+            status: 'Cocina',
+            cocina_at: new Date().toISOString()
+          })
+          .eq('id', orderId);
+        
+        if (updateError) {
+          console.error('Error actualizando estado a Cocina:', updateError);
+          return false;
+        }
+        
+        console.log(`✅ Orden ${orderId} automáticamente cambiada de "Recibidos" a "Cocina" al imprimir minuta`);
+        return true;
+      }
+      
+      return false; // No necesitaba cambio
+    } catch (error) {
+      console.error('Error en updateOrderStatusToCocina:', error);
+      return false;
+    }
+  }
   private groupProducts(products: { nombre: string; precio: number }[]): { nombre: string; cantidad: number; precio: number }[] {
     const grouped = products.reduce((acc, product) => {
       const existing = acc.find(item => item.nombre === product.nombre && item.precio === product.precio);
@@ -58,49 +103,67 @@ export class MinutaService {
 
   async getOrderDetailsForMinuta(orderId: number): Promise<MinutaOrderDetails | null> {
     try {
-      // Obtener datos básicos de la orden con relaciones
-      const { data: orderData, error: orderError } = await supabase
-        .from('ordenes')
-        .select(`
-          id,
-          status,
-          created_at,
-          observaciones,
-          precio_envio,
-          clientes!inner(nombre, telefono, direccion),
-          pagos!left(type, total_pago),
-          repartidores!left(nombre),
-          minutas!left(daily_id)
-        `)
-        .eq('id', orderId)
-        .single();
+      // Timeout de 10 segundos para evitar cuelgues
+      const timeoutPromise = new Promise<never>((_, reject) => {
+        setTimeout(() => reject(new Error('Timeout al cargar datos de minuta')), 10000);
+      });
+
+      // Usar Promise.all para hacer las 3 consultas en paralelo (más rápido)
+      const queryPromise = Promise.all([
+        // Consulta principal de la orden
+        supabase
+          .from('ordenes')
+          .select(`
+            id,
+            status,
+            created_at,
+            observaciones,
+            precio_envio,
+            clientes!inner(nombre, telefono, direccion),
+            pagos!left(type, total_pago),
+            repartidores!left(nombre),
+            minutas!left(daily_id),
+            sedes!inner(name, address)
+          `)
+          .eq('id', orderId)
+          .single(),
+        
+        // Consulta de platos en paralelo
+        supabase
+          .from('ordenes_platos')
+          .select(`
+            id,
+            platos!inner(name, pricing)
+          `)
+          .eq('orden_id', orderId),
+        
+        // Consulta de bebidas en paralelo
+        supabase
+          .from('ordenes_bebidas')
+          .select(`
+            id,
+            bebidas!inner(name, pricing)
+          `)
+          .eq('orden_id', orderId)
+      ]);
+
+      const [orderResult, platosResult, bebidasResult] = await Promise.race([
+        queryPromise,
+        timeoutPromise
+      ]);
+
+      const { data: orderData, error: orderError } = orderResult;
+      const { data: platosData, error: platosError } = platosResult;
+      const { data: bebidasData, error: bebidasError } = bebidasResult;
 
       if (orderError || !orderData) {
         console.error('Error obteniendo datos de la orden:', orderError);
         return null;
       }
 
-      // Obtener platos de la orden
-      const { data: platosData, error: platosError } = await supabase
-        .from('ordenes_platos')
-        .select(`
-          id,
-          platos!inner(name, pricing)
-        `)
-        .eq('orden_id', orderId);
-
       if (platosError) {
         console.error('Error obteniendo platos:', platosError);
       }
-
-      // Obtener bebidas de la orden
-      const { data: bebidasData, error: bebidasError } = await supabase
-        .from('ordenes_bebidas')
-        .select(`
-          id,
-          bebidas!inner(name, pricing)
-        `)
-        .eq('orden_id', orderId);
 
       if (bebidasError) {
         console.error('Error obteniendo bebidas:', bebidasError);
@@ -126,6 +189,9 @@ export class MinutaService {
         cliente_nombre: orderData.clientes?.nombre || 'Sin nombre',
         cliente_telefono: orderData.clientes?.telefono || 'Sin teléfono',
         cliente_direccion: orderData.clientes?.direccion,
+        
+        sede_nombre: orderData.sedes?.name || 'Sede no definida',
+        sede_direccion: orderData.sedes?.address || 'Dirección no definida',
         
         pago_tipo: orderData.pagos?.type || 'Sin especificar',
         pago_total: orderData.pagos?.total_pago || 0,

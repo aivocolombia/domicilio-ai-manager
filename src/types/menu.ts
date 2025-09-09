@@ -61,17 +61,23 @@ export interface SedeTopping {
 export interface PlatoConSede extends Plato {
   sede_available: boolean;
   sede_price: number; // Precio final para esta sede
+  sede_is_available: boolean; // Alias para compatibilidad
+  sede_pricing: number; // Alias para compatibilidad
   toppings: ToppingConSede[];
 }
 
 export interface BebidaConSede extends Bebida {
   sede_available: boolean;
   sede_price: number; // Precio final para esta sede
+  sede_is_available: boolean; // Alias para compatibilidad
+  sede_pricing: number; // Alias para compatibilidad
 }
 
 export interface ToppingConSede extends Topping {
   sede_available: boolean;
   sede_price: number; // Precio final para esta sede
+  sede_is_available: boolean; // Alias para compatibilidad
+  sede_pricing: number; // Alias para compatibilidad
 }
 
 // Tipos para respuestas de API

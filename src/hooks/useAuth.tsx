@@ -1,6 +1,8 @@
-import React, { createContext, useContext, useEffect, useState } from 'react'
+import React, { createContext, useContext, useEffect, useState, useRef } from 'react'
 import { User as SupabaseUser } from '@supabase/supabase-js'
 import { supabase, type Database } from '@/lib/supabase'
+import { sedeServiceSimple } from '@/services/sedeServiceSimple'
+import { logDebug, logError, logWarn } from '@/utils/logger'
 
 // Declarar función de emergencia en window para TypeScript
 declare global {
@@ -29,25 +31,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [profile, setProfile] = useState<Profile | null>(null)
   const [loading, setLoading] = useState(true)
 
+  // Caché simple para perfiles (5 minutos TTL)
+  const profileCacheRef = useRef<Map<string, { profile: Profile; timestamp: number }>>(new Map())
+
   const enrichProfileWithSedeName = async (profile: Profile): Promise<Profile> => {
     try {
       if (!profile.sede_id) return profile;
       
-      console.log('🏢 Obteniendo nombre de sede para ID:', profile.sede_id);
-      const { data: sedeData, error } = await supabase
-        .from('sedes')
-        .select('name')
-        .eq('id', profile.sede_id)
-        .single();
+      logDebug('AuthProvider', `🏢 Obteniendo nombre de sede para ID: ${profile.sede_id}`);
       
-      if (error) {
-        console.error('❌ Error obteniendo nombre de sede:', error);
-        return profile;
-      }
+      // Usar el servicio optimizado con caché
+      const sedeInfo = await sedeServiceSimple.getSedeById(profile.sede_id);
       
       const enrichedProfile = {
         ...profile,
-        sede_name: sedeData?.name || 'Sede Desconocida'
+        sede_name: sedeInfo?.name || 'Sede Desconocida'
       };
       
       console.log('✅ Perfil enriquecido con nombre de sede:', enrichedProfile.sede_name);
@@ -134,13 +132,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       
       // Verificar que hay un userId válido
       if (!userId) {
-        console.log('⚠️ No se proporcionó userId, retornando null')
+        logDebug('AuthProvider', '⚠️ No se proporcionó userId, retornando null')
         return null
       }
+
+      // Verificar caché primero (5 minutos TTL)
+      const cached = profileCacheRef.current.get(userId);
+      if (cached && (Date.now() - cached.timestamp) < 5 * 60 * 1000) {
+        logDebug('AuthProvider', `✅ Profile cache hit para usuario ${userId}`);
+        return cached.profile;
+      }
       
-      // Timeout más largo para conectividad lenta
+      // Timeout reducido para mejor UX
       const timeoutPromise = new Promise<never>((_, reject) => {
-        setTimeout(() => reject(new Error('Timeout')), 20000) // 20 segundos
+        setTimeout(() => reject(new Error('Timeout')), 8000) // 8 segundos
       })
       
       console.log('🔍 Intentando obtener perfil desde base de datos...')
@@ -173,10 +178,32 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       console.log('✅ Perfil obtenido desde base de datos:', data)
       
-      // Si el perfil tiene sede_id, obtener el nombre de la sede
+      // Si el perfil tiene sede_id, obtener el nombre de la sede y pre-cargar datos
       if (data && data.sede_id) {
         const sedeProfile = await enrichProfileWithSedeName(data);
+        
+        // Guardar en caché
+        profileCacheRef.current.set(userId, {
+          profile: sedeProfile,
+          timestamp: Date.now()
+        });
+        
+        // Pre-cargar datos críticos en background para mejor rendimiento
+        sedeServiceSimple.preloadCriticalData(data.sede_id).catch(error => 
+          logWarn('AuthProvider', 'Error pre-cargando datos críticos', error)
+        );
+        
+        logDebug('AuthProvider', `💾 Profile cached para usuario ${userId}`);
         return sedeProfile;
+      }
+      
+      // Guardar perfil sin sede en caché también
+      if (data) {
+        profileCacheRef.current.set(userId, {
+          profile: data,
+          timestamp: Date.now()
+        });
+        logDebug('AuthProvider', `💾 Profile (sin sede) cached para usuario ${userId}`);
       }
       
       return data
@@ -285,10 +312,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           console.error('❌ Error obteniendo perfil en auth change:', error)
           // No sobrescribir el perfil existente en caso de error temporal
         }
+        // Solo setear loading false después de intentar obtener el perfil
+        setLoading(false)
       } else {
         setProfile(null)
+        setLoading(false)
       }
-      setLoading(false)
     })
 
     return () => subscription.unsubscribe()
@@ -337,7 +366,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       localStorage.removeItem('ajiaco-admin-active-tab')
       localStorage.removeItem('ajiaco-app-view')  // Limpiar vista guardada del useAppState
       localStorage.removeItem('ajiaco-navigation-history')  // Limpiar historial de navegación
-      console.log('🧹 Vistas activas y navegación limpiadas del localStorage')
+      
+      // Limpiar caché de sede y perfiles para seguridad y datos frescos en próximo login
+      sedeServiceSimple.invalidateSedeCache()
+      profileCacheRef.current.clear()
+      logDebug('AuthProvider', '🧹 Cache de sedes y perfiles limpiado al cerrar sesión')
+      
+      console.log('🧹 Vistas activas, navegación y caché limpiados')
       
       // Cerrar sesión en Supabase
       const { error } = await supabase.auth.signOut()

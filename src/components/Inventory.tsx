@@ -17,7 +17,8 @@ import { useSede } from '@/contexts/SedeContext';
 import { toast } from '@/hooks/use-toast';
 import { formatCurrency } from '@/utils/format';
 import { menuService } from '@/services/menuService';
-import { PlatoConSede, BebidaConSede } from '@/types/menu';
+import { sedeServiceSimple } from '@/services/sedeServiceSimple';
+import { PlatoConSede, BebidaConSede, ToppingConSede } from '@/types/menu';
 import { debugUtils } from '@/utils/debug';
 import { supabase } from '@/lib/supabase';
 import { AddToppingsModal } from '@/components/AddToppingsModal';
@@ -49,6 +50,7 @@ export const Inventory: React.FC<InventoryProps> = ({
   const [error, setError] = useState<string | null>(null);
   const [platosConSede, setPlatosConSede] = useState<PlatoConSede[]>([]);
   const [bebidasConSede, setBebidasConSede] = useState<BebidaConSede[]>([]);
+  const [toppingsConSede, setToppingsConSede] = useState<ToppingConSede[]>([]);
 
   // Estado para controlar cargas concurrentes
   const [isLoadingInventory, setIsLoadingInventory] = useState(false);
@@ -79,16 +81,62 @@ export const Inventory: React.FC<InventoryProps> = ({
       
       console.log('🔍 Cargando inventario para sede:', effectiveSedeId);
       
-      // Timeout para evitar cuelgues
-      const timeoutPromise = new Promise<never>((_, reject) => {
-        setTimeout(() => reject(new Error('Timeout cargando inventario')), 15000);
-      });
+      // Invalidar caché para obtener datos frescos de inventario
+      sedeServiceSimple.invalidateSedeCache(effectiveSedeId);
       
-      const menuPromise = menuService.getMenuConSede(effectiveSedeId);
-      const menuData = await Promise.race([menuPromise, timeoutPromise]);
+      // Usar el servicio optimizado con caché
+      const { platos, bebidas, toppings } = await sedeServiceSimple.getSedeCompleteInfo(effectiveSedeId, true);
+      
+      // Transformar a formato compatible con el componente
+      // En sedeServiceSimple, is_available es la disponibilidad específica de la sede
+      const menuData = {
+        platos: platos.map(p => ({
+          id: p.id,
+          name: p.name,
+          description: p.description || '',
+          pricing: p.pricing, // precio base del plato
+          is_available: true, // asumimos que el plato base está disponible
+          sede_pricing: p.pricing, // precio específico de la sede (o base si no hay override)
+          sede_is_available: p.is_available, // disponibilidad específica de la sede
+          sede_available: p.is_available, // alias para compatibilidad con StatusBar
+          sede_price: p.pricing, // alias para compatibilidad con StatusBar
+          toppings: (p.toppings || []).map(t => ({
+            id: t.id,
+            name: t.name,
+            description: t.description || '',
+            pricing: t.pricing,
+            is_available: true,
+            sede_pricing: t.pricing,
+            sede_is_available: t.is_available,
+            sede_available: t.is_available, // alias para compatibilidad con StatusBar
+            sede_price: t.pricing // alias para compatibilidad con StatusBar
+          }))
+        })),
+        bebidas: bebidas.map(b => ({
+          id: b.id,
+          name: b.name,
+          description: b.description || '',
+          pricing: b.pricing, // precio base de la bebida
+          is_available: true, // asumimos que la bebida base está disponible
+          sede_pricing: b.pricing, // precio específico de la sede (o base si no hay override)
+          sede_is_available: b.is_available, // disponibilidad específica de la sede
+          sede_available: b.is_available, // alias para compatibilidad con StatusBar
+          sede_price: b.pricing // alias para compatibilidad con StatusBar
+        })),
+        toppings: toppings.map(t => ({
+          id: t.id,
+          name: t.name,
+          description: t.description || '',
+          pricing: t.pricing, // precio base del topping
+          is_available: true, // asumimos que el topping base está disponible
+          sede_pricing: t.pricing, // precio específico de la sede (o base si no hay override)
+          sede_is_available: t.is_available // disponibilidad específica de la sede
+        }))
+      };
       
       setPlatosConSede(menuData.platos);
       setBebidasConSede(menuData.bebidas);
+      setToppingsConSede(menuData.toppings);
       
       console.log('✅ Inventario cargado exitosamente');
     } catch (err) {
@@ -111,24 +159,26 @@ export const Inventory: React.FC<InventoryProps> = ({
   }, [effectiveSedeId]);
 
   // Combinar solo platos y bebidas para mostrar en el inventario (incluyendo inactivos)
+  // Los toppings se muestran dentro de cada plato
   const allProducts = [
     ...platosConSede.map(plato => ({
       ...plato,
       type: 'plato' as const,
       category: 'Platos Principales',
       description: plato.description || 'Sin descripción',
-      available: plato.sede_available,
-      pricing: plato.sede_price,
-      toppings: plato.toppings || [] // Incluir los toppings del plato
+      available: plato.sede_is_available,
+      pricing: plato.sede_pricing,
+      toppings: plato.toppings || [] // Los toppings están dentro del plato
     })),
     ...bebidasConSede.map(bebida => ({
       ...bebida,
       type: 'bebida' as const,
       category: 'Bebidas',
-      description: 'Bebida refrescante',
-      available: bebida.sede_available,
-      pricing: bebida.sede_price
+      description: bebida.description || 'Bebida refrescante',
+      available: bebida.sede_is_available,
+      pricing: bebida.sede_pricing
     }))
+    // ❌ NO incluimos toppings como productos separados
   ];
 
   const categories = ['all', ...new Set(allProducts.map(item => item.category))];
@@ -140,8 +190,8 @@ export const Inventory: React.FC<InventoryProps> = ({
     return matchesSearch && matchesCategory;
   });
 
-  const toggleProductAvailability = async (productId: number, type: 'plato' | 'bebida') => {
-    console.log('🚀 toggleProductAvailability INICIADO:', { productId, type, effectiveSedeId, profile_sede_id: profile?.sede_id });
+  const toggleProductAvailability = async (productId: number, type: 'plato' | 'bebida' | 'topping') => {
+    console.log('🚀 toggleProductAvailability INICIADO:', { productId, type, effectiveSedeId });
     
     if (!effectiveSedeId) {
       toast({
@@ -155,81 +205,70 @@ export const Inventory: React.FC<InventoryProps> = ({
     try {
       console.log('🔄 Toggleando producto:', { productId, type, sedeId: effectiveSedeId });
       
-      const product = allProducts.find(item => item.id === productId && item.type === type);
+      // Encontrar el producto en el estado local
+      let product;
+      let currentList;
+      let updateFunction;
+      
+      if (type === 'plato') {
+        product = platosConSede.find(p => p.id === productId);
+        currentList = platosConSede;
+        updateFunction = setPlatosConSede;
+      } else if (type === 'bebida') {
+        product = bebidasConSede.find(p => p.id === productId);
+        currentList = bebidasConSede;
+        updateFunction = setBebidasConSede;
+      } else { // topping
+        product = toppingsConSede.find(p => p.id === productId);
+        currentList = toppingsConSede;
+        updateFunction = setToppingsConSede;
+      }
+      
       if (!product) {
-        console.log('❌ Producto no encontrado:', { productId, type, availableProducts: allProducts.map(p => ({ id: p.id, name: p.name, type: p.type })) });
+        console.log('❌ Producto no encontrado en estado local');
         return;
       }
 
-      const isCurrentlyAvailable = product.available;
-      console.log('📊 Estado actual:', { 
+      const newAvailability = !product.sede_is_available;
+      console.log('📊 Toggle:', { 
         name: product.name, 
-        available: isCurrentlyAvailable,
-        productId: product.id,
-        type: product.type
+        from: product.sede_is_available,
+        to: newAvailability
       });
       
-      // Debug específico para Limonada natural
-      if (product.name.toLowerCase().includes('limonada')) {
-        console.log('🍋 Debug Limonada ANTES del toggle:', {
-          product,
-          sedeId: effectiveSedeId,
-          isCurrentlyAvailable,
-          toggleTo: !isCurrentlyAvailable,
-          bebidasConSede: bebidasConSede.filter(b => b.name.toLowerCase().includes('limonada'))
-        });
-      }
+      // Actualizar directamente en la base de datos
+      const tableName = type === 'plato' ? 'sede_platos' : 
+                       type === 'bebida' ? 'sede_bebidas' : 'sede_toppings';
+      const idField = type === 'plato' ? 'plato_id' : 
+                     type === 'bebida' ? 'bebida_id' : 'topping_id';
       
-      switch (type) {
-        case 'plato':
-          console.log('🍽️ Actualizando plato para sede...');
-          await menuService.updatePlatoSedeAvailability(effectiveSedeId, productId, !isCurrentlyAvailable);
-          break;
-        case 'bebida':
-          console.log('🥤 Actualizando bebida para sede...');
-          await menuService.updateBebidaSedeAvailability(effectiveSedeId, productId, !isCurrentlyAvailable);
-          break;
+      const { error } = await supabase
+        .from(tableName)
+        .update({ available: newAvailability })
+        .eq('sede_id', effectiveSedeId)
+        .eq(idField, productId);
+
+      if (error) {
+        throw error;
       }
 
-      console.log('🔄 Recargando inventario...');
-      
-      // Pequeña pausa para asegurar que la DB se ha actualizado
-      await new Promise(resolve => setTimeout(resolve, 500));
-      
-      // Recargar el inventario para actualizar el frontend
-      await loadInventoryConSede();
-      
-      // Debug específico para Limonada DESPUÉS del reload
-      if (product.name.toLowerCase().includes('limonada')) {
-        console.log('🍋 Debug Limonada INMEDIATAMENTE después del primer reload:', {
-          bebidasConSede_length: bebidasConSede.length,
-          bebidasConSede_limonada: bebidasConSede.filter(b => b.name?.toLowerCase().includes('limonada')),
-          allProducts_length: allProducts.length,
-          allProducts_limonada: allProducts.filter(p => p.name?.toLowerCase().includes('limonada'))
-        });
-        
-        // Force re-fetch después del delay para asegurar que tenemos datos actualizados
-        setTimeout(async () => {
-          console.log('🍋 Haciendo segundo reload...');
-          await loadInventoryConSede();
-          
-          // Verificar el estado después del segundo reload
-          setTimeout(() => {
-            console.log('🍋 Debug Limonada DESPUÉS del segundo reload:', {
-              bebidasConSede_final: bebidasConSede.filter(b => b.name?.toLowerCase().includes('limonada')),
-              allProducts_final: allProducts.filter(p => p.name?.toLowerCase().includes('limonada'))
-            });
-          }, 50);
-        }, 500);
-      }
+      // Actualizar estado local inmediatamente (optimistic update)
+      const updatedList = currentList.map(item => 
+        item.id === productId 
+          ? { ...item, sede_is_available: newAvailability, is_available: newAvailability }
+          : item
+      );
+      updateFunction(updatedList);
 
-      // Disparar evento de actualización para el StatusBar
-      triggerUpdate();
+      // Invalidar caché para refrescar datos
+      sedeServiceSimple.invalidateSedeCache(effectiveSedeId);
 
       toast({
         title: "Producto actualizado",
-        description: `${product.name} ${isCurrentlyAvailable ? 'desactivado' : 'activado'} correctamente para esta sede.`,
+        description: `${product.name} ${newAvailability ? 'activado' : 'desactivado'} correctamente.`,
       });
+
+      console.log('✅ Producto actualizado exitosamente');
     } catch (err) {
       console.error('❌ Error al actualizar producto:', err);
       toast({
@@ -253,46 +292,68 @@ export const Inventory: React.FC<InventoryProps> = ({
     try {
       console.log('🔄 Toggleando topping:', { toppingId, sedeId: effectiveSedeId });
       
-      // Buscar el topping en todos los platos para obtener su estado actual
-      let currentTopping: any = null;
-      let isCurrentlyAvailable = false;
+      // Buscar el topping en todos los platos
+      let toppingFound = null;
+      let platoWithTopping = null;
       
       for (const plato of platosConSede) {
-        const topping = plato.toppings.find(t => t.id === toppingId);
+        const topping = plato.toppings?.find(t => t.id === toppingId);
         if (topping) {
-          currentTopping = topping;
-          isCurrentlyAvailable = topping.sede_available;
+          toppingFound = topping;
+          platoWithTopping = plato;
           break;
         }
       }
-
-      if (!currentTopping) {
-        console.log('❌ Topping no encontrado:', toppingId);
+      
+      if (!toppingFound) {
+        console.log('❌ Topping no encontrado en estado local');
         return;
       }
 
-      console.log('📊 Estado actual del topping:', { 
-        name: currentTopping.name, 
-        available: isCurrentlyAvailable 
+      const newAvailability = !toppingFound.sede_is_available;
+      console.log('📊 Toggle topping:', { 
+        name: toppingFound.name, 
+        from: toppingFound.sede_is_available,
+        to: newAvailability
       });
       
-      await menuService.updateToppingSedeAvailability(
-        effectiveSedeId, 
-        toppingId, 
-        !isCurrentlyAvailable
-      );
+      // Actualizar directamente en la base de datos
+      const { error } = await supabase
+        .from('sede_toppings')
+        .update({ available: newAvailability })
+        .eq('sede_id', effectiveSedeId)
+        .eq('topping_id', toppingId);
 
-      console.log('🔄 Recargando inventario...');
-      // Recargar el inventario para actualizar el frontend
-      await loadInventoryConSede();
+      if (error) {
+        throw error;
+      }
 
-      // Disparar evento de actualización para el StatusBar
-      triggerUpdate();
+      // Actualizar estado local inmediatamente (optimistic update)
+      // Actualizar el topping dentro de todos los platos que lo contengan
+      const updatedPlatos = platosConSede.map(plato => ({
+        ...plato,
+        toppings: plato.toppings?.map(topping => 
+          topping.id === toppingId 
+            ? { 
+                ...topping, 
+                sede_is_available: newAvailability, 
+                sede_available: newAvailability, // también actualizar el alias para compatibilidad
+                is_available: newAvailability 
+              }
+            : topping
+        ) || []
+      }));
+      setPlatosConSede(updatedPlatos);
+
+      // Invalidar caché para refrescar datos
+      sedeServiceSimple.invalidateSedeCache(effectiveSedeId);
 
       toast({
         title: "Topping actualizado",
-        description: `${topping.name} ${isCurrentlyAvailable ? 'desactivado' : 'activado'} correctamente.`,
+        description: `${toppingFound.name} ${newAvailability ? 'activado' : 'desactivado'} correctamente.`,
       });
+
+      console.log('✅ Topping actualizado exitosamente');
     } catch (err) {
       toast({
         title: "Error",
@@ -772,16 +833,16 @@ export const Inventory: React.FC<InventoryProps> = ({
                       <div key={topping.id} className="flex items-center justify-between p-2 bg-muted rounded">
                         <div className="flex items-center gap-2">
                           <span className="text-sm">{topping.name}</span>
-                          {!topping.sede_available && (
+                          {!topping.sede_is_available && (
                             <Badge variant="secondary" className="text-xs">No disponible</Badge>
                           )}
                         </div>
                         <div className="flex items-center gap-2">
-                          {topping.sede_price > 0 && (
-                            <span className="text-sm font-medium">+{formatCurrency(topping.sede_price)}</span>
+                          {topping.sede_pricing > 0 && (
+                            <span className="text-sm font-medium">+{formatCurrency(topping.sede_pricing)}</span>
                           )}
                           <Switch
-                            checked={topping.sede_available}
+                            checked={topping.sede_is_available}
                             onCheckedChange={() => toggleToppingAvailability(topping.id)}
                             disabled={loading}
                             size="sm"

@@ -45,14 +45,17 @@ export const useDashboard = (sede_id?: string | number) => {
 
   // Cargar órdenes del dashboard con protección contra cargas concurrentes
   const loadDashboardOrders = useCallback(async (filters: DashboardFilters = {}) => {
-    // Prevenir cargas concurrentes
-    if (loadingRef.current) {
+    // ATOMIC check-and-set para prevenir race conditions
+    const wasLoading = loadingRef.current;
+    loadingRef.current = true;
+    
+    if (wasLoading) {
       logDebug('Dashboard', 'Ya hay una carga en progreso, saltando...');
+      loadingRef.current = wasLoading; // Restaurar estado original
       return;
     }
 
     try {
-      loadingRef.current = true;
       setLoading(true);
       setError(null);
       logDebug('Dashboard', 'Cargando órdenes del dashboard', { sede_id, filters });

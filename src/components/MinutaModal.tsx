@@ -18,6 +18,7 @@ export const MinutaModal: React.FC<MinutaModalProps> = ({
 }) => {
   const [orderDetails, setOrderDetails] = useState<MinutaOrderDetails | null>(null);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (isOpen && orderId) {
@@ -27,19 +28,28 @@ export const MinutaModal: React.FC<MinutaModalProps> = ({
 
   const loadOrderDetails = async () => {
     setLoading(true);
+    setError(null);
     try {
       const details = await minutaService.getOrderDetailsForMinuta(orderId);
-      setOrderDetails(details);
+      if (details) {
+        setOrderDetails(details);
+      } else {
+        setError('No se encontraron detalles para esta orden');
+      }
     } catch (error) {
       logError('MinutaModal', 'Error cargando detalles de la orden', error);
+      setError(error instanceof Error ? error.message : 'Error desconocido cargando la minuta');
     } finally {
       setLoading(false);
     }
   };
 
   const handlePrint = () => {
+    if (!orderDetails) return;
+    
+    // Abrir ventana de impresión inmediatamente
     const printWindow = window.open('', '_blank');
-    if (!printWindow || !orderDetails) return;
+    if (!printWindow) return;
 
     const printContent = generatePrintHTML(orderDetails);
     printWindow.document.write(printContent);
@@ -47,6 +57,15 @@ export const MinutaModal: React.FC<MinutaModalProps> = ({
     printWindow.focus();
     printWindow.print();
     printWindow.close();
+    
+    // Cambiar estado en segundo plano (sin bloquear impresión)
+    minutaService.updateOrderStatusToCocina(orderId).then(statusChanged => {
+      if (statusChanged) {
+        console.log('📋 Estado cambiado automáticamente de "Recibidos" a "Cocina" al imprimir minuta');
+      }
+    }).catch(error => {
+      console.error('Error cambiando estado al imprimir:', error);
+    });
   };
 
   const generatePrintHTML = (details: MinutaOrderDetails): string => {
@@ -238,6 +257,10 @@ export const MinutaModal: React.FC<MinutaModalProps> = ({
     <div class="header">
         <div class="title">🍲 AJIACO RESTAURANTE</div>
         <div class="minuta-number">MINUTA #${details.minuta_id}</div>
+        <div style="font-size: 8px; margin: 2px 0; color: #666; text-align: center;">
+            📍 ${details.sede_nombre}<br>
+            ${details.sede_direccion}
+        </div>
         <div class="order-type">
             ${tipoPedidoIcon[details.tipo_pedido]} ${tipoPedidoLabel[details.tipo_pedido]}
         </div>
@@ -365,7 +388,19 @@ export const MinutaModal: React.FC<MinutaModalProps> = ({
 
         {loading ? (
           <div className="flex items-center justify-center p-8">
-            <div className="text-muted-foreground">Cargando detalles de la orden...</div>
+            <div className="flex flex-col items-center gap-3">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+              <div className="text-muted-foreground">Cargando detalles de la orden...</div>
+            </div>
+          </div>
+        ) : error ? (
+          <div className="flex items-center justify-center p-8">
+            <div className="text-center space-y-3">
+              <div className="text-red-600 font-medium">{error}</div>
+              <Button onClick={loadOrderDetails} variant="outline">
+                Reintentar
+              </Button>
+            </div>
           </div>
         ) : orderDetails ? (
           <div className="space-y-4">
@@ -375,6 +410,10 @@ export const MinutaModal: React.FC<MinutaModalProps> = ({
                 <h3 className="text-lg font-bold">🍲 AJIACO RESTAURANTE</h3>
                 <div className="text-2xl font-bold border-2 border-black inline-block px-4 py-2">
                   MINUTA #{orderDetails.minuta_id}
+                </div>
+                <div className="text-xs text-gray-600 mb-2">
+                  📍 {orderDetails.sede_nombre}<br/>
+                  {orderDetails.sede_direccion}
                 </div>
                 <div className="flex items-center justify-center gap-2">
                   {orderDetails.tipo_pedido === 'delivery' && <Truck className="h-5 w-5" />}

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useInventoryEvents } from '@/contexts/InventoryContext';
 import { useAuth } from '@/hooks/useAuth';
-import { menuService } from '@/services/menuService';
+import { sedeServiceSimple } from '@/services/sedeServiceSimple';
 import { supabase } from '@/lib/supabase';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -56,11 +56,29 @@ export const StatusBar: React.FC<StatusBarProps> = ({ orders, currentSede = 'Niz
         setError(null);
       }
       console.log('🔍 StatusBar: Cargando inventario para sede:', sedeToUse, retryCount > 0 ? `(retry ${retryCount})` : '');
-      const menuData = await menuService.getMenuConSede(sedeToUse);
+      
+      // Usar el servicio optimizado y transformar datos
+      const { platos, bebidas, toppings } = await sedeServiceSimple.getSedeCompleteInfo(sedeToUse);
+      
+      // Transformar a formato compatible con StatusBar
+      const menuData = {
+        platos: platos.map(p => ({ 
+          ...p, 
+          sede_available: p.is_available // mapear is_available a sede_available para StatusBar
+        })),
+        bebidas: bebidas.map(b => ({ 
+          ...b, 
+          sede_available: b.is_available
+        })),
+        toppings: toppings.map(t => ({ 
+          ...t, 
+          sede_available: t.is_available
+        }))
+      };
       
       setPlatos(menuData.platos);
       setBebidas(menuData.bebidas);
-      setToppings(menuData.toppings || []);
+      setToppings(menuData.toppings);
       setError(null); // Clear any previous errors
       
       console.log('✅ StatusBar: Inventario cargado exitosamente');
@@ -109,15 +127,15 @@ export const StatusBar: React.FC<StatusBarProps> = ({ orders, currentSede = 'Niz
 
     console.log('🔍 StatusBar: Configurando suscripciones en tiempo real para sede:', sedeToUse);
 
-    // Suscripción a cambios en platos_sedes
+    // Suscripción a cambios en sede_platos
     const platosChannel = supabase
-      .channel('platos_sedes_changes')
+      .channel('sede_platos_changes')
       .on(
         'postgres_changes',
         { 
           event: '*', 
           schema: 'public', 
-          table: 'platos_sedes',
+          table: 'sede_platos',
           filter: `sede_id=eq.${sedeToUse}`
         },
         (payload) => {
@@ -127,15 +145,15 @@ export const StatusBar: React.FC<StatusBarProps> = ({ orders, currentSede = 'Niz
       )
       .subscribe();
 
-    // Suscripción a cambios en bebidas_sedes
+    // Suscripción a cambios en sede_bebidas
     const bebidasChannel = supabase
-      .channel('bebidas_sedes_changes')
+      .channel('sede_bebidas_changes')
       .on(
         'postgres_changes',
         { 
           event: '*', 
           schema: 'public', 
-          table: 'bebidas_sedes',
+          table: 'sede_bebidas',
           filter: `sede_id=eq.${sedeToUse}`
         },
         (payload) => {
@@ -145,15 +163,15 @@ export const StatusBar: React.FC<StatusBarProps> = ({ orders, currentSede = 'Niz
       )
       .subscribe();
 
-    // Suscripción a cambios en toppings_sedes
+    // Suscripción a cambios en sede_toppings
     const toppingsChannel = supabase
-      .channel('toppings_sedes_changes')
+      .channel('sede_toppings_changes')
       .on(
         'postgres_changes',
         { 
           event: '*', 
           schema: 'public', 
-          table: 'toppings_sedes',
+          table: 'sede_toppings',
           filter: `sede_id=eq.${sedeToUse}`
         },
         (payload) => {
@@ -177,10 +195,15 @@ export const StatusBar: React.FC<StatusBarProps> = ({ orders, currentSede = 'Niz
     }
   }, [lastUpdate, sedeToUse]);
 
-  // Contar productos no disponibles
+  // Contar productos no disponibles y disponibles
   const unavailablePlatos = platos.filter(plato => !plato.sede_available);
   const unavailableBebidas = bebidas.filter(bebida => !bebida.sede_available);
   const unavailableToppings = toppings.filter(topping => !topping.sede_available);
+  
+  // Contar productos disponibles 
+  const availablePlatos = platos.filter(plato => plato.sede_available);
+  const availableBebidas = bebidas.filter(bebida => bebida.sede_available);
+  const availableToppings = toppings.filter(topping => topping.sede_available);
 
   // Contar pedidos en curso (received, kitchen, delivery) - excluye delivered y cancelled
   const activeOrders = orders.filter(order => 
@@ -367,7 +390,7 @@ export const StatusBar: React.FC<StatusBarProps> = ({ orders, currentSede = 'Niz
                   </div>
                   <p className="text-sm text-blue-700 font-medium">{currentSede}</p>
                   <div className="mt-2 text-xs text-blue-600">
-                    {platos.length} platos • {bebidas.length} bebidas • {toppings.length} toppings
+                    {availablePlatos.length} platos • {availableBebidas.length} bebidas • {availableToppings.length} toppings disponibles
                   </div>
                 </div>
 
@@ -459,14 +482,14 @@ export const StatusBar: React.FC<StatusBarProps> = ({ orders, currentSede = 'Niz
                     <div className="p-3 bg-green-50 rounded-lg">
                       <div className="flex items-center gap-2 mb-2">
                         <Package className="h-4 w-4 text-green-600" />
-                        <span className="font-medium text-green-900">Platos Disponibles ({platos.length})</span>
+                        <span className="font-medium text-green-900">Platos Disponibles ({availablePlatos.length})</span>
                       </div>
                       <div className="text-sm text-green-700">
-                        ✅ {platos.length === 0 ? 'No hay platos configurados' : `Todos los platos (${platos.length}) están disponibles`}
-                        {platos.length > 0 && (
+                        ✅ {availablePlatos.length === 0 ? 'No hay platos disponibles' : `Todos los platos (${availablePlatos.length}) están disponibles`}
+                        {availablePlatos.length > 0 && (
                           <div className="mt-1 text-xs text-green-600">
-                            {platos.slice(0, 3).map(p => p.name).join(' • ')}
-                            {platos.length > 3 && ` • +${platos.length - 3} más`}
+                            {availablePlatos.slice(0, 3).map(p => p.name).join(' • ')}
+                            {availablePlatos.length > 3 && ` • +${availablePlatos.length - 3} más`}
                           </div>
                         )}
                       </div>
@@ -492,14 +515,14 @@ export const StatusBar: React.FC<StatusBarProps> = ({ orders, currentSede = 'Niz
                     <div className="p-3 bg-green-50 rounded-lg">
                       <div className="flex items-center gap-2 mb-2">
                         <Coffee className="h-4 w-4 text-green-600" />
-                        <span className="font-medium text-green-900">Bebidas Disponibles ({bebidas.length})</span>
+                        <span className="font-medium text-green-900">Bebidas Disponibles ({availableBebidas.length})</span>
                       </div>
                       <div className="text-sm text-green-700">
-                        ✅ {bebidas.length === 0 ? 'No hay bebidas configuradas' : `Todas las bebidas (${bebidas.length}) están disponibles`}
-                        {bebidas.length > 0 && (
+                        ✅ {availableBebidas.length === 0 ? 'No hay bebidas disponibles' : `Todas las bebidas (${availableBebidas.length}) están disponibles`}
+                        {availableBebidas.length > 0 && (
                           <div className="mt-1 text-xs text-green-600">
-                            {bebidas.slice(0, 3).map(b => b.name).join(' • ')}
-                            {bebidas.length > 3 && ` • +${bebidas.length - 3} más`}
+                            {availableBebidas.slice(0, 3).map(b => b.name).join(' • ')}
+                            {availableBebidas.length > 3 && ` • +${availableBebidas.length - 3} más`}
                           </div>
                         )}
                       </div>
@@ -525,14 +548,14 @@ export const StatusBar: React.FC<StatusBarProps> = ({ orders, currentSede = 'Niz
                     <div className="p-3 bg-green-50 rounded-lg">
                       <div className="flex items-center gap-2 mb-2">
                         <Package className="h-4 w-4 text-green-600" />
-                        <span className="font-medium text-green-900">Toppings Disponibles ({toppings.length})</span>
+                        <span className="font-medium text-green-900">Toppings Disponibles ({availableToppings.length})</span>
                       </div>
                       <div className="text-sm text-green-700">
-                        ✅ {toppings.length === 0 ? 'No hay toppings configurados' : `Todos los toppings (${toppings.length}) están disponibles`}
-                        {toppings.length > 0 && (
+                        ✅ {availableToppings.length === 0 ? 'No hay toppings disponibles' : `Todos los toppings (${availableToppings.length}) están disponibles`}
+                        {availableToppings.length > 0 && (
                           <div className="mt-1 text-xs text-green-600">
-                            {toppings.slice(0, 4).map(t => t.name).join(' • ')}
-                            {toppings.length > 4 && ` • +${toppings.length - 4} más`}
+                            {availableToppings.slice(0, 4).map(t => t.name).join(' • ')}
+                            {availableToppings.length > 4 && ` • +${availableToppings.length - 4} más`}
                           </div>
                         )}
                       </div>

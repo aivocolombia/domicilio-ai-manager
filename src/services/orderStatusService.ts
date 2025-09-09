@@ -216,15 +216,46 @@ export class OrderStatusService {
     }
   }
 
-  // Obtener estados válidos para órdenes
-  getValidOrderStatuses(): Array<{ value: string; label: string }> {
-    return [
-      { value: 'Recibidos', label: 'Recibido' },
-      { value: 'Cocina', label: 'En Cocina' },
-      { value: 'Camino', label: 'En Camino' },
-      { value: 'Entregados', label: 'Entregado' }
-      // NOTA: 'Cancelado' no está permitido por el constraint de BD
-    ];
+  // Obtener estados válidos para órdenes basado en el estado actual
+  getValidOrderStatuses(currentStatuses?: string[]): Array<{ value: string; label: string }> {
+    // Si no hay estados actuales, devolver todos los estados
+    if (!currentStatuses || currentStatuses.length === 0) {
+      return [
+        { value: 'Recibidos', label: 'Recibido' },
+        { value: 'Cocina', label: 'En Cocina' },
+        { value: 'Camino', label: 'En Camino' },
+        { value: 'Entregados', label: 'Entregado' }
+      ];
+    }
+
+    // Definir el flujo secuencial
+    const statusFlow = {
+      'Recibidos': ['Cocina'],
+      'Cocina': ['Camino'],
+      'Camino': ['Entregados'],
+      'Entregados': [] // No se puede cambiar desde entregado
+    };
+
+    // Encontrar todos los próximos estados válidos para los estados actuales
+    const validNextStates = new Set<string>();
+    
+    currentStatuses.forEach(currentStatus => {
+      const nextStates = statusFlow[currentStatus as keyof typeof statusFlow] || [];
+      nextStates.forEach(state => validNextStates.add(state));
+    });
+
+    // Mapear a formato de opciones
+    const stateLabels: Record<string, string> = {
+      'Recibidos': 'Recibido',
+      'Cocina': 'En Cocina',
+      'Camino': 'En Camino',
+      'Entregados': 'Entregado'
+    };
+
+    return Array.from(validNextStates).map(state => ({
+      value: state,
+      label: stateLabels[state] || state
+    }));
   }
 
   // Obtener estados de pago válidos

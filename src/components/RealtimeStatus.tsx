@@ -130,11 +130,6 @@ export const RealtimeStatus: React.FC<RealtimeStatusProps> = ({
           </div>
         </div>
         
-        {status.sedeId && (
-          <div className="mt-2 text-xs text-muted-foreground">
-            Escuchando sede: {status.sedeId}
-          </div>
-        )}
         
         {!status.isConnected && status.totalChannels === 0 && (
           <div className="mt-2 flex items-center gap-1 text-xs text-orange-600">

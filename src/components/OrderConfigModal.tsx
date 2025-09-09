@@ -66,8 +66,16 @@ export const OrderConfigModal: React.FC<OrderConfigModalProps> = ({
       const personnel = await orderStatusService.getAvailableDeliveryPersonnel(currentSedeId);
       setAvailableDeliveryPersonnel(personnel);
       
-      // Cargar estados válidos
-      const statuses = orderStatusService.getValidOrderStatuses();
+      // Obtener estados actuales de los pedidos seleccionados
+      const selectedOrders = orders.filter(order => 
+        selectedOrderIds.includes('id' in order ? order.id : order.id_display)
+      );
+      const currentStatuses = selectedOrders.map(order => 
+        'status' in order ? order.status : order.estado
+      ).filter((status): status is string => Boolean(status));
+      
+      // Cargar estados válidos basado en estados actuales
+      const statuses = orderStatusService.getValidOrderStatuses(currentStatuses);
       setValidStatuses(statuses);
       
       // Cargar estados de pago válidos

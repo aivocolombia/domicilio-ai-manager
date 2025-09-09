@@ -36,6 +36,17 @@ export class DashboardService {
       console.log('📊 DashboardService: Consultando órdenes del dashboard...');
       console.log('🔍 DashboardService: Filtros aplicados:', filters);
       
+      // CRÍTICO: Validación obligatoria de sede_id
+      if (!filters.sede_id) {
+        throw new Error('sede_id es obligatorio para consultas de dashboard');
+      }
+      
+      // Validar formato UUID de sede_id
+      const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      if (!uuidRegex.test(filters.sede_id.toString())) {
+        throw new Error('sede_id debe ser un UUID válido');
+      }
+      
       // Auditar y corregir fechas si es necesario
       const correctedFilters = auditAndFixDateFilters(filters);
       if (JSON.stringify(filters) !== JSON.stringify(correctedFilters)) {
@@ -68,13 +79,9 @@ export class DashboardService {
         query = query.eq('status', filters.estado);
       }
 
-      // Filtrar por sede (obligatorio para seguridad)
-      if (filters.sede_id) {
-        console.log('🏢 DashboardService: Filtrando por sede_id:', filters.sede_id);
-        query = query.eq('sede_id', filters.sede_id);
-      } else {
-        console.log('⚠️ DashboardService: NO SE PROPORCIONÓ SEDE_ID - esto puede causar problemas');
-      }
+      // Filtrar por sede (validación ya realizada arriba)
+      console.log('🏢 DashboardService: Filtrando por sede_id:', filters.sede_id);
+      query = query.eq('sede_id', filters.sede_id);
 
       // Filtros de fecha (usando filtros corregidos)
       if (correctedFilters.fechaInicio) {
@@ -274,6 +281,18 @@ export class DashboardService {
     try {
       console.log('📊 Consultando estadísticas del dashboard...');
       console.log('🏢 Sede ID:', sede_id);
+      
+      // CRÍTICO: Validación obligatoria de sede_id
+      if (!sede_id) {
+        throw new Error('sede_id es obligatorio para consultas de estadísticas');
+      }
+      
+      // Validar formato UUID de sede_id
+      const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      if (!uuidRegex.test(sede_id.toString())) {
+        throw new Error('sede_id debe ser un UUID válido');
+      }
+      
       console.log('📅 Filtros de fecha:', { fechaInicio: filters.fechaInicio, fechaFin: filters.fechaFin });
 
       // Auditar y corregir fechas si es necesario
@@ -287,10 +306,8 @@ export class DashboardService {
         .from('ordenes')
         .select('status');
 
-      // Filtrar por sede si se proporciona
-      if (sede_id) {
-        query = query.eq('sede_id', sede_id);
-      }
+      // Filtrar por sede (validación ya realizada arriba)
+      query = query.eq('sede_id', sede_id);
 
       // Aplicar filtros de fecha (usando filtros corregidos)
       if (correctedFilters.fechaInicio) {

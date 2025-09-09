@@ -139,18 +139,31 @@ export const useRealtimeOrders = ({
     return () => {
       logDebug('Realtime', 'Cerrando suscripciones realtime', { sedeId, channelCount: channelsRef.current.length });
       
+      // Intentar cerrar cada canal, pero continuar con la limpieza incluso si falla
+      let closedSuccessfully = 0;
+      let closedWithErrors = 0;
+      
       channelsRef.current.forEach((channel, index) => {
         if (channel) {
           try {
             supabase.removeChannel(channel);
+            closedSuccessfully++;
           } catch (error) {
+            closedWithErrors++;
             logError('Realtime', `Error cerrando canal ${index + 1}`, error);
           }
         }
       });
       
+      // CRÍTICO: Limpiar array independientemente de errores para prevenir memory leaks
       channelsRef.current = [];
       isConnectedRef.current = false;
+      
+      logDebug('Realtime', 'Limpieza de canales completada', { 
+        closedSuccessfully, 
+        closedWithErrors,
+        sedeId 
+      });
     };
   }, [sedeId, handleOrderChange, onOrderUpdated]);
 

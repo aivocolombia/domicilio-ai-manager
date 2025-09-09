@@ -479,7 +479,8 @@ class SedeOrdersService {
           observaciones: orderData.instrucciones,
           hora_entrega: horaEntrega.toISOString(),
           precio_envio: orderData.tipo_entrega === 'delivery' ? (orderData.delivery_cost || 6000) : 0,
-          // TODO: Agregar campos adicionales como tipo_entrega, sede_recogida cuando estén disponibles
+          // Para pedidos de pickup, repartidor_id debe ser null (no necesitan repartidor)
+          repartidor_id: orderData.tipo_entrega === 'pickup' ? null : undefined, // undefined permite auto-asignación para delivery
         })
         .select('id')
         .single();

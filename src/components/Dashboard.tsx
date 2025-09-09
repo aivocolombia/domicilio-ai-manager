@@ -57,7 +57,6 @@ import { sedeOrdersService } from '@/services/sedeOrdersService';
 import { supabase } from '@/lib/supabase';
 import { useDebouncedCallback } from '@/hooks/useDebounce';
 import { useAgentDebug } from '@/hooks/useAgentDebug';
-import { RealtimeStatus } from '@/components/RealtimeStatus';
 
 interface DashboardProps {
   orders: Order[];
@@ -631,8 +630,18 @@ export const Dashboard: React.FC<DashboardProps> = ({
       const month = String(today.getMonth() + 1).padStart(2, '0');
       const day = String(today.getDate()).padStart(2, '0');
       
-      const fechaInicio = `${year}-${month}-${day}T00:00:00Z`;
-      const fechaFin = `${year}-${month}-${day}T23:59:59Z`;
+      // Corregir timezone para Colombia (UTC-5)
+      // Un día en Colombia (00:00 - 23:59) = UTC (05:00 - 04:59 día siguiente)
+      const fechaInicio = `${year}-${month}-${day}T05:00:00Z`; // 12:00 AM Colombia
+      
+      // Calcular día siguiente para el final del día
+      const nextDay = new Date(today);
+      nextDay.setDate(nextDay.getDate() + 1);
+      const yearNext = nextDay.getFullYear();
+      const monthNext = String(nextDay.getMonth() + 1).padStart(2, '0');
+      const dayNext = String(nextDay.getDate()).padStart(2, '0');
+      
+      const fechaFin = `${yearNext}-${monthNext}-${dayNext}T04:59:59Z`; // 11:59 PM Colombia
       
       logDebug('Dashboard', 'Rango de consulta corregido', {
         fechaHoy: today.toLocaleDateString('es-CO'),
@@ -675,12 +684,10 @@ export const Dashboard: React.FC<DashboardProps> = ({
       filters.estado = statusFilter;
     }
     
-    // Llamar directamente a loadDashboardOrders con timeout
-    setTimeout(() => {
-      if (sedeIdToUse) {
-        loadDashboardOrders(filters);
-      }
-    }, 0);
+    // Llamar directamente a loadDashboardOrders sin timeout
+    if (sedeIdToUse) {
+      loadDashboardOrders(filters);
+    }
   };
 
   // Aplicar filtro de fecha cuando cambie el tipo de filtro (con timeout para evitar bucles)
@@ -689,7 +696,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
     let timeoutId: NodeJS.Timeout;
     
     const applyFilters = () => {
-      // Debounce de 300ms para evitar llamadas excesivas
+      // Debounce reducido para carga más rápida
       clearTimeout(timeoutId);
       timeoutId = setTimeout(async () => {
         if (sedeIdToUse && isMounted) {
@@ -699,7 +706,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
             logError('Dashboard', 'Error aplicando filtros', error);
           }
         }
-      }, 300);
+      }, 50); // Reducido de 300ms a 50ms para cargas más rápidas
     };
     
     applyFilters();
@@ -716,9 +723,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
       logDebug('Dashboard', 'Aplicando filtro inicial por defecto (Solo Hoy)');
       setHasAppliedInitialFilter(true);
       // Aplicar el filtro de "Solo Hoy" inmediatamente
-      setTimeout(() => {
-        applyDateFilter();
-      }, 100);
+      applyDateFilter();
     }
   }, [sedeIdToUse, hasAppliedInitialFilter]);
 
@@ -1012,13 +1017,6 @@ export const Dashboard: React.FC<DashboardProps> = ({
         </div>
       </div>
 
-      {/* Realtime Connection Status */}
-      {realtimeStatus && (
-        <RealtimeStatus 
-          realtimeStatus={realtimeStatus} 
-          className="max-w-md" 
-        />
-      )}
 
       {/* Status Overview */}
       <div className="grid grid-cols-1 md:grid-cols-5 gap-4">

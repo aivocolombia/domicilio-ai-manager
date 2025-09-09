@@ -14,10 +14,12 @@ import { Order, DeliverySettings, OrderSource, DeliveryPerson, PaymentMethod, Pa
 import { LayoutDashboard, Package, Users, Store, Settings, Building2, ChevronDown } from 'lucide-react';
 import { StatusBar } from '@/components/StatusBar';
 import { Loading } from '@/components/Loading';
+import { PerformanceMonitor } from '@/components/PerformanceMonitor';
 import { InventoryProvider } from '@/contexts/InventoryContext';
 import { SedeProvider } from '@/contexts/SedeContext';
 import { useAuth } from '@/hooks/useAuth';
 import { usePermissions } from '@/hooks/usePermissions';
+import { usePerformanceMonitor } from '@/hooks/usePerformance';
 import { useActiveTab } from '@/hooks/useActiveTab';
 import { useAppState } from '@/hooks/useAppState';
 import { Button } from '@/components/ui/button';
@@ -167,6 +169,9 @@ const generateMockDeliveryPersonnel = (): DeliveryPerson[] => {
 };
 
 const Index = () => {
+  // Performance monitoring
+  const { renderCount, logRenderReason } = usePerformanceMonitor('Index');
+  
   const { profile } = useAuth();
   const { permissions, isAdmin, isAdministradorPunto, isAgent, userSedeId } = usePermissions();
   const { activeTab, setActiveTab, resetToDashboard } = useActiveTab();
@@ -526,6 +531,10 @@ const Index = () => {
         </Tabs>
         </div>
       </div>
+      
+      {/* Performance Monitor - solo en desarrollo */}
+      <PerformanceMonitor />
+      
       </InventoryProvider>
     </SedeProvider>
   );
