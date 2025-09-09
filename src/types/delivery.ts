@@ -19,6 +19,7 @@ export interface Order {
   originSede?: string; // Nueva propiedad para sede de origen
   assignedSede?: string; // Nueva propiedad para sede asignada
   deliveryType: DeliveryType; // Nueva propiedad para tipo de entrega
+  type_order?: string; // Campo de base de datos para tipo de orden (delivery/pickup)
   pickupSede?: string; // Sede donde se recoge el pedido (solo para pickup)
 }
 

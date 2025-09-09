@@ -481,6 +481,8 @@ class SedeOrdersService {
           precio_envio: orderData.tipo_entrega === 'delivery' ? (orderData.delivery_cost || 6000) : 0,
           // Para pedidos de pickup, repartidor_id debe ser null (no necesitan repartidor)
           repartidor_id: orderData.tipo_entrega === 'pickup' ? null : undefined, // undefined permite auto-asignación para delivery
+          source: 'sede', // Siempre 'sede' para órdenes creadas desde la UI
+          type_order: orderData.tipo_entrega // 'delivery' o 'pickup'
         })
         .select('id')
         .single();

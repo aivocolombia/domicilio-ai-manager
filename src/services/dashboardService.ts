@@ -18,6 +18,8 @@ export interface DashboardOrder {
   orden_id: number;
   payment_id: number;
   minuta_id?: string; // ID diario de la minuta (ej: "1", "2", "3")
+  source?: string; // Fuente de la orden: 'sede' o 'ai_agent'
+  type_order?: string; // Tipo de orden: 'delivery' o 'pickup'
 }
 
 export interface DashboardFilters {
@@ -65,6 +67,8 @@ export class DashboardService {
           cliente_id,
           repartidor_id,
           sede_id,
+          source,
+          type_order,
           clientes!left(nombre, telefono, direccion),
           pagos!left(type, status, total_pago),
           repartidores!left(nombre),
@@ -181,7 +185,9 @@ export class DashboardService {
         creado_fecha: new Date(order.created_at).toLocaleDateString('es-CO'),
         orden_id: order.id,
         payment_id: order.payment_id || 0,
-        minuta_id: order.minutas && order.minutas.length > 0 ? order.minutas[0].daily_id.toString() : undefined
+        minuta_id: order.minutas && order.minutas.length > 0 ? order.minutas[0].daily_id.toString() : undefined,
+        source: order.source || 'sede',
+        type_order: order.type_order || 'delivery'
       }));
 
       console.log('✅ Órdenes del dashboard obtenidas:', transformedOrders.length);

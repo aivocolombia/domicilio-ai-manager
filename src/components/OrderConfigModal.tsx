@@ -56,7 +56,7 @@ export const OrderConfigModal: React.FC<OrderConfigModalProps> = ({
     if (isOpen) {
       loadModalData();
     }
-  }, [isOpen, currentSedeId]);
+  }, [isOpen, currentSedeId, selectedOrderIds]);
 
   const loadModalData = async () => {
     try {
@@ -66,7 +66,7 @@ export const OrderConfigModal: React.FC<OrderConfigModalProps> = ({
       const personnel = await orderStatusService.getAvailableDeliveryPersonnel(currentSedeId);
       setAvailableDeliveryPersonnel(personnel);
       
-      // Obtener estados actuales de los pedidos seleccionados
+      // Obtener estados actuales y tipos de los pedidos seleccionados
       const selectedOrders = orders.filter(order => 
         selectedOrderIds.includes('id' in order ? order.id : order.id_display)
       );
@@ -74,8 +74,12 @@ export const OrderConfigModal: React.FC<OrderConfigModalProps> = ({
         'status' in order ? order.status : order.estado
       ).filter((status): status is string => Boolean(status));
       
-      // Cargar estados válidos basado en estados actuales
-      const statuses = orderStatusService.getValidOrderStatuses(currentStatuses);
+      const orderTypes = selectedOrders.map(order => 
+        'type_order' in order ? order.type_order : (order as any).tipo_orden || 'delivery'
+      ).filter((type): type is string => Boolean(type));
+      
+      // Cargar estados válidos basado en estados actuales y tipos de orden
+      const statuses = orderStatusService.getValidOrderStatuses(currentStatuses, orderTypes);
       setValidStatuses(statuses);
       
       // Cargar estados de pago válidos

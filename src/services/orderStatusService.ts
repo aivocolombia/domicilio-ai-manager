@@ -216,23 +216,36 @@ export class OrderStatusService {
     }
   }
 
-  // Obtener estados válidos para órdenes basado en el estado actual
-  getValidOrderStatuses(currentStatuses?: string[]): Array<{ value: string; label: string }> {
+  // Obtener estados válidos para órdenes basado en el estado actual y tipo de orden
+  getValidOrderStatuses(currentStatuses?: string[], orderTypes?: string[]): Array<{ value: string; label: string }> {
     // Si no hay estados actuales, devolver todos los estados
     if (!currentStatuses || currentStatuses.length === 0) {
       return [
         { value: 'Recibidos', label: 'Recibido' },
         { value: 'Cocina', label: 'En Cocina' },
         { value: 'Camino', label: 'En Camino' },
+        { value: 'En espera', label: 'En Espera' },
         { value: 'Entregados', label: 'Entregado' }
       ];
     }
 
-    // Definir el flujo secuencial
-    const statusFlow = {
+    // Verificar si hay órdenes de pickup en la selección
+    const hasPickupOrders = orderTypes && orderTypes.some(type => type === 'pickup');
+    const hasDeliveryOrders = orderTypes && orderTypes.some(type => type === 'delivery');
+
+    // Definir el flujo secuencial para delivery
+    const deliveryStatusFlow = {
       'Recibidos': ['Cocina'],
       'Cocina': ['Camino'],
       'Camino': ['Entregados'],
+      'Entregados': [] // No se puede cambiar desde entregado
+    };
+
+    // Definir el flujo secuencial para pickup (camino se reemplaza por en espera)
+    const pickupStatusFlow = {
+      'Recibidos': ['Cocina'],
+      'Cocina': ['En espera'],
+      'En espera': ['Entregados'],
       'Entregados': [] // No se puede cambiar desde entregado
     };
 
@@ -240,7 +253,17 @@ export class OrderStatusService {
     const validNextStates = new Set<string>();
     
     currentStatuses.forEach(currentStatus => {
-      const nextStates = statusFlow[currentStatus as keyof typeof statusFlow] || [];
+      // Si hay mezcla de tipos o no se especifican tipos, usar flujo de delivery por defecto
+      let nextStates: string[] = [];
+      
+      if (hasPickupOrders && !hasDeliveryOrders) {
+        // Solo órdenes de pickup
+        nextStates = pickupStatusFlow[currentStatus as keyof typeof pickupStatusFlow] || [];
+      } else {
+        // Solo delivery o mezcla (usar delivery por defecto)
+        nextStates = deliveryStatusFlow[currentStatus as keyof typeof deliveryStatusFlow] || [];
+      }
+      
       nextStates.forEach(state => validNextStates.add(state));
     });
 
@@ -249,6 +272,7 @@ export class OrderStatusService {
       'Recibidos': 'Recibido',
       'Cocina': 'En Cocina',
       'Camino': 'En Camino',
+      'En espera': 'En Espera',
       'Entregados': 'Entregado'
     };
 
