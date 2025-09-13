@@ -150,23 +150,45 @@ export const useDashboard = (sede_id?: string | number) => {
     }
   }, [toast, loadDashboardOrders]);
 
-  // Configurar suscripción en tiempo real con debounce para evitar recargas excesivas
-  const debouncedReload = useCallback(
-    debounce(() => {
-      if (!loadingRef.current && sedeIdRef.current) {
-        console.log('🔄 Dashboard: Recarga programada ejecutándose...');
+  // Función para recarga con filtros actuales (será pasada desde Dashboard)
+  const refreshFunctionRef = useRef<(() => void) | null>(null);
+  
+  // Forzar recarga inmediata para cambios de estado críticos
+  const forceReload = useCallback(() => {
+    if (sedeIdRef.current) {
+      console.log('🔄 Dashboard: Forzando recarga inmediata...');
+      // Resetear el flag de loading para permitir recarga
+      loadingRef.current = false;
+      // Usar función de refresh del Dashboard si está disponible, sino usar loadDashboardOrders
+      if (refreshFunctionRef.current) {
+        console.log('🔄 Dashboard: Usando función de refresh con filtros actuales');
+        refreshFunctionRef.current();
+      } else {
+        console.log('🔄 Dashboard: Usando loadDashboardOrders básico');
         loadDashboardOrders();
       }
-    }, 1000), // Esperar 1 segundo antes de recargar
+    }
+  }, [loadDashboardOrders]);
+
+  // Configurar suscripción en tiempo real con debounce reducido
+  const debouncedReload = useCallback(
+    debounce(() => {
+      if (sedeIdRef.current) {
+        console.log('🔄 Dashboard: Recarga programada ejecutándose...');
+        // Resetear el flag de loading para permitir recarga
+        loadingRef.current = false;
+        loadDashboardOrders();
+      }
+    }, 300), // Reducido a 300ms para respuesta más rápida
     [loadDashboardOrders]
   );
 
   const realtimeStatus = useRealtimeOrders({
     sedeId: sedeIdRef.current?.toString(),
     onOrderUpdated: () => {
-      console.log('🔄 Dashboard: Orden actualizada, programando recarga...');
-      // Usar debounce para evitar múltiples recargas consecutivas
-      debouncedReload();
+      console.log('🔄 Dashboard: Orden actualizada, forzando recarga inmediata...');
+      // Usar recarga inmediata para cualquier cambio
+      forceReload();
     },
     onNewOrder: (order) => {
       console.log('📝 Dashboard: Nueva orden recibida:', order);
@@ -175,10 +197,8 @@ export const useDashboard = (sede_id?: string | number) => {
         description: `Orden #${order.id} recibida`,
         duration: 3000,
       });
-      // Recarga inmediata para nuevas órdenes (más importante)
-      if (!loadingRef.current && sedeIdRef.current) {
-        setTimeout(() => loadDashboardOrders(), 500);
-      }
+      // Recarga inmediata para nuevas órdenes
+      forceReload();
     },
     onOrderStatusChanged: (orderId, newStatus) => {
       console.log(`📊 Dashboard: Orden #${orderId} cambió a ${newStatus}`);
@@ -187,10 +207,16 @@ export const useDashboard = (sede_id?: string | number) => {
         description: `Orden #${orderId} → ${newStatus}`,
         duration: 2000,
       });
-      // Para cambios de estado, usar debounce
-      debouncedReload();
+      // Para cambios de estado, recarga inmediata (crítico)
+      forceReload();
     }
   });
+
+  // Función para registrar la función de refresh del Dashboard
+  const registerRefreshFunction = useCallback((refreshFn: () => void) => {
+    refreshFunctionRef.current = refreshFn;
+    console.log('🔄 Dashboard: Función de refresh registrada');
+  }, []);
 
   return {
     orders,
@@ -201,6 +227,7 @@ export const useDashboard = (sede_id?: string | number) => {
     filterOrdersByStatus,
     refreshData,
     deleteOrder,
-    realtimeStatus // Exponer estado de conexión realtime
+    realtimeStatus, // Exponer estado de conexión realtime
+    registerRefreshFunction // Nueva función para registrar refresh con filtros
   };
 }; 

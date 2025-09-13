@@ -15,6 +15,8 @@ export interface RepartidorConEstadisticas extends Repartidor {
   entregados: number;
   total_asignados: number;
   total_entregado: number;
+  entregado_efectivo: number; // Dinero en efectivo del día
+  entregado_otros: number; // Dinero por otros métodos del día
 }
 
 class DeliveryService {
@@ -116,6 +118,11 @@ class DeliveryService {
           try {
             console.log(`📊 Obteniendo estadísticas para repartidor ${repartidor.id}...`);
             
+            // Crear rango de fechas del día actual (Colombia timezone)
+            const today = new Date();
+            const startOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+            const endOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 23, 59, 59, 999);
+
             // Query SQL directo para obtener estadísticas del repartidor
             const { data: stats, error: errorStats } = await supabase
               .from('ordenes')
@@ -123,7 +130,8 @@ class DeliveryService {
                 id,
                 status,
                 payment_id,
-                pagos!inner(total_pago)
+                created_at,
+                pagos!inner(total_pago, type)
               `)
               .eq('repartidor_id', repartidor.id);
 
@@ -135,30 +143,48 @@ class DeliveryService {
                 pedidos_activos: 0,
                 entregados: 0,
                 total_asignados: 0,
-                total_entregado: 0
+                total_entregado: 0,
+                entregado_efectivo: 0,
+                entregado_otros: 0
               };
             }
 
-            // Calcular estadísticas manualmente
+            // Filtrar órdenes del día de hoy
+            const ordersToday = stats?.filter(order => {
+              const orderDate = new Date(order.created_at);
+              return orderDate >= startOfDay && orderDate <= endOfDay;
+            }) || [];
+
+            // Calcular estadísticas manualmente (activos de cualquier día)
             const pedidosActivos = stats?.filter(order => 
               ['Recibidos', 'Cocina', 'Camino'].includes(order.status)
             ).length || 0;
             
-            const entregados = stats?.filter(order => 
+            // Entregados solo del día de hoy
+            const entregadosHoy = ordersToday.filter(order => 
               order.status === 'Entregados'
-            ).length || 0;
+            );
             
             const totalAsignados = stats?.length || 0;
             
-            const totalEntregado = stats
-              ?.filter(order => order.status === 'Entregados')
-              ?.reduce((sum, order) => sum + (order.pagos?.total_pago || 0), 0) || 0;
+            // Calcular totales por método de pago (solo entregas de hoy)
+            const entregadosEfectivo = entregadosHoy
+              .filter(order => order.pagos?.type === 'efectivo')
+              .reduce((sum, order) => sum + (order.pagos?.total_pago || 0), 0);
+              
+            const entregadosOtros = entregadosHoy
+              .filter(order => order.pagos?.type !== 'efectivo')
+              .reduce((sum, order) => sum + (order.pagos?.total_pago || 0), 0);
+            
+            const totalEntregadoHoy = entregadosEfectivo + entregadosOtros;
 
             const estadisticas = {
               pedidos_activos: pedidosActivos,
-              entregados: entregados,
+              entregados: entregadosHoy.length, // Solo entregas de hoy
               total_asignados: totalAsignados,
-              total_entregado: totalEntregado
+              total_entregado: totalEntregadoHoy, // Solo del día de hoy
+              entregado_efectivo: entregadosEfectivo, // Nuevo campo
+              entregado_otros: entregadosOtros // Nuevo campo
             };
 
             console.log(`📊 Estadísticas calculadas para repartidor ${repartidor.id}:`, estadisticas);
@@ -168,7 +194,9 @@ class DeliveryService {
               pedidos_activos: estadisticas.pedidos_activos,
               entregados: estadisticas.entregados,
               total_asignados: estadisticas.total_asignados,
-              total_entregado: estadisticas.total_entregado
+              total_entregado: estadisticas.total_entregado,
+              entregado_efectivo: estadisticas.entregado_efectivo,
+              entregado_otros: estadisticas.entregado_otros
             };
           } catch (error) {
             console.error(`❌ Error procesando estadísticas para repartidor ${repartidor.id}:`, error);
@@ -177,7 +205,9 @@ class DeliveryService {
               pedidos_activos: 0,
               entregados: 0,
               total_asignados: 0,
-              total_entregado: 0
+              total_entregado: 0,
+              entregado_efectivo: 0,
+              entregado_otros: 0
             };
           }
         })

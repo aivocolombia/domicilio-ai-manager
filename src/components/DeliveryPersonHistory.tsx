@@ -20,7 +20,7 @@ export const DeliveryPersonHistory: React.FC<DeliveryPersonHistoryProps> = ({
   deliveryPerson,
   orders
 }) => {
-  const [showTodayOnly, setShowTodayOnly] = useState(false);
+  const [showTodayOnly, setShowTodayOnly] = useState(true);
   const [historialPedidos, setHistorialPedidos] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
 
@@ -57,7 +57,9 @@ export const DeliveryPersonHistory: React.FC<DeliveryPersonHistoryProps> = ({
     pedidos_activos: deliveryPerson.pedidos_activos || 0,
     entregados: deliveryPerson.entregados || 0,
     total_asignados: deliveryPerson.total_asignados || 0,
-    total_entregado: deliveryPerson.total_entregado || 0
+    total_entregado: deliveryPerson.total_entregado || 0,
+    entregado_efectivo: deliveryPerson.entregado_efectivo || 0,
+    entregado_otros: deliveryPerson.entregado_otros || 0
   };
   
   // Filter by today if toggle is active
@@ -85,6 +87,37 @@ export const DeliveryPersonHistory: React.FC<DeliveryPersonHistoryProps> = ({
     return orderDate >= today && orderDate < tomorrow;
   });
   const todayCompleted = todayOrders.filter(order => order.status === 'Entregados');
+  
+  // Debug: Log payment methods para verificar valores reales
+  if (process.env.NODE_ENV === 'development' && todayCompleted.length > 0) {
+    console.log('🔍 Debug - Pedidos entregados hoy:', todayCompleted.map(order => ({
+      id: order.id,
+      pagoType: order.pagos?.type,
+      paymentMethod: order.payment_method,
+      pagos: order.pagos
+    })));
+  }
+
+  // Calcular efectivo de pedidos entregados hoy
+  const todayCashOrders = todayCompleted.filter(order => 
+    order.pagos?.type === 'efectivo' ||
+    order.pagos?.type === 'cash' ||
+    (order.payment_method && (order.payment_method === 'cash' || order.payment_method === 'efectivo'))
+  );
+  
+  const todayTotalCash = todayCashOrders.reduce((sum, order) => {
+    return sum + (order.pagos?.total_pago || order.totalAmount || 0);
+  }, 0);
+  
+  const todayOtherPayments = todayCompleted.filter(order => 
+    !(order.pagos?.type === 'efectivo' ||
+      order.pagos?.type === 'cash' ||
+      (order.payment_method && (order.payment_method === 'cash' || order.payment_method === 'efectivo')))
+  );
+  
+  const todayTotalOthers = todayOtherPayments.reduce((sum, order) => {
+    return sum + (order.pagos?.total_pago || order.totalAmount || 0);
+  }, 0);
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -145,7 +178,7 @@ export const DeliveryPersonHistory: React.FC<DeliveryPersonHistoryProps> = ({
               className="flex items-center gap-2"
             >
               {showTodayOnly ? <Calendar className="h-4 w-4" /> : <CalendarDays className="h-4 w-4" />}
-              {showTodayOnly ? 'Solo Hoy' : 'Todo el Historial'}
+              {showTodayOnly ? 'Pedidos de Hoy' : 'Historial Completo'}
             </Button>
             <div className="text-sm text-muted-foreground">
               Mostrando {showTodayOnly ? 'pedidos de hoy' : 'todos los pedidos'}
@@ -200,6 +233,95 @@ export const DeliveryPersonHistory: React.FC<DeliveryPersonHistoryProps> = ({
             </div>
           )}
 
+          {/* Control de Efectivo - Siempre visible para pedidos del día */}
+          {!loading && (todayTotalCash > 0 || todayCompleted.length > 0) && (
+            <div className="bg-gradient-to-r from-green-50 to-emerald-50 border border-green-200 p-6 rounded-lg">
+              <h3 className="text-lg font-semibold text-green-800 mb-4 flex items-center gap-2">
+                <DollarSign className="h-5 w-5" />
+                💰 Control de Efectivo - Día de Hoy
+              </h3>
+              
+              {/* Resumen de pedidos por método de pago */}
+              <div className="mb-4 p-3 bg-white rounded-lg border border-green-100">
+                <div className="grid grid-cols-2 gap-4 text-sm">
+                  <div className="flex justify-between">
+                    <span className="text-green-700">Pedidos en efectivo:</span>
+                    <span className="font-bold text-green-800">{todayCashOrders.length}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-blue-700">Otros métodos:</span>
+                    <span className="font-bold text-blue-800">{todayOtherPayments.length}</span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                {/* Efectivo Recaudado */}
+                <div className="bg-white p-4 rounded-lg border border-green-300 shadow-sm">
+                  <p className="text-3xl font-bold text-green-700">
+                    {formatCurrency(todayTotalCash)}
+                  </p>
+                  <p className="text-sm text-green-800 font-semibold">💵 Efectivo Recaudado</p>
+                  <p className="text-xs text-green-600 mt-1">Debe entregar al supervisor</p>
+                  <div className="mt-2 text-xs text-green-700 bg-green-50 px-2 py-1 rounded">
+                    {todayCashOrders.length} pedidos en efectivo
+                  </div>
+                </div>
+                
+                {/* Otros Métodos */}
+                <div className="bg-white p-4 rounded-lg border border-blue-200 shadow-sm">
+                  <p className="text-3xl font-bold text-blue-600">
+                    {formatCurrency(todayTotalOthers)}
+                  </p>
+                  <p className="text-sm text-blue-700 font-semibold">💳 Otros Métodos</p>
+                  <p className="text-xs text-blue-600 mt-1">Tarjeta, transferencia, etc.</p>
+                  <div className="mt-2 text-xs text-blue-700 bg-blue-50 px-2 py-1 rounded">
+                    {todayOtherPayments.length} pedidos digitales
+                  </div>
+                </div>
+                
+                {/* Total del Día */}
+                <div className="bg-white p-4 rounded-lg border border-purple-200 shadow-sm">
+                  <p className="text-3xl font-bold text-purple-600">
+                    {formatCurrency(todayTotalCash + todayTotalOthers)}
+                  </p>
+                  <p className="text-sm text-purple-700 font-semibold">📊 Total del Día</p>
+                  <p className="text-xs text-purple-600 mt-1">Efectivo + Otros métodos</p>
+                  <div className="mt-2 text-xs text-purple-700 bg-purple-50 px-2 py-1 rounded">
+                    {todayCompleted.length} pedidos entregados
+                  </div>
+                </div>
+              </div>
+              
+              {/* Instrucciones para el supervisor */}
+              <div className="mt-4 p-4 bg-amber-50 border border-amber-300 rounded-lg">
+                <div className="flex items-start gap-3">
+                  <div className="text-amber-600 text-lg">📋</div>
+                  <div>
+                    <p className="text-sm text-amber-800 font-semibold mb-2">
+                      Instrucciones para Supervisión:
+                    </p>
+                    {todayTotalCash > 0 ? (
+                      <p className="text-sm text-amber-800">
+                        • El repartidor debe entregar <strong className="text-lg">{formatCurrency(todayTotalCash)}</strong> en efectivo al final del turno
+                        <br />
+                        • Los otros métodos ({formatCurrency(todayTotalOthers)}) ya están registrados digitalmente
+                        <br />
+                        • Total de pedidos entregados hoy: <strong>{todayCompleted.length}</strong>
+                      </p>
+                    ) : (
+                      <p className="text-sm text-amber-800">
+                        • No hay dinero en efectivo para entregar hoy
+                        <br />
+                        • Todos los pedidos fueron pagados con métodos digitales ({formatCurrency(todayTotalOthers)})
+                      </p>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Active Orders Section */}
           {!loading && activeOrders.length > 0 && (
             <div>
@@ -215,6 +337,7 @@ export const DeliveryPersonHistory: React.FC<DeliveryPersonHistoryProps> = ({
                       <TableHead>Cliente</TableHead>
                       <TableHead>Dirección</TableHead>
                       <TableHead>Estado</TableHead>
+                      <TableHead>Método Pago</TableHead>
                       <TableHead>Total</TableHead>
                       <TableHead>Hora Entrega</TableHead>
                     </TableRow>
@@ -242,8 +365,27 @@ export const DeliveryPersonHistory: React.FC<DeliveryPersonHistoryProps> = ({
                             {getStatusText(order.status)}
                           </Badge>
                         </TableCell>
+                        <TableCell>
+                          <div className="flex items-center gap-2">
+                            {(order.pagos?.type === 'efectivo' || 
+                              order.pagos?.type === 'cash' ||
+                              (order.payment_method && (order.payment_method === 'cash' || order.payment_method === 'efectivo'))) ? (
+                              <>
+                                <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+                                <span className="text-sm font-medium text-green-700">💵 Efectivo</span>
+                              </>
+                            ) : (
+                              <>
+                                <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
+                                <span className="text-sm text-blue-700">
+                                  💳 {order.pagos?.type || order.payment_method || 'Digital'}
+                                </span>
+                              </>
+                            )}
+                          </div>
+                        </TableCell>
                         <TableCell className="font-medium">
-                          {formatCurrency(order.pagos?.total_pago || 0)}
+                          {formatCurrency(order.pagos?.total_pago || order.totalAmount || 0)}
                         </TableCell>
                         <TableCell className="text-sm">
                           {order.hora_entrega ? new Date(order.hora_entrega).toLocaleTimeString('es-CO', {
@@ -274,6 +416,7 @@ export const DeliveryPersonHistory: React.FC<DeliveryPersonHistoryProps> = ({
                     <TableHead>Cliente</TableHead>
                     <TableHead>Dirección</TableHead>
                     <TableHead>Estado</TableHead>
+                    <TableHead>Método Pago</TableHead>
                     <TableHead>Total</TableHead>
                     <TableHead>Fecha</TableHead>
                   </TableRow>
@@ -304,8 +447,27 @@ export const DeliveryPersonHistory: React.FC<DeliveryPersonHistoryProps> = ({
                             {getStatusText(order.status)}
                           </Badge>
                         </TableCell>
+                        <TableCell>
+                          <div className="flex items-center gap-2">
+                            {(order.pagos?.type === 'efectivo' || 
+                              order.pagos?.type === 'cash' ||
+                              (order.payment_method && (order.payment_method === 'cash' || order.payment_method === 'efectivo'))) ? (
+                              <>
+                                <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+                                <span className="text-sm font-medium text-green-700">💵 Efectivo</span>
+                              </>
+                            ) : (
+                              <>
+                                <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
+                                <span className="text-sm text-blue-700">
+                                  💳 {order.pagos?.type || order.payment_method || 'Digital'}
+                                </span>
+                              </>
+                            )}
+                          </div>
+                        </TableCell>
                         <TableCell className="font-medium">
-                          {formatCurrency(order.pagos?.total_pago || 0)}
+                          {formatCurrency(order.pagos?.total_pago || order.totalAmount || 0)}
                         </TableCell>
                         <TableCell className="text-sm">
                           {new Date(order.created_at).toLocaleDateString('es-CO')}
@@ -319,7 +481,7 @@ export const DeliveryPersonHistory: React.FC<DeliveryPersonHistoryProps> = ({
                       ))
                   ) : (
                     <TableRow>
-                      <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
+                      <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
                         {showTodayOnly 
                           ? 'No hay pedidos de hoy para este repartidor'
                           : 'No hay pedidos asignados a este repartidor'

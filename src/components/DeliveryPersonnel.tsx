@@ -252,7 +252,15 @@ export const DeliveryPersonnel: React.FC<DeliveryPersonnelProps> = ({
           <CardContent className="flex items-center justify-between p-6">
             <div>
               <p className="text-2xl font-bold text-green-600">${totalDelivered.toLocaleString()}</p>
-              <p className="text-sm text-muted-foreground">Total Entregado</p>
+              <p className="text-sm text-muted-foreground">Total Entregado (Hoy)</p>
+              <div className="flex gap-4 mt-2">
+                <div className="text-xs">
+                  <span className="text-green-600 font-medium">Efectivo: ${repartidores.reduce((sum, person) => sum + (person.entregado_efectivo || 0), 0).toLocaleString()}</span>
+                </div>
+                <div className="text-xs">
+                  <span className="text-blue-600 font-medium">Otros: ${repartidores.reduce((sum, person) => sum + (person.entregado_otros || 0), 0).toLocaleString()}</span>
+                </div>
+              </div>
             </div>
             <User className="h-8 w-8 text-green-600" />
           </CardContent>
@@ -344,8 +352,16 @@ export const DeliveryPersonnel: React.FC<DeliveryPersonnelProps> = ({
                   <span className="font-medium">{person.total_asignados || 0}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-sm text-muted-foreground">Total entregado:</span>
+                  <span className="text-sm text-muted-foreground">Total entregado (hoy):</span>
                   <span className="font-medium text-green-600">${(person.total_entregado || 0).toLocaleString()}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-sm text-muted-foreground">Efectivo (hoy):</span>
+                  <span className="font-medium text-green-600">${(person.entregado_efectivo || 0).toLocaleString()}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-sm text-muted-foreground">Otros métodos (hoy):</span>
+                  <span className="font-medium text-blue-600">${(person.entregado_otros || 0).toLocaleString()}</span>
                 </div>
                 {person.placas && (
                   <div className="flex justify-between">

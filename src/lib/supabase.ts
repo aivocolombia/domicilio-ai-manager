@@ -1,7 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
 import { SUPABASE_CONFIG } from '@/config/api';
 
-// Verificar configuración antes de crear el cliente
+// Verificar configuraciï¿½n antes de crear el cliente
 if (!SUPABASE_CONFIG.URL || !SUPABASE_CONFIG.ANON_KEY) {
   console.error('ERROR: Variables de entorno de Supabase no configuradas');
   throw new Error('Variables de entorno de Supabase no configuradas');
@@ -260,6 +260,7 @@ export interface Database {
           observaciones: string | null;
           cliente_id: number | null; // bigint
           sede_id: string | null; // uuid
+          precio_envio: number | null; // integer
         };
         Insert: {
           id?: number;
@@ -275,6 +276,7 @@ export interface Database {
           observaciones?: string | null;
           cliente_id?: number | null;
           sede_id?: string | null;
+          precio_envio?: number | null;
         };
         Update: {
           id?: number;
@@ -290,6 +292,7 @@ export interface Database {
           observaciones?: string | null;
           cliente_id?: number | null;
           sede_id?: string | null;
+          precio_envio?: number | null;
         };
       };
       clientes: {

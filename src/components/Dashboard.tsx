@@ -503,7 +503,8 @@ export const Dashboard: React.FC<DashboardProps> = ({
     filterOrdersByStatus, 
     refreshData,
     deleteOrder,
-    realtimeStatus
+    realtimeStatus,
+    registerRefreshFunction
   } = useDashboard(sedeIdToUse);
 
   // Usar SOLO datos reales - NUNCA datos legacy para evitar mostrar datos dummy
@@ -775,6 +776,11 @@ export const Dashboard: React.FC<DashboardProps> = ({
     }
   }, [sedeIdToUse, lastSedeId]);
 
+  // Registrar función de refresh con filtros para uso en real-time
+  useEffect(() => {
+    registerRefreshFunction(refreshDataWithCurrentFilters);
+  }, [registerRefreshFunction, refreshDataWithCurrentFilters]);
+
   // Aplicar filtro inicial cuando el componente se monta (solo una vez)
   useEffect(() => {
     if (sedeIdToUse && !hasAppliedInitialFilter) {
@@ -1018,7 +1024,40 @@ export const Dashboard: React.FC<DashboardProps> = ({
       <div className="flex flex-col lg:flex-row gap-4 items-start lg:items-center justify-between">
         <div>
           <div className="flex items-center gap-4">
-            <h1 className="text-3xl font-bold">Dashboard de Domicilios</h1>
+            <div className="flex items-center gap-3">
+              <h1 className="text-3xl font-bold">Dashboard de Domicilios</h1>
+              
+              {/* Real-time connection indicator */}
+              <div className="flex items-center gap-2">
+                <div className={`w-2 h-2 rounded-full ${
+                  realtimeStatus?.connectionStatus === 'connected' ? 'bg-green-500 animate-pulse' : 
+                  realtimeStatus?.connectionStatus === 'connecting' ? 'bg-yellow-500 animate-spin' : 
+                  realtimeStatus?.connectionStatus === 'error' ? 'bg-red-500' : 'bg-gray-500'
+                }`}></div>
+                <span className="text-xs text-muted-foreground">
+                  {realtimeStatus?.connectionStatus === 'connected' ? 'En vivo' : 
+                   realtimeStatus?.connectionStatus === 'connecting' ? 'Conectando...' : 
+                   realtimeStatus?.connectionStatus === 'error' ? 'Error' : 'Desconectado'}
+                </span>
+                {realtimeStatus?.connectionStatus === 'error' && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      realtimeStatus.reconnect();
+                      toast({
+                        title: "Reconectando...",
+                        description: "Intentando restablecer conexión en tiempo real",
+                        duration: 2000,
+                      });
+                    }}
+                    className="h-6 px-2 text-xs"
+                  >
+                    Reconectar
+                  </Button>
+                )}
+              </div>
+            </div>
             
             {/* Toggle Delivery/Pickup */}
             <div className="flex bg-muted rounded-lg p-1">

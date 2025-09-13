@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -35,6 +35,7 @@ import { useMenu } from '@/hooks/useMenu';
 import { useSedeOrders } from '@/hooks/useSedeOrders';
 import { useAuth } from '@/hooks/useAuth';
 import { CreateOrderData } from '@/services/sedeOrdersService';
+import { addressService } from '@/services/addressService';
 
 interface SedeOrdersProps {
   orders: Order[];
@@ -96,6 +97,8 @@ export const SedeOrders: React.FC<SedeOrdersProps> = ({
     // Valor del domicilio
     deliveryCost: 0
   });
+  const [searchingPrice, setSearchingPrice] = useState(false);
+  const [priceSearchTimeout, setPriceSearchTimeout] = useState<NodeJS.Timeout | null>(null);
 
 
   // Usar SOLO pedidos reales - NUNCA legacy/dummy
@@ -112,6 +115,58 @@ export const SedeOrders: React.FC<SedeOrdersProps> = ({
     // Abrir en nueva pestaña
     window.open(googleMapsUrl, '_blank');
   };
+
+  // Función para buscar precio de envío basado en dirección
+  const searchDeliveryPrice = useCallback(async (address: string) => {
+    if (!address.trim() || address.length < 5 || !effectiveSedeId) {
+      return;
+    }
+
+    try {
+      setSearchingPrice(true);
+      console.log('🔍 SedeOrders: Buscando precio para dirección:', address);
+      
+      const lastPrice = await addressService.getLastDeliveryPriceForAddress(address, effectiveSedeId);
+      
+      if (lastPrice && lastPrice > 0) {
+        console.log('✅ SedeOrders: Precio encontrado:', lastPrice);
+        setNewOrder(prev => ({ ...prev, deliveryCost: lastPrice }));
+        toast({
+          title: "Precio encontrado",
+          description: `Se estableció $${lastPrice.toLocaleString()} basado en entregas anteriores`,
+        });
+      } else {
+        console.log('ℹ️ SedeOrders: No se encontró precio previo para esta dirección');
+      }
+    } catch (error) {
+      console.error('❌ SedeOrders: Error buscando precio:', error);
+    } finally {
+      setSearchingPrice(false);
+    }
+  }, [effectiveSedeId, toast]);
+
+  // Efecto para buscar precio cuando cambia la dirección (con debounce)
+  useEffect(() => {
+    if (customerData.address && newOrder.deliveryType === 'delivery') {
+      // Limpiar timeout anterior
+      if (priceSearchTimeout) {
+        clearTimeout(priceSearchTimeout);
+      }
+
+      // Configurar nuevo timeout
+      const timeout = setTimeout(() => {
+        searchDeliveryPrice(customerData.address);
+      }, 800); // Buscar después de 800ms de inactividad
+
+      setPriceSearchTimeout(timeout);
+
+      return () => {
+        if (timeout) {
+          clearTimeout(timeout);
+        }
+      };
+    }
+  }, [customerData.address, newOrder.deliveryType, searchDeliveryPrice]);
 
   // Cargar pedidos al montar el componente usando effectiveSedeId
   useEffect(() => {
@@ -335,6 +390,15 @@ export const SedeOrders: React.FC<SedeOrdersProps> = ({
         delivery_time_minutes: newOrder.deliveryTimeMinutes,
         delivery_cost: newOrder.deliveryType === 'delivery' ? newOrder.deliveryCost : undefined,
         items: newOrder.items.map(item => {
+          // DEBUG: Log del delivery_cost que se está enviando
+          if (newOrder.deliveryType === 'delivery') {
+            console.log('🚚 DEBUG - Enviando delivery_cost al servicio:', {
+              deliveryType: newOrder.deliveryType,
+              deliveryCost: newOrder.deliveryCost,
+              deliveryCostType: typeof newOrder.deliveryCost,
+              finalValue: newOrder.deliveryType === 'delivery' ? newOrder.deliveryCost : undefined
+            });
+          }
           // Extraer el ID real y tipo del productId único (formato: "tipo_id")
           const [productType, realProductId] = item.productId.split('_');
           
@@ -686,25 +750,34 @@ export const SedeOrders: React.FC<SedeOrdersProps> = ({
                       </div>
                       <div>
                         <Label htmlFor="deliveryCost">Valor del Domicilio *</Label>
-                        <Input
-                          id="deliveryCost"
-                          type="text"
-                          value={newOrder.deliveryCost === 0 ? '' : newOrder.deliveryCost.toString()}
-                          onChange={(e) => {
-                            console.log('🔍 DEBUG: deliveryCost onChange:', e.target.value);
-                            const value = e.target.value.replace(/[^0-9]/g, '');
-                            const numericValue = value === '' ? 0 : parseInt(value, 10);
-                            console.log('🔍 DEBUG: deliveryCost set to:', numericValue);
-                            setNewOrder({ ...newOrder, deliveryCost: numericValue });
-                          }}
-                          onFocus={() => console.log('🔍 DEBUG: deliveryCost focused')}
-                          onBlur={() => console.log('🔍 DEBUG: deliveryCost blurred')}
-                          placeholder="Ingrese el valor del domicilio (ej: 6000)"
-                          disabled={false}
-                          readOnly={false}
-                        />
+                        <div className="relative">
+                          <Input
+                            id="deliveryCost"
+                            type="text"
+                            value={newOrder.deliveryCost === 0 ? '' : newOrder.deliveryCost.toString()}
+                            onChange={(e) => {
+                              console.log('🔍 DEBUG: deliveryCost onChange:', e.target.value);
+                              const value = e.target.value.replace(/[^0-9]/g, '');
+                              const numericValue = value === '' ? 0 : parseInt(value, 10);
+                              console.log('🔍 DEBUG: deliveryCost set to:', numericValue);
+                              setNewOrder({ ...newOrder, deliveryCost: numericValue });
+                            }}
+                            onFocus={() => console.log('🔍 DEBUG: deliveryCost focused')}
+                            onBlur={() => console.log('🔍 DEBUG: deliveryCost blurred')}
+                            placeholder="Ingrese el valor del domicilio (ej: 6000)"
+                            disabled={searchingPrice}
+                            readOnly={false}
+                            className={searchingPrice ? 'pr-8' : ''}
+                          />
+                          {searchingPrice && (
+                            <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
+                              <RefreshCw className="h-4 w-4 animate-spin text-gray-400" />
+                            </div>
+                          )}
+                        </div>
                         <p className="text-xs text-gray-600 mt-1">
-                          Si es 0, se mostrará una confirmación antes de crear el pedido
+                          {searchingPrice ? 'Buscando precio basado en la dirección...' : 
+                           'Si es 0, se mostrará una confirmación antes de crear el pedido'}
                         </p>
                       </div>
                     </div>

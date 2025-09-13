@@ -370,6 +370,13 @@ class SedeOrdersService {
   async createOrder(orderData: CreateOrderData): Promise<SedeOrder> {
     try {
       console.log('📝 SedeOrders: Creando nuevo pedido:', orderData);
+      console.log('🔍 DEBUG - Datos críticos del pedido:', {
+        tipo_entrega: orderData.tipo_entrega,
+        delivery_cost: orderData.delivery_cost,
+        delivery_cost_type: typeof orderData.delivery_cost,
+        delivery_cost_defined: orderData.delivery_cost !== undefined,
+        delivery_cost_truthy: !!orderData.delivery_cost
+      });
 
       // Paso 1: Crear/obtener cliente
       let clienteId: number;
@@ -469,6 +476,10 @@ class SedeOrdersService {
       
       console.log(`⏰ Tiempo de entrega configurado: ${deliveryMinutes} minutos - Entrega programada: ${horaEntrega.toLocaleString('es-CO')}`);
 
+      // Debug del precio de envío antes de guardar
+      const precioEnvioAGuardar = orderData.tipo_entrega === 'delivery' && orderData.delivery_cost ? orderData.delivery_cost : null;
+      console.log('💰 Precio de envío a guardar:', precioEnvioAGuardar, '(tipo_entrega:', orderData.tipo_entrega, ', delivery_cost:', orderData.delivery_cost, ')');
+
       const { data: orden, error: ordenError } = await supabase
         .from('ordenes')
         .insert({
@@ -480,6 +491,8 @@ class SedeOrdersService {
           hora_entrega: horaEntrega.toISOString(),
           // Para pedidos de pickup, repartidor_id debe ser null (no necesitan repartidor)
           repartidor_id: orderData.tipo_entrega === 'pickup' ? null : undefined, // undefined permite auto-asignación para delivery
+          // CRÍTICO: Guardar el precio de envío para el auto-complete
+          precio_envio: orderData.tipo_entrega === 'delivery' && orderData.delivery_cost ? orderData.delivery_cost : null,
           // Campos nuevos para clasificación
           source: 'sede', // Siempre 'sede' cuando se crea desde la UI
           type_order: orderData.tipo_entrega // 'delivery' o 'pickup'

@@ -1,5 +1,5 @@
 
-import React, { useState } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -11,9 +11,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Textarea } from '@/components/ui/textarea';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Phone, Search, Plus, User, MapPin, Clock, CreditCard, Store, AlertTriangle, Pause } from 'lucide-react';
+import { Phone, Search, Plus, User, MapPin, Clock, CreditCard, Store, AlertTriangle, Pause, Loader2 } from 'lucide-react';
 import { Order, PaymentMethod, DeliveryType, Sede, DeliverySettings } from '@/types/delivery';
 import { useMenu } from '@/hooks/useMenu';
+import { addressService } from '@/services/addressService';
 
 interface CallCenterProps {
   orders: Order[];
@@ -43,13 +44,15 @@ const CallCenter: React.FC<CallCenterProps> = ({
   const [customer, setCustomer] = useState<CustomerData | null>(null);
   const [showNewOrderDialog, setShowNewOrderDialog] = useState(false);
   const [newCustomerName, setNewCustomerName] = useState('');
+  const [loadingDeliveryPrice, setLoadingDeliveryPrice] = useState(false);
   const [newOrder, setNewOrder] = useState({
     address: '',
     items: [] as { productId: string; quantity: number; toppings: string[] }[],
     paymentMethod: 'cash' as PaymentMethod,
     specialInstructions: '',
     deliveryType: 'delivery' as DeliveryType,
-    pickupSede: ''
+    pickupSede: '',
+    deliveryPrice: 0
   });
 
   // Normalize phone number by removing spaces, dashes, and parentheses
@@ -86,6 +89,39 @@ const CallCenter: React.FC<CallCenterProps> = ({
     }
   };
 
+  // Función para buscar precio de envío automáticamente
+  const searchDeliveryPrice = useCallback(async (address: string) => {
+    if (!address.trim() || address.length < 5) return;
+
+    try {
+      setLoadingDeliveryPrice(true);
+      const lastPrice = await addressService.getLastDeliveryPriceForAddress(address, effectiveSedeId);
+      
+      if (lastPrice && lastPrice > 0) {
+        setNewOrder(prev => ({
+          ...prev,
+          deliveryPrice: lastPrice
+        }));
+        console.log(`💰 Precio de envío encontrado: $${lastPrice.toLocaleString()} para "${address}"`);
+      }
+    } catch (error) {
+      console.error('Error buscando precio de envío:', error);
+    } finally {
+      setLoadingDeliveryPrice(false);
+    }
+  }, [effectiveSedeId]);
+
+  // Debounce para búsqueda de precio al escribir dirección
+  useEffect(() => {
+    if (newOrder.deliveryType === 'delivery' && newOrder.address) {
+      const timer = setTimeout(() => {
+        searchDeliveryPrice(newOrder.address);
+      }, 800); // Esperar 800ms después de dejar de escribir
+
+      return () => clearTimeout(timer);
+    }
+  }, [newOrder.address, newOrder.deliveryType, searchDeliveryPrice]);
+
   const addItemToOrder = (productId: string) => {
     const existingItem = newOrder.items.find(item => item.productId === productId);
     if (existingItem) {
@@ -119,8 +155,8 @@ const CallCenter: React.FC<CallCenterProps> = ({
       return total + (product ? product.pricing * item.quantity : 0);
     }, 0);
     
-    // Add delivery fee of 6000 for delivery orders
-    const deliveryFee = newOrder.deliveryType === 'delivery' ? 6000 : 0;
+    // Add dynamic delivery price for delivery orders
+    const deliveryFee = newOrder.deliveryType === 'delivery' ? newOrder.deliveryPrice : 0;
     return itemsTotal + deliveryFee;
   };
 
@@ -167,7 +203,8 @@ const CallCenter: React.FC<CallCenterProps> = ({
       paymentMethod: 'cash',
       specialInstructions: '',
       deliveryType: 'delivery',
-      pickupSede: ''
+      pickupSede: '',
+      deliveryPrice: 0
     });
     setNewCustomerName('');
     setShowNewOrderDialog(false);
@@ -295,7 +332,7 @@ const CallCenter: React.FC<CallCenterProps> = ({
                       <Label>Tipo de Entrega</Label>
                       <RadioGroup
                         value={newOrder.deliveryType}
-                        onValueChange={(value: DeliveryType) => setNewOrder({ ...newOrder, deliveryType: value, address: '', pickupSede: '' })}
+                        onValueChange={(value: DeliveryType) => setNewOrder({ ...newOrder, deliveryType: value, address: '', pickupSede: '', deliveryPrice: 0 })}
                         className="flex gap-6"
                       >
                         <div className="flex items-center space-x-2">
@@ -310,15 +347,42 @@ const CallCenter: React.FC<CallCenterProps> = ({
                     </div>
 
                     {newOrder.deliveryType === 'delivery' ? (
-                      <div>
-                        <Label htmlFor="address">Dirección de Entrega</Label>
-                        <Input
-                          id="address"
-                          value={newOrder.address}
-                          onChange={(e) => setNewOrder({ ...newOrder, address: e.target.value })}
-                          placeholder="Ingrese la dirección completa"
-                        />
-                      </div>
+                      <>
+                        <div>
+                          <Label htmlFor="address">Dirección de Entrega</Label>
+                          <Input
+                            id="address"
+                            value={newOrder.address}
+                            onChange={(e) => setNewOrder({ ...newOrder, address: e.target.value })}
+                            placeholder="Ingrese la dirección completa"
+                          />
+                        </div>
+
+                        <div>
+                          <Label htmlFor="deliveryPrice" className="flex items-center gap-2">
+                            Precio de Envío
+                            {loadingDeliveryPrice && (
+                              <Loader2 className="h-4 w-4 animate-spin text-blue-500" />
+                            )}
+                          </Label>
+                          <div className="relative">
+                            <Input
+                              id="deliveryPrice"
+                              type="number"
+                              value={newOrder.deliveryPrice}
+                              onChange={(e) => setNewOrder({ ...newOrder, deliveryPrice: Number(e.target.value) || 0 })}
+                              placeholder="0"
+                              className="pl-8"
+                            />
+                            <span className="absolute left-2 top-1/2 transform -translate-y-1/2 text-gray-500">$</span>
+                          </div>
+                          {newOrder.deliveryPrice > 0 && (
+                            <p className="text-xs text-green-600 mt-1">
+                              💡 Precio sugerido basado en entregas anteriores a esta dirección
+                            </p>
+                          )}
+                        </div>
+                      </>
                     ) : (
                       <div>
                         <Label>Sede de Recogida</Label>

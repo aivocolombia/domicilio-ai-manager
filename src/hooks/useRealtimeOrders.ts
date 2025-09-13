@@ -1,4 +1,4 @@
-import { useEffect, useCallback, useRef } from 'react';
+import { useEffect, useCallback, useRef, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import { logDebug, logError, logWarn } from '@/utils/logger';
 
@@ -17,13 +17,31 @@ export const useRealtimeOrders = ({
 }: UseRealtimeOrdersProps) => {
   const channelsRef = useRef<any[]>([]);
   const isConnectedRef = useRef(false);
+  const [connectionStatus, setConnectionStatus] = useState<'connecting' | 'connected' | 'disconnected' | 'error'>('disconnected');
+  const [reconnectTrigger, setReconnectTrigger] = useState(0);
+  
+  // Usar refs para callbacks para evitar recrear suscripciones
+  const callbacksRef = useRef({
+    onOrderUpdated,
+    onNewOrder,
+    onOrderStatusChanged
+  });
+  
+  // Actualizar refs cuando cambian los callbacks
+  useEffect(() => {
+    callbacksRef.current = {
+      onOrderUpdated,
+      onNewOrder,
+      onOrderStatusChanged
+    };
+  }, [onOrderUpdated, onNewOrder, onOrderStatusChanged]);
   
   const handleOrderChange = useCallback((payload: any) => {
     const orderId = payload.new?.id || payload.old?.id;
     
     if (payload.eventType === 'INSERT') {
       logDebug('Realtime', 'Nueva orden creada', { orderId });
-      onNewOrder?.(payload.new);
+      callbacksRef.current.onNewOrder?.(payload.new);
     } else if (payload.eventType === 'UPDATE') {
       const statusChanged = payload.old?.status !== payload.new?.status;
       if (statusChanged) {
@@ -32,7 +50,7 @@ export const useRealtimeOrders = ({
           from: payload.old?.status, 
           to: payload.new?.status 
         });
-        onOrderStatusChanged?.(payload.new.id, payload.new.status);
+        callbacksRef.current.onOrderStatusChanged?.(payload.new.id, payload.new.status);
       }
       
       // Solo loguear cambios importantes en debug
@@ -52,8 +70,8 @@ export const useRealtimeOrders = ({
     }
     
     // Notificar actualización general (esto puede disparar recargas)
-    onOrderUpdated?.();
-  }, [onOrderUpdated, onNewOrder, onOrderStatusChanged]);
+    callbacksRef.current.onOrderUpdated?.();
+  }, []); // Sin dependencias porque usa refs
 
   useEffect(() => {
     if (!sedeId) {
@@ -63,14 +81,26 @@ export const useRealtimeOrders = ({
 
     logDebug('Realtime', 'Configurando suscripción realtime', { sedeId });
     isConnectedRef.current = false;
+    setConnectionStatus('connecting');
 
     // Verificar que Supabase esté configurado correctamente
     if (!supabase) {
       logError('Realtime', 'Supabase no está inicializado');
+      setConnectionStatus('error');
       return;
     }
 
-    // Suscripción a cambios en órdenes de la sede
+    // Debug: Log de configuración
+    console.log('🔍 Realtime Debug:', {
+      supabaseUrl: import.meta.env.VITE_SUPABASE_URL,
+      sedeId,
+      hasSupabase: !!supabase,
+      channel: `orders_${sedeId}`
+    });
+
+    // Suscripción a cambios en órdenes (primero sin filtro para probar)
+    console.log('🔄 Creando canal de suscripción:', `orders_${sedeId}`);
+    
     const ordersChannel = supabase
       .channel(`orders_${sedeId}`)
       .on(
@@ -78,24 +108,53 @@ export const useRealtimeOrders = ({
         { 
           event: '*', 
           schema: 'public', 
-          table: 'ordenes',
-          filter: `sede_id=eq.${sedeId}`
+          table: 'ordenes'
+          // Temporalmente sin filtro para diagnosticar: filter: `sede_id=eq.${sedeId}`
         },
-        handleOrderChange
+        (payload) => {
+          console.log('📨 Realtime payload recibido:', payload);
+          // Filtrar manualmente por sede si es necesario
+          const order = payload.new || payload.old;
+          if (order && order.sede_id === sedeId) {
+            console.log('✅ Orden pertenece a la sede, procesando...', { orderId: order.id, sedeId });
+            handleOrderChange(payload);
+          } else {
+            console.log('🚫 Orden filtrada (no pertenece a la sede)', { 
+              orderSedeId: order?.sede_id, 
+              expectedSedeId: sedeId 
+            });
+          }
+        }
       )
       .subscribe((status) => {
+        console.log('🔍 Realtime Status Changed:', { status, sedeId, channel: `orders_${sedeId}` });
+        
         if (status === 'SUBSCRIBED') {
+          console.log('✅ Realtime conectado exitosamente');
           logDebug('Realtime', 'Realtime conectado exitosamente', { sedeId, channel: `orders_${sedeId}` });
           isConnectedRef.current = true;
+          setConnectionStatus('connected');
         } else if (status === 'CHANNEL_ERROR') {
+          console.error('❌ Error en conexión realtime:', status);
           logError('Realtime', 'Error en conexión realtime', { 
             sedeId, 
-            possibleCauses: ['Realtime no habilitado', 'RLS bloqueando suscripción', 'API keys incorrectas'] 
+            status,
+            possibleCauses: ['Realtime no habilitado en Supabase', 'RLS bloqueando suscripción', 'API keys incorrectas', 'Filtro de sede inválido'] 
           });
           isConnectedRef.current = false;
+          setConnectionStatus('error');
         } else if (status === 'CLOSED') {
+          console.warn('⚠️ Conexión realtime cerrada');
           logDebug('Realtime', 'Conexión realtime cerrada', { sedeId });
           isConnectedRef.current = false;
+          setConnectionStatus('disconnected');
+        } else if (status === 'TIMED_OUT') {
+          console.error('⏰ Conexión realtime timeout');
+          isConnectedRef.current = false;
+          setConnectionStatus('error');
+        } else {
+          console.warn('🔄 Estado realtime desconocido:', status);
+          setConnectionStatus('connecting');
         }
       });
 
@@ -111,7 +170,7 @@ export const useRealtimeOrders = ({
         },
         (payload) => {
           logDebug('Realtime', 'Items de orden actualizados', { table: 'ordenes_platos' });
-          onOrderUpdated?.();
+          callbacksRef.current.onOrderUpdated?.();
         }
       )
       .subscribe();
@@ -128,7 +187,7 @@ export const useRealtimeOrders = ({
         },
         (payload) => {
           logDebug('Realtime', 'Bebidas de orden actualizadas', { table: 'ordenes_bebidas' });
-          onOrderUpdated?.();
+          callbacksRef.current.onOrderUpdated?.();
         }
       )
       .subscribe();
@@ -158,6 +217,7 @@ export const useRealtimeOrders = ({
       // CRÍTICO: Limpiar array independientemente de errores para prevenir memory leaks
       channelsRef.current = [];
       isConnectedRef.current = false;
+      setConnectionStatus('disconnected');
       
       logDebug('Realtime', 'Limpieza de canales completada', { 
         closedSuccessfully, 
@@ -165,13 +225,14 @@ export const useRealtimeOrders = ({
         sedeId 
       });
     };
-  }, [sedeId, handleOrderChange, onOrderUpdated]);
+  }, [sedeId, reconnectTrigger]); // Solo sedeId y reconnectTrigger como dependencias para evitar loops
 
   return {
     // Función para forzar reconexión si es necesario
     reconnect: useCallback(() => {
       console.log('🔄 Forzando reconexión realtime...');
-      // El useEffect se ejecutará nuevamente debido a las dependencias
+      setConnectionStatus('connecting');
+      setReconnectTrigger(prev => prev + 1);
     }, []),
     
     // Función para verificar estado de conexión
@@ -179,13 +240,17 @@ export const useRealtimeOrders = ({
       return isConnectedRef.current;
     }, []),
     
+    // Estado de conexión actual
+    connectionStatus,
+    
     // Función para obtener estado de los canales
     getChannelsStatus: useCallback(() => {
       return {
         totalChannels: channelsRef.current.length,
         isConnected: isConnectedRef.current,
+        connectionStatus,
         sedeId
       };
-    }, [sedeId])
+    }, [sedeId, connectionStatus])
   };
 };
