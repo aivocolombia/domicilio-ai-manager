@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { deliveryService, Repartidor, RepartidorConEstadisticas } from '@/services/deliveryService';
 import { toast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/useAuth';
+import { useRealtime } from '@/hooks/useRealtime';
 
 export const useDelivery = (sedeId?: string) => {
   const { profile } = useAuth();
@@ -206,6 +207,39 @@ export const useDelivery = (sedeId?: string) => {
     console.log('🚀 useDelivery: Iniciando carga de repartidores...');
     loadRepartidores();
   }, [loadRepartidores]);
+
+  // Real-time para cambios en repartidores
+  useRealtime({
+    table: 'repartidores',
+    enabled: !!effectiveSedeId,
+    onPayload: (payload) => {
+      console.log('🔔 Repartidor actualizado:', payload);
+      // Recargar datos cuando hay cambios en repartidores
+      loadRepartidores();
+    },
+    onError: (error) => {
+      console.error('❌ Error en realtime de repartidores:', error);
+    }
+  });
+
+  // Real-time para cambios en órdenes que afectan estadísticas de repartidores
+  useRealtime({
+    table: 'ordenes',
+    enabled: !!effectiveSedeId,
+    onPayload: (payload) => {
+      console.log('🔔 Orden actualizada (afecta repartidores):', payload);
+      // Solo recargar si el cambio afecta las estadísticas
+      if (payload.eventType === 'UPDATE' && 
+          (payload.old?.repartidor_id !== payload.new?.repartidor_id || 
+           payload.old?.status !== payload.new?.status)) {
+        console.log('📊 Recargando estadísticas de repartidores por cambio de asignación/estado');
+        loadRepartidores();
+      }
+    },
+    onError: (error) => {
+      console.error('❌ Error en realtime de órdenes para repartidores:', error);
+    }
+  });
 
   return {
     repartidores,

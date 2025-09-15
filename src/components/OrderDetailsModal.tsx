@@ -27,7 +27,7 @@ interface OrderItem {
     name: string;
     pricing?: number;
   };
-  tipo: 'plato' | 'bebida';
+  tipo: 'plato' | 'bebida' | 'topping';
 }
 
 interface OrderDetails {
@@ -120,9 +120,24 @@ export const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({
         console.error('❌ Error obteniendo bebidas:', bebidasError);
       }
 
+      // Obtener toppings de la orden
+      const { data: toppingsData, error: toppingsError } = await supabase
+        .from('ordenes_toppings')
+        .select(`
+          id,
+          topping_id,
+          toppings!inner(id, name, pricing)
+        `)
+        .eq('orden_id', id);
+
+      if (toppingsError) {
+        console.error('❌ Error obteniendo toppings:', toppingsError);
+      }
+
       // Agrupar items por producto para contar cantidades
       const platosMap = new Map<number, { count: number; item: any }>();
       const bebidasMap = new Map<number, { count: number; item: any }>();
+      const toppingsMap = new Map<number, { count: number; item: any }>();
 
       // Contar platos
       (platosData || []).forEach(item => {
@@ -141,6 +156,16 @@ export const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({
           bebidasMap.get(bebidaId)!.count++;
         } else {
           bebidasMap.set(bebidaId, { count: 1, item });
+        }
+      });
+
+      // Contar toppings
+      (toppingsData || []).forEach(item => {
+        const toppingId = item.topping_id || item.toppings.id;
+        if (toppingsMap.has(toppingId)) {
+          toppingsMap.get(toppingId)!.count++;
+        } else {
+          toppingsMap.set(toppingId, { count: 1, item });
         }
       });
 
@@ -167,6 +192,17 @@ export const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({
             pricing: item.bebidas?.pricing || 0
           },
           tipo: 'bebida' as const
+        })),
+        ...Array.from(toppingsMap.values()).map(({ count, item }) => ({
+          id: item.id,
+          quantity: count,
+          unit_price: item.toppings?.pricing || 0,
+          producto: {
+            id: item.toppings.id,
+            name: item.toppings.name,
+            pricing: item.toppings?.pricing || 0
+          },
+          tipo: 'topping' as const
         }))
       ];
 
@@ -343,13 +379,17 @@ export const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({
                       <div className="flex items-center gap-3">
                         {item.tipo === 'plato' ? (
                           <Package className="h-5 w-5 text-orange-600" />
-                        ) : (
+                        ) : item.tipo === 'bebida' ? (
                           <Coffee className="h-5 w-5 text-blue-600" />
+                        ) : (
+                          <ShoppingBag className="h-5 w-5 text-amber-600" />
                         )}
                         <div>
                           <h4 className="font-medium">{item.producto.name}</h4>
                           <p className="text-sm text-gray-600">
-                            {item.tipo === 'plato' ? 'Plato' : 'Bebida'} • {formatCurrency(item.unit_price)}
+                            {item.tipo === 'plato' ? 'Plato' : 
+                             item.tipo === 'bebida' ? 'Bebida' : 
+                             'Topping Extra'} • {formatCurrency(item.unit_price)}
                           </p>
                         </div>
                       </div>

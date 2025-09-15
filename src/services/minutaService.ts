@@ -14,6 +14,13 @@ export interface OrderItemBebida {
   precio_total: number;
 }
 
+export interface OrderItemTopping {
+  topping_nombre: string;
+  cantidad: number;
+  precio_unitario: number;
+  precio_total: number;
+}
+
 export interface MinutaOrderDetails {
   id: number;
   id_display: string;
@@ -43,6 +50,7 @@ export interface MinutaOrderDetails {
   // Productos
   platos: OrderItemPlato[];
   bebidas: OrderItemBebida[];
+  toppings: OrderItemTopping[];
 }
 
 export class MinutaService {
@@ -108,7 +116,7 @@ export class MinutaService {
         setTimeout(() => reject(new Error('Timeout al cargar datos de minuta')), 10000);
       });
 
-      // Usar Promise.all para hacer las 3 consultas en paralelo (más rápido)
+      // Usar Promise.all para hacer las 4 consultas en paralelo (más rápido)
       const queryPromise = Promise.all([
         // Consulta principal de la orden
         supabase
@@ -144,10 +152,19 @@ export class MinutaService {
             id,
             bebidas!inner(name, pricing)
           `)
+          .eq('orden_id', orderId),
+        
+        // Consulta de toppings en paralelo
+        supabase
+          .from('ordenes_toppings')
+          .select(`
+            id,
+            toppings!inner(name, pricing)
+          `)
           .eq('orden_id', orderId)
       ]);
 
-      const [orderResult, platosResult, bebidasResult] = await Promise.race([
+      const [orderResult, platosResult, bebidasResult, toppingsResult] = await Promise.race([
         queryPromise,
         timeoutPromise
       ]);
@@ -155,6 +172,7 @@ export class MinutaService {
       const { data: orderData, error: orderError } = orderResult;
       const { data: platosData, error: platosError } = platosResult;
       const { data: bebidasData, error: bebidasError } = bebidasResult;
+      const { data: toppingsData, error: toppingsError } = toppingsResult;
 
       if (orderError || !orderData) {
         console.error('Error obteniendo datos de la orden:', orderError);
@@ -167,6 +185,10 @@ export class MinutaService {
 
       if (bebidasError) {
         console.error('Error obteniendo bebidas:', bebidasError);
+      }
+
+      if (toppingsError) {
+        console.error('Error obteniendo toppings:', toppingsError);
       }
 
       // Determinar tipo de pedido basado en si tiene precio de envío o repartidor asignado
@@ -214,6 +236,16 @@ export class MinutaService {
           precio: item.bebidas?.pricing || 0
         })) || []).map(item => ({
           bebida_nombre: item.nombre,
+          cantidad: item.cantidad,
+          precio_unitario: item.precio,
+          precio_total: item.precio * item.cantidad
+        })),
+        
+        toppings: this.groupProducts(toppingsData?.map(item => ({
+          nombre: item.toppings?.name || 'Topping sin nombre',
+          precio: item.toppings?.pricing || 0
+        })) || []).map(item => ({
+          topping_nombre: item.nombre,
           cantidad: item.cantidad,
           precio_unitario: item.precio,
           precio_total: item.precio * item.cantidad

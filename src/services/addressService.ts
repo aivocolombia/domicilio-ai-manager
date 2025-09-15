@@ -9,6 +9,25 @@ export interface AddressHistory {
 
 export const addressService = {
   /**
+   * Normaliza una dirección para búsqueda eficaz
+   */
+  normalizeAddress(address: string): string {
+    return address
+      .toLowerCase()
+      .replace(/\s+/g, ' ')
+      .trim()
+      .replace(/[áàäâ]/g, 'a')
+      .replace(/[éèëê]/g, 'e')
+      .replace(/[íìïî]/g, 'i')
+      .replace(/[óòöô]/g, 'o')
+      .replace(/[úùüû]/g, 'u')
+      .replace(/[ñ]/g, 'n')
+      .replace(/[^a-z0-9\s#\-]/g, '') // Mantener solo letras, números, espacios, # y -
+      .replace(/\s+/g, ' ')
+      .trim();
+  },
+
+  /**
    * Busca el último precio de envío usado para una dirección específica
    */
   async getLastDeliveryPriceForAddress(address: string, sedeId: string): Promise<number | null> {
@@ -20,8 +39,8 @@ export const addressService = {
     try {
       console.log('🔍 AddressService: Buscando último precio para dirección', { address, sedeId });
 
-      // Normalizar dirección para búsqueda (eliminar espacios extra, convertir a lowercase)
-      const normalizedAddress = address.trim().toLowerCase();
+      // Normalizar dirección para búsqueda más eficaz
+      const normalizedAddress = this.normalizeAddress(address);
       console.log('🔍 AddressService: Dirección normalizada', { normalizedAddress });
 
       // También intentar con palabras clave individuales para búsqueda más flexible

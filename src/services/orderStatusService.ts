@@ -40,6 +40,37 @@ export class OrderStatusService {
           console.error('❌ Error actualizando estado:', statusError);
           throw new Error(`Error actualizando estado: ${statusError.message}`);
         }
+
+        // 🔄 AUTO-PAGO: Si el estado cambia a "Entregados", marcar pago como "Pagado" automáticamente
+        if (update.newStatus === 'Entregados' || update.newStatus === 'delivered') {
+          console.log('💰 Estado cambiado a entregado, marcando pago como pagado automáticamente...');
+          
+          // Obtener el payment_id de la orden
+          const { data: orderData, error: orderError } = await supabase
+            .from('ordenes')
+            .select('payment_id')
+            .eq('id', orderId)
+            .single();
+
+          if (orderError) {
+            console.warn('⚠️ Error obteniendo payment_id para auto-pago:', orderError);
+          } else if (orderData?.payment_id) {
+            const { error: paymentError } = await supabase
+              .from('pagos')
+              .update({ 
+                status: 'paid' // Marcar como pagado automáticamente
+              })
+              .eq('id', orderData.payment_id);
+
+            if (paymentError) {
+              console.warn('⚠️ Error actualizando estado de pago automáticamente:', paymentError);
+            } else {
+              console.log('✅ Pago marcado como "Pagado" automáticamente');
+            }
+          } else {
+            console.log('ℹ️ Orden sin payment_id asociado, no se puede marcar pago');
+          }
+        }
       }
 
       // Actualizar repartidor asignado si se proporciona

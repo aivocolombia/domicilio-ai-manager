@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useInventoryEvents } from '@/contexts/InventoryContext';
 import { useAuth } from '@/hooks/useAuth';
+import { useRealtime } from '@/hooks/useRealtime';
 import { sedeServiceSimple } from '@/services/sedeServiceSimple';
 import { supabase } from '@/lib/supabase';
 import { Badge } from '@/components/ui/badge';
@@ -121,72 +122,56 @@ export const StatusBar: React.FC<StatusBarProps> = ({ orders, currentSede = 'Niz
     }
   }, [isOpen]);
 
-  // Suscripción en tiempo real a cambios de inventario (reemplaza polling)
-  useEffect(() => {
-    if (!sedeToUse) return;
+  // Real-time para sede_platos
+  useRealtime({
+    table: 'sede_platos',
+    enabled: !!sedeToUse,
+    onPayload: (payload) => {
+      console.log('🔔 StatusBar: sede_platos actualizado:', payload);
+      console.log('🔍 StatusBar: Recargando inventario por cambio en platos...');
+      loadInventoryConSede();
+    },
+    onError: (error) => {
+      console.error('❌ StatusBar: Error en realtime sede_platos:', error);
+    },
+    onSubscribed: () => {
+      console.log('✅ StatusBar: Suscrito a cambios en sede_platos');
+    }
+  });
 
-    console.log('🔍 StatusBar: Configurando suscripciones en tiempo real para sede:', sedeToUse);
+  // Real-time para sede_bebidas
+  useRealtime({
+    table: 'sede_bebidas',
+    enabled: !!sedeToUse,
+    onPayload: (payload) => {
+      console.log('🔔 StatusBar: sede_bebidas actualizado:', payload);
+      console.log('🔍 StatusBar: Recargando inventario por cambio en bebidas...');
+      loadInventoryConSede();
+    },
+    onError: (error) => {
+      console.error('❌ StatusBar: Error en realtime sede_bebidas:', error);
+    },
+    onSubscribed: () => {
+      console.log('✅ StatusBar: Suscrito a cambios en sede_bebidas');
+    }
+  });
 
-    // Suscripción a cambios en sede_platos
-    const platosChannel = supabase
-      .channel('sede_platos_changes')
-      .on(
-        'postgres_changes',
-        { 
-          event: '*', 
-          schema: 'public', 
-          table: 'sede_platos',
-          filter: `sede_id=eq.${sedeToUse}`
-        },
-        (payload) => {
-          console.log('🔄 Inventario platos actualizado:', payload);
-          loadInventoryConSede();
-        }
-      )
-      .subscribe();
-
-    // Suscripción a cambios en sede_bebidas
-    const bebidasChannel = supabase
-      .channel('sede_bebidas_changes')
-      .on(
-        'postgres_changes',
-        { 
-          event: '*', 
-          schema: 'public', 
-          table: 'sede_bebidas',
-          filter: `sede_id=eq.${sedeToUse}`
-        },
-        (payload) => {
-          console.log('🔄 Inventario bebidas actualizado:', payload);
-          loadInventoryConSede();
-        }
-      )
-      .subscribe();
-
-    // Suscripción a cambios en sede_toppings
-    const toppingsChannel = supabase
-      .channel('sede_toppings_changes')
-      .on(
-        'postgres_changes',
-        { 
-          event: '*', 
-          schema: 'public', 
-          table: 'sede_toppings',
-          filter: `sede_id=eq.${sedeToUse}`
-        },
-        (payload) => {
-          console.log('🔄 Inventario toppings actualizado:', payload);
-          loadInventoryConSede();
-        }
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(platosChannel);
-      supabase.removeChannel(bebidasChannel);
-      supabase.removeChannel(toppingsChannel);
-    };
-  }, [sedeToUse]);
+  // Real-time para sede_toppings
+  useRealtime({
+    table: 'sede_toppings',
+    enabled: !!sedeToUse,
+    onPayload: (payload) => {
+      console.log('🔔 StatusBar: sede_toppings actualizado:', payload);
+      console.log('🔍 StatusBar: Recargando inventario por cambio en toppings...');
+      loadInventoryConSede();
+    },
+    onError: (error) => {
+      console.error('❌ StatusBar: Error en realtime sede_toppings:', error);
+    },
+    onSubscribed: () => {
+      console.log('✅ StatusBar: Suscrito a cambios en sede_toppings');
+    }
+  });
 
   // Actualizar datos cuando hay cambios en el inventario (tiempo real)
   useEffect(() => {

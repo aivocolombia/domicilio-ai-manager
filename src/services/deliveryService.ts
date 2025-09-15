@@ -367,7 +367,8 @@ class DeliveryService {
             direccion
           ),
           pagos (
-            total_pago
+            total_pago,
+            type
           )
         `)
         .eq('repartidor_id', repartidorId)

@@ -419,6 +419,26 @@ export interface Database {
           bebidas_id?: number | null;
         };
       };
+      ordenes_toppings: {
+        Row: {
+          id: number; // bigint
+          created_at: string;
+          orden_id: number | null; // bigint
+          topping_id: number | null; // integer
+        };
+        Insert: {
+          id?: number;
+          created_at?: string;
+          orden_id?: number | null;
+          topping_id?: number | null;
+        };
+        Update: {
+          id?: number;
+          created_at?: string;
+          orden_id?: number | null;
+          topping_id?: number | null;
+        };
+      };
       minutas: {
         Row: {
           id: number; // bigint

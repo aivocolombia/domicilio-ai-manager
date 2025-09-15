@@ -1,5 +1,6 @@
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import { useOrdersRealtime } from '@/hooks/useRealtime';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -32,6 +33,7 @@ import {
   ChevronRight,
   Eye,
   MessageCircle,
+  Edit,
   Printer
 } from 'lucide-react';
 import { Calendar as CalendarComponent } from '@/components/ui/calendar';
@@ -46,6 +48,7 @@ import { createDateRangeForQuery, formatDateTimeForDisplay, debugTodayFilter } f
 import { Order, OrderStatus, OrderSource, DeliverySettings, DeliveryPerson, PaymentMethod } from '@/types/delivery';
 import { OrderConfigModal } from './OrderConfigModal';
 import { OrderDetailsModal } from './OrderDetailsModal';
+import { EditOrderModal } from './EditOrderModal';
 import { MinutaModal } from './MinutaModal';
 import { cn } from '@/lib/utils';
 import { useDashboard } from '@/hooks/useDashboard';
@@ -128,6 +131,8 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
   // Estados para modal de impresión de minuta
   const [printMinutaModalOpen, setPrintMinutaModalOpen] = useState(false);
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [editingOrderId, setEditingOrderId] = useState<string | null>(null);
   const [selectedOrderForMinuta, setSelectedOrderForMinuta] = useState<DashboardOrder | null>(null);
 
   // Estados para ordenamiento
@@ -281,6 +286,11 @@ export const Dashboard: React.FC<DashboardProps> = ({
     setCancelOrderId(orderId);
     setCancelReason('');
     setIsCancelModalOpen(true);
+  };
+
+  const handleEditOrder = (orderId: string) => {
+    setEditingOrderId(orderId);
+    setIsEditModalOpen(true);
   };
 
   // Función para confirmar cancelación de pedido
@@ -563,7 +573,10 @@ export const Dashboard: React.FC<DashboardProps> = ({
       // Filtro de estado mejorado
       let matchesStatus = false;
       if (statusFilter === 'todos') {
-        // Por defecto solo mostrar pedidos activos (no entregados ni cancelados)
+        // CORREGIDO: "Todos" debe mostrar TODAS las órdenes sin filtro
+        matchesStatus = true;
+      } else if (statusFilter === 'activos') {
+        // "Activos" excluye órdenes entregadas y canceladas (comportamiento anterior de "todos")
         matchesStatus = realOrder.estado !== 'Entregados' && 
                        realOrder.estado !== 'Cancelado' && 
                        realOrder.estado !== 'delivered' && 
@@ -616,9 +629,9 @@ export const Dashboard: React.FC<DashboardProps> = ({
   const { totalItems, totalPages, startIndex, endIndex, paginatedOrders } = paginationData;
 
   // Función personalizada para recargar con filtros actuales
-  const refreshDataWithCurrentFilters = useCallback(() => {
+  const refreshDataWithCurrentFilters = useCallback(async () => {
     logDebug('Dashboard', 'Recargando con filtros actuales', { viewMode, dateFilter, statusFilter });
-    applyDateFilter();
+    await applyDateFilter();
   }, [viewMode, dateFilter, statusFilter]);
 
   // Función para aplicar filtros de fecha
@@ -691,8 +704,8 @@ export const Dashboard: React.FC<DashboardProps> = ({
     }
     
     // Aplicar también el filtro de estado actual si existe
-    // No enviar 'todos' al servidor, solo filtros específicos
-    if (statusFilter && statusFilter !== 'todos') {
+    // No enviar 'todos' ni 'activos' al servidor, solo filtros específicos
+    if (statusFilter && statusFilter !== 'todos' && statusFilter !== 'activos') {
       filters.estado = statusFilter;
     }
     
@@ -1282,6 +1295,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
               <div className="flex gap-2">
                 {[
                   { value: 'todos', label: 'Todos' },
+                  { value: 'activos', label: 'Activos' },
                   { value: 'Recibidos', label: 'Recibidos' },
                   { value: 'Cocina', label: 'Cocina' },
                   { value: 'Camino', label: 'Camino' },
@@ -1508,6 +1522,19 @@ export const Dashboard: React.FC<DashboardProps> = ({
                                 title={`Imprimir minuta #${realOrder.minuta_id}`}
                               >
                                 <Printer className="h-4 w-4" />
+                              </Button>
+                            )}
+                            
+                            {/* Botón de editar - solo para pedidos en estado 'Recibidos' */}
+                            {(realOrder.estado === 'Recibidos' || realOrder.estado === 'recibidos') && (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => handleEditOrder(realOrder.orden_id.toString())}
+                                className="h-8 w-8 p-0 border-blue-300 text-blue-600 hover:bg-blue-50"
+                                title={`Editar orden ${realOrder.id_display}`}
+                              >
+                                <Edit className="h-4 w-4" />
                               </Button>
                             )}
                             
@@ -1940,6 +1967,18 @@ export const Dashboard: React.FC<DashboardProps> = ({
           setSelectedOrderForMinuta(null);
         }}
         orderId={selectedOrderForMinuta?.orden_id || 0}
+      />
+
+      {/* Modal para editar orden */}
+      <EditOrderModal
+        isOpen={isEditModalOpen}
+        onClose={() => {
+          setIsEditModalOpen(false);
+          setEditingOrderId(null);
+        }}
+        orderId={editingOrderId}
+        order={editingOrderId ? orders.find(order => order.orden_id.toString() === editingOrderId) || null : null}
+        onOrderUpdated={refreshDataWithCurrentFilters}
       />
     </div>
   );

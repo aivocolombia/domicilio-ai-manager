@@ -334,6 +334,13 @@ export const MinutaModal: React.FC<MinutaModalProps> = ({
         <div style="margin: 2px 0; padding: 2px;">• ${bebida.bebida_nombre}${bebida.cantidad > 1 ? ` x${bebida.cantidad}` : ''} - $${bebida.precio_total.toLocaleString()}</div>
         `).join('')}
         ` : ''}
+        
+        ${details.toppings.length > 0 ? `
+        <div style="margin: 5px 0;"><strong>Toppings Extra:</strong></div>
+        ${details.toppings.map(topping => `
+        <div style="margin: 2px 0; padding: 2px; color: #ff6b35;">• ${topping.topping_nombre}${topping.cantidad > 1 ? ` x${topping.cantidad}` : ''} - $${topping.precio_total.toLocaleString()}</div>
+        `).join('')}
+        ` : ''}
     </div>
 
     <!-- Total y Pago -->
@@ -469,6 +476,16 @@ export const MinutaModal: React.FC<MinutaModalProps> = ({
                       {orderDetails.bebidas.map((bebida, index) => (
                         <div key={index} className="ml-2">
                           • {bebida.bebida_nombre}{bebida.cantidad > 1 ? ` x${bebida.cantidad}` : ''} - ${bebida.precio_total.toLocaleString()}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {orderDetails.toppings.length > 0 && (
+                    <div className="mt-2">
+                      <div className="font-medium text-orange-600">Toppings Extra:</div>
+                      {orderDetails.toppings.map((topping, index) => (
+                        <div key={index} className="ml-2 text-orange-600">
+                          • {topping.topping_nombre}{topping.cantidad > 1 ? ` x${topping.cantidad}` : ''} - ${topping.precio_total.toLocaleString()}
                         </div>
                       ))}
                     </div>

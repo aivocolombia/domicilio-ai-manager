@@ -102,6 +102,23 @@ export const OrderConfigModal: React.FC<OrderConfigModalProps> = ({
     try {
       setIsUpdating(true);
       
+      // Verificar si hay órdenes en camino que impiden cambiar repartidores
+      const ordersInTransit = selectedOrders.filter(order => {
+        const currentStatus = isRealOrder(order) ? order.estado : order.status;
+        return currentStatus === 'Camino' || currentStatus === 'En Camino';
+      });
+
+      // Si se intenta asignar repartidor a órdenes en camino, bloquear
+      if (assignedDeliveryPersonId && ordersInTransit.length > 0) {
+        toast({
+          title: "Operación bloqueada",
+          description: `No se puede cambiar el repartidor de ${ordersInTransit.length} pedido(s) que están "En Camino".`,
+          variant: "destructive"
+        });
+        setIsUpdating(false);
+        return;
+      }
+      
       // Validación: Si se cambia a "Camino" debe tener repartidor asignado (solo para delivery)
       if (newStatus === 'Camino' && !assignedDeliveryPersonId) {
         // Verificar si alguna orden seleccionada es de tipo delivery
@@ -347,25 +364,66 @@ export const OrderConfigModal: React.FC<OrderConfigModalProps> = ({
           {/* Delivery Person Assignment */}
           <div className="space-y-3">
             <Label>Asignar Repartidor</Label>
-            {isLoading ? (
-              <div className="flex items-center gap-2 p-2">
-                <Loader2 className="h-4 w-4 animate-spin" />
-                <span className="text-sm text-muted-foreground">Cargando repartidores...</span>
-              </div>
-            ) : (
-              <Select value={assignedDeliveryPersonId} onValueChange={setAssignedDeliveryPersonId} disabled={isUpdating}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Seleccionar repartidor" />
-                </SelectTrigger>
-                <SelectContent>
-                  {availableDeliveryPersonnel.map(person => (
-                    <SelectItem key={person.id} value={person.id}>
-                      {person.nombre} ({person.ordenes_activas} activos)
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            )}
+            {(() => {
+              // Verificar si alguna orden seleccionada está "en camino"
+              const hasOrdersInTransit = selectedOrders.some(order => {
+                const currentStatus = isRealOrder(order) ? order.estado : order.status;
+                return currentStatus === 'Camino' || currentStatus === 'En Camino';
+              });
+
+              if (hasOrdersInTransit) {
+                return (
+                  <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg">
+                    <div className="flex items-center gap-2 text-amber-800">
+                      <span className="text-sm font-medium">🔒 Campo bloqueado</span>
+                    </div>
+                    <p className="text-sm text-amber-700 mt-1">
+                      No se puede cambiar el repartidor de pedidos que están "En Camino". 
+                      El repartidor se fija cuando el pedido sale en camino por seguridad.
+                    </p>
+                    {/* Mostrar repartidor actual de las órdenes en camino */}
+                    <div className="mt-2 text-xs text-amber-600">
+                      {selectedOrders
+                        .filter(order => {
+                          const currentStatus = isRealOrder(order) ? order.estado : order.status;
+                          return currentStatus === 'Camino' || currentStatus === 'En Camino';
+                        })
+                        .map(order => {
+                          const orderId = isRealOrder(order) ? order.id_display : order.id;
+                          const repartidor = isRealOrder(order) ? order.repartidor : 'Sin asignar';
+                          return (
+                            <div key={orderId} className="flex justify-between">
+                              <span>{orderId}:</span>
+                              <span className="font-medium">{repartidor}</span>
+                            </div>
+                          );
+                        })
+                      }
+                    </div>
+                  </div>
+                );
+              }
+
+              return isLoading ? (
+                <div className="flex items-center gap-2 p-2">
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  <span className="text-sm text-muted-foreground">Cargando repartidores...</span>
+                </div>
+              ) : (
+                <Select value={assignedDeliveryPersonId} onValueChange={setAssignedDeliveryPersonId} disabled={isUpdating}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Seleccionar repartidor" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {availableDeliveryPersonnel.map(person => (
+                      <SelectItem key={person.id} value={person.id}>
+                        {person.nombre} ({person.ordenes_activas} activos)
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              );
+            })()}
           </div>
 
           {/* Payment Status Change */}

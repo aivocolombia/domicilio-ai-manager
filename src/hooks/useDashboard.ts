@@ -71,10 +71,12 @@ export const useDashboard = (sede_id?: string | number) => {
 
       // Agregar sede_id a los filtros si existe
       const filtersWithSede = { ...filters, sede_id: currentSedeId };
+      
+      // Filtros preparados para consultas
 
       const [ordersData, statsData] = await Promise.all([
         dashboardService.getDashboardOrders(filtersWithSede),
-        dashboardService.getDashboardStats(currentSedeId, filters)
+        dashboardService.getDashboardStats(currentSedeId, filters) // NOTA: getDashboardStats maneja sede_id separado
       ]);
 
       setOrders(ordersData);
@@ -84,6 +86,7 @@ export const useDashboard = (sede_id?: string | number) => {
         ordersCount: ordersData.length, 
         stats: statsData 
       });
+      
       
       if (ordersData.length === 0) {
         logWarn('Dashboard', 'No se recibieron órdenes desde el servicio');
@@ -159,14 +162,18 @@ export const useDashboard = (sede_id?: string | number) => {
       console.log('🔄 Dashboard: Forzando recarga inmediata...');
       // Resetear el flag de loading para permitir recarga
       loadingRef.current = false;
-      // Usar función de refresh del Dashboard si está disponible, sino usar loadDashboardOrders
-      if (refreshFunctionRef.current) {
-        console.log('🔄 Dashboard: Usando función de refresh con filtros actuales');
-        refreshFunctionRef.current();
-      } else {
-        console.log('🔄 Dashboard: Usando loadDashboardOrders básico');
-        loadDashboardOrders();
-      }
+      
+      // Dar un pequeño delay para asegurar que refreshFunction esté registrada
+      setTimeout(() => {
+        // Usar función de refresh del Dashboard si está disponible, sino usar loadDashboardOrders básico
+        if (refreshFunctionRef.current) {
+          console.log('🔄 Dashboard: Usando función de refresh con filtros actuales');
+          refreshFunctionRef.current();
+        } else {
+          console.log('⚠️ Dashboard: refreshFunctionRef no disponible, usando loadDashboardOrders básico (SIN FILTROS)');
+          loadDashboardOrders();
+        }
+      }, 10); // Delay mínimo para resolver timing
     }
   }, [loadDashboardOrders]);
 

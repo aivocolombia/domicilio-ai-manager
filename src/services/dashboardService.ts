@@ -305,6 +305,28 @@ export class DashboardService {
         throw new Error('Orden no encontrada');
       }
 
+      // Eliminar minutas asociadas primero (soluciona foreign key constraint)
+      console.log('🗑️ Eliminando minutas asociadas...');
+      const { error: minutasError } = await supabase
+        .from('minutas')
+        .delete()
+        .eq('order_id', orderId);
+
+      if (minutasError) {
+        console.error('⚠️ Error eliminando minutas (continuando):', minutasError);
+      }
+
+      // Eliminar items de toppings
+      console.log('🗑️ Eliminando items de toppings...');
+      const { error: toppingsError } = await supabase
+        .from('ordenes_toppings')
+        .delete()
+        .eq('orden_id', orderId);
+
+      if (toppingsError) {
+        console.error('⚠️ Error eliminando toppings (continuando):', toppingsError);
+      }
+
       // Eliminar items de la orden primero
       console.log('🗑️ Eliminando items de platos...');
       const { error: platosError } = await supabase

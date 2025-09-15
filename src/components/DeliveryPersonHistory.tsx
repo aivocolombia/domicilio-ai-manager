@@ -99,18 +99,32 @@ export const DeliveryPersonHistory: React.FC<DeliveryPersonHistoryProps> = ({
   }
 
   // Calcular efectivo de pedidos entregados hoy
-  const todayCashOrders = todayCompleted.filter(order => 
-    order.pagos?.type === 'efectivo' ||
-    order.pagos?.type === 'cash' ||
-    (order.payment_method && (order.payment_method === 'cash' || order.payment_method === 'efectivo'))
-  );
+  // Buscar en pago_tipo (que está en la orden directamente) y en pagos.type como fallback
+  const todayCashOrders = todayCompleted.filter(order => {
+    // Debug: Log para ver qué campos tiene cada orden
+    console.log('🔍 Verificando pago para orden:', order.id, {
+      pago_tipo: order.pago_tipo,
+      pagos_type: order.pagos?.type,
+      payment_method: order.payment_method
+    });
+    
+    return (
+      order.pago_tipo === 'efectivo' ||
+      order.pago_tipo === 'cash' ||
+      order.pagos?.type === 'efectivo' ||
+      order.pagos?.type === 'cash' ||
+      (order.payment_method && (order.payment_method === 'cash' || order.payment_method === 'efectivo'))
+    );
+  });
   
   const todayTotalCash = todayCashOrders.reduce((sum, order) => {
     return sum + (order.pagos?.total_pago || order.totalAmount || 0);
   }, 0);
   
   const todayOtherPayments = todayCompleted.filter(order => 
-    !(order.pagos?.type === 'efectivo' ||
+    !(order.pago_tipo === 'efectivo' ||
+      order.pago_tipo === 'cash' ||
+      order.pagos?.type === 'efectivo' ||
       order.pagos?.type === 'cash' ||
       (order.payment_method && (order.payment_method === 'cash' || order.payment_method === 'efectivo')))
   );
@@ -367,7 +381,9 @@ export const DeliveryPersonHistory: React.FC<DeliveryPersonHistoryProps> = ({
                         </TableCell>
                         <TableCell>
                           <div className="flex items-center gap-2">
-                            {(order.pagos?.type === 'efectivo' || 
+                            {(order.pago_tipo === 'efectivo' || 
+                              order.pago_tipo === 'cash' ||
+                              order.pagos?.type === 'efectivo' || 
                               order.pagos?.type === 'cash' ||
                               (order.payment_method && (order.payment_method === 'cash' || order.payment_method === 'efectivo'))) ? (
                               <>
@@ -449,7 +465,9 @@ export const DeliveryPersonHistory: React.FC<DeliveryPersonHistoryProps> = ({
                         </TableCell>
                         <TableCell>
                           <div className="flex items-center gap-2">
-                            {(order.pagos?.type === 'efectivo' || 
+                            {(order.pago_tipo === 'efectivo' || 
+                              order.pago_tipo === 'cash' ||
+                              order.pagos?.type === 'efectivo' || 
                               order.pagos?.type === 'cash' ||
                               (order.payment_method && (order.payment_method === 'cash' || order.payment_method === 'efectivo'))) ? (
                               <>

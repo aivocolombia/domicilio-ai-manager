@@ -21,7 +21,7 @@ export interface SedeOrder {
 
 export interface OrderItem {
   id: number;
-  producto_tipo: 'plato' | 'bebida';
+  producto_tipo: 'plato' | 'bebida' | 'topping';
   producto_id: number;
   producto_nombre: string;
   cantidad: number;
@@ -45,7 +45,7 @@ export interface CreateOrderData {
   pago_tipo: 'efectivo' | 'tarjeta' | 'nequi' | 'transferencia';
   instrucciones?: string;
   items: {
-    producto_tipo: 'plato' | 'bebida';
+    producto_tipo: 'plato' | 'bebida' | 'topping';
     producto_id: number;
     cantidad: number;
   }[];
@@ -87,6 +87,9 @@ class SedeOrdersService {
           ),
           ordenes_bebidas!left(
             bebidas!inner(id, name, pricing)
+          ),
+          ordenes_toppings!left(
+            toppings!inner(id, name, pricing)
           )
         `)
         .ilike('clientes.telefono', `%${normalizedPhone}%`)
@@ -113,6 +116,7 @@ class SedeOrdersService {
         // Contar elementos agrupados por producto para obtener cantidades
         const platosMap = new Map();
         const bebidasMap = new Map();
+        const toppingsMap = new Map();
         
         // Procesar platos
         (order.ordenes_platos || []).forEach((item: any) => {
@@ -152,6 +156,25 @@ class SedeOrdersService {
           }
         });
         
+        // Procesar toppings
+        (order.ordenes_toppings || []).forEach((item: any) => {
+          const toppingId = item.toppings.id;
+          const existing = toppingsMap.get(toppingId);
+          if (existing) {
+            existing.cantidad += 1;
+          } else {
+            toppingsMap.set(toppingId, {
+              id: toppingId,
+              producto_tipo: 'topping' as const,
+              producto_id: toppingId,
+              producto_nombre: item.toppings.name,
+              cantidad: 1,
+              precio_unitario: item.toppings.pricing,
+              precio_total: item.toppings.pricing
+            });
+          }
+        });
+        
         // Actualizar precios totales después de contar
         platosMap.forEach(item => {
           item.precio_total = item.precio_unitario * item.cantidad;
@@ -159,10 +182,14 @@ class SedeOrdersService {
         bebidasMap.forEach(item => {
           item.precio_total = item.precio_unitario * item.cantidad;
         });
+        toppingsMap.forEach(item => {
+          item.precio_total = item.precio_unitario * item.cantidad;
+        });
         
         const items: OrderItem[] = [
           ...Array.from(platosMap.values()),
-          ...Array.from(bebidasMap.values())
+          ...Array.from(bebidasMap.values()),
+          ...Array.from(toppingsMap.values())
         ];
 
         return {
@@ -225,6 +252,9 @@ class SedeOrdersService {
           ),
           ordenes_bebidas!left(
             bebidas!inner(id, name, pricing)
+          ),
+          ordenes_toppings!left(
+            toppings!inner(id, name, pricing)
           )
         `)
         .eq('sede_id', sedeId)
@@ -267,6 +297,9 @@ class SedeOrdersService {
           ),
           ordenes_bebidas!left(
             bebidas!inner(id, name, pricing)
+          ),
+          ordenes_toppings!left(
+            toppings!inner(id, name, pricing)
           )
         `)
         .eq('sede_id', sedeId)
@@ -292,6 +325,7 @@ class SedeOrdersService {
         // Contar elementos agrupados por producto para obtener cantidades
         const platosMap = new Map();
         const bebidasMap = new Map();
+        const toppingsMap = new Map();
         
         // Procesar platos
         (order.ordenes_platos || []).forEach((item: any) => {
@@ -331,6 +365,25 @@ class SedeOrdersService {
           }
         });
         
+        // Procesar toppings
+        (order.ordenes_toppings || []).forEach((item: any) => {
+          const toppingId = item.toppings.id;
+          const existing = toppingsMap.get(toppingId);
+          if (existing) {
+            existing.cantidad += 1;
+          } else {
+            toppingsMap.set(toppingId, {
+              id: toppingId,
+              producto_tipo: 'topping' as const,
+              producto_id: toppingId,
+              producto_nombre: item.toppings.name,
+              cantidad: 1,
+              precio_unitario: item.toppings.pricing,
+              precio_total: item.toppings.pricing
+            });
+          }
+        });
+        
         // Actualizar precios totales después de contar
         platosMap.forEach(item => {
           item.precio_total = item.precio_unitario * item.cantidad;
@@ -338,10 +391,14 @@ class SedeOrdersService {
         bebidasMap.forEach(item => {
           item.precio_total = item.precio_unitario * item.cantidad;
         });
+        toppingsMap.forEach(item => {
+          item.precio_total = item.precio_unitario * item.cantidad;
+        });
         
         const items: OrderItem[] = [
           ...Array.from(platosMap.values()),
-          ...Array.from(bebidasMap.values())
+          ...Array.from(bebidasMap.values()),
+          ...Array.from(toppingsMap.values())
         ];
 
         return {
@@ -541,9 +598,19 @@ class SedeOrdersService {
         if (!error && data) {
           total += data.pricing * item.cantidad;
         }
-      } else {
+      } else if (item.producto_tipo === 'bebida') {
         const { data, error } = await supabase
           .from('bebidas')
+          .select('pricing')
+          .eq('id', item.producto_id)
+          .single();
+
+        if (!error && data) {
+          total += data.pricing * item.cantidad;
+        }
+      } else if (item.producto_tipo === 'topping') {
+        const { data, error } = await supabase
+          .from('toppings')
           .select('pricing')
           .eq('id', item.producto_id)
           .single();
@@ -589,7 +656,7 @@ class SedeOrdersService {
             console.log('✅ Plato insertado exitosamente');
           }
 
-        } else {
+        } else if (item.producto_tipo === 'bebida') {
           // Solo insertar orden_id y bebidas_id (según esquema real)
           const insertData = {
             orden_id: ordenId,
@@ -607,6 +674,30 @@ class SedeOrdersService {
             throw insertError;
           } else {
             console.log('✅ Bebida insertada exitosamente');
+          }
+        } else if (item.producto_tipo === 'topping') {
+          // Insertar orden_id y topping_id en ordenes_toppings
+          const insertData = {
+            orden_id: ordenId,
+            topping_id: item.producto_id
+          };
+
+          console.log('🔍 Insertando topping:', insertData);
+
+          const { error: insertError } = await supabase
+            .from('ordenes_toppings')
+            .insert(insertData);
+
+          if (insertError) {
+            if (insertError.code === 'PGRST200' && insertError.message.includes('ordenes_toppings')) {
+              console.warn('⚠️ Tabla ordenes_toppings no existe - saltando inserción de topping');
+              // No lanzar error, solo advertencia
+            } else {
+              console.error('❌ Error insertando topping:', insertError);
+              throw insertError;
+            }
+          } else {
+            console.log('✅ Topping insertado exitosamente');
           }
         }
       }

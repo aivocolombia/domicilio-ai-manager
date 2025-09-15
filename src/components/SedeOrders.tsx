@@ -61,7 +61,7 @@ export const SedeOrders: React.FC<SedeOrdersProps> = ({
   onNavigateToDashboard
 }) => {
   const { profile } = useAuth();
-  const { platos, bebidas, loading: menuLoading } = useMenu();
+  const { platos, bebidas, toppings, loading: menuLoading, loadToppings } = useMenu();
   
   // Hook para manejar pedidos de sede con datos reales
   const {
@@ -175,6 +175,21 @@ export const SedeOrders: React.FC<SedeOrdersProps> = ({
       loadSedeOrders();
     }
   }, [effectiveSedeId, loadSedeOrders]);
+
+  // Cargar toppings al montar el componente
+  useEffect(() => {
+    console.log('🔍 SedeOrders: Cargando toppings...');
+    loadToppings();
+  }, [loadToppings]);
+
+  // Debug toppings
+  useEffect(() => {
+    console.log('🔍 SedeOrders: Estado de toppings:', { 
+      toppingsCount: toppings.length, 
+      toppings: toppings.map(t => ({ id: t.id, name: t.name, pricing: t.pricing })),
+      menuLoading 
+    });
+  }, [toppings, menuLoading]);
 
   const normalizePhone = (phone: string) => {
     return phone.replace(/[\s\-()]/g, '');
@@ -301,6 +316,38 @@ export const SedeOrders: React.FC<SedeOrdersProps> = ({
     });
   };
 
+  // Función para agregar toppings directamente a la orden
+  const addToppingToOrder = (toppingId: string) => {
+    console.log('🔍 DEBUG: addToppingToOrder llamado con toppingId:', toppingId);
+    
+    // Crear un ID único para el topping
+    const uniqueToppingId = `topping_${toppingId}`;
+    
+    const existingItem = newOrder.items.find(item => item.productId === uniqueToppingId);
+    if (existingItem) {
+      console.log('🔍 DEBUG: Incrementando cantidad de topping existente:', existingItem);
+      setNewOrder({
+        ...newOrder,
+        items: newOrder.items.map(item =>
+          item.productId === uniqueToppingId
+            ? { ...item, quantity: item.quantity + 1 }
+            : item
+        )
+      });
+    } else {
+      console.log('🔍 DEBUG: Agregando nuevo topping:', { uniqueToppingId, quantity: 1 });
+      setNewOrder({
+        ...newOrder,
+        items: [...newOrder.items, { 
+          productId: uniqueToppingId, 
+          quantity: 1, 
+          toppings: [],
+          productType: 'topping'
+        }]
+      });
+    }
+  };
+
   const calculateTotal = () => {
     const itemsTotal = newOrder.items.reduce((total, item) => {
       // Extraer el ID real y tipo del productId único
@@ -311,15 +358,19 @@ export const SedeOrders: React.FC<SedeOrdersProps> = ({
         product = platos.find(p => p.id.toString() === realProductId);
       } else if (productType === 'bebida') {
         product = bebidas.find(b => b.id.toString() === realProductId);
+      } else if (productType === 'topping') {
+        product = toppings.find(t => t.id.toString() === realProductId);
       }
       
-      console.log('🔍 DEBUG: calculateTotal - item:', {
-        itemId: item.productId,
-        realProductId,
-        productType,
-        quantity: item.quantity,
-        productFound: product ? { id: product.id, name: product.name, pricing: product.pricing } : null
-      });
+      // Debug solo si no se encuentra el producto o el precio es 0
+      if (!product || product.pricing === 0) {
+        console.log('⚠️ DEBUG: Problema en calculateTotal:', {
+          itemId: item.productId,
+          productType,
+          productFound: !!product,
+          pricing: product?.pricing || 0
+        });
+      }
       
       return total + (product ? product.pricing * item.quantity : 0);
     }, 0);
@@ -362,6 +413,11 @@ export const SedeOrders: React.FC<SedeOrdersProps> = ({
           const bebida = bebidas.find(b => b.id.toString() === realProductId);
           if (!bebida) {
             throw new Error(`Bebida con ID ${realProductId} no encontrada en el inventario`);
+          }
+        } else if (productType === 'topping') {
+          const topping = toppings.find(t => t.id.toString() === realProductId);
+          if (!topping) {
+            throw new Error(`Topping con ID ${realProductId} no encontrado en el inventario`);
           }
         } else {
           throw new Error(`Tipo de producto inválido: ${productType}`);
@@ -424,6 +480,15 @@ export const SedeOrders: React.FC<SedeOrdersProps> = ({
               return {
                 producto_tipo: 'bebida' as const,
                 producto_id: bebida.id,
+                cantidad: item.quantity
+              };
+            }
+          } else if (productType === 'topping') {
+            const topping = toppings.find(t => t.id.toString() === realProductId);
+            if (topping) {
+              return {
+                producto_tipo: 'topping' as const,
+                producto_id: topping.id,
                 cantidad: item.quantity
               };
             }
@@ -865,6 +930,38 @@ export const SedeOrders: React.FC<SedeOrdersProps> = ({
                     </div>
                   </div>
 
+                  <div>
+                    <Label>Toppings Extra</Label>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2 max-h-32 overflow-y-auto border rounded p-2">
+                      {menuLoading ? (
+                        <p className="text-center text-gray-500">Cargando toppings...</p>
+                      ) : toppings.length === 0 ? (
+                        <p className="text-center text-gray-500">No hay toppings disponibles</p>
+                      ) : (
+                        <>
+                          {toppings.filter(item => !('available' in item) || (item as any).available !== false).map((item) => (
+                            <div key={item.id} className="flex items-center justify-between p-2 border rounded bg-orange-50">
+                              <div>
+                                <p className="font-medium text-orange-800">{item.name}</p>
+                                <p className="text-sm text-orange-600">${item.pricing.toLocaleString()}</p>
+                              </div>
+                              <Button
+                                size="sm"
+                                onClick={() => {
+                                  console.log('🔍 DEBUG: Clic en topping:', { id: item.id, name: item.name });
+                                  addToppingToOrder(item.id.toString());
+                                }}
+                                className="bg-orange-500 hover:bg-orange-600 text-white"
+                              >
+                                <Plus className="h-4 w-4" />
+                              </Button>
+                            </div>
+                          ))}
+                        </>
+                      )}
+                    </div>
+                  </div>
+
                   {newOrder.items.length > 0 && (
                     <div>
                       <Label>Productos Seleccionados</Label>
@@ -874,24 +971,37 @@ export const SedeOrders: React.FC<SedeOrdersProps> = ({
                           const [productType, realProductId] = item.productId.split('_');
                           
                           let product = null;
+                          let itemBgColor = 'bg-gray-50';
+                          let itemTextColor = 'text-gray-600';
+                          
                           if (productType === 'plato') {
                             product = platos.find(p => p.id.toString() === realProductId);
                           } else if (productType === 'bebida') {
                             product = bebidas.find(b => b.id.toString() === realProductId);
+                          } else if (productType === 'topping') {
+                            product = toppings.find(t => t.id.toString() === realProductId);
+                            itemBgColor = 'bg-orange-50';
+                            itemTextColor = 'text-orange-600';
                           }
                           
-                          console.log('🔍 DEBUG: Mostrando item seleccionado:', {
-                            itemId: item.productId,
-                            realProductId,
-                            productType,
-                            productFound: product ? { id: product.id, name: product.name } : null
-                          });
+                          // Debug solo si no se encuentra el producto
+                          if (!product) {
+                            console.log('⚠️ DEBUG: Producto no encontrado:', {
+                              itemId: item.productId,
+                              realProductId,
+                              productType
+                            });
+                          }
                           
                           return (
-                            <div key={item.productId} className="flex items-center justify-between p-2 bg-gray-50 rounded">
+                            <div key={item.productId} className={`flex items-center justify-between p-2 ${itemBgColor} rounded`}>
                               <div>
-                                <p className="font-medium">{product?.name}</p>
-                                <p className="text-sm text-gray-600">
+                                <p className="font-medium">{product?.name}
+                                  {productType === 'topping' && (
+                                    <span className="ml-2 px-2 py-1 text-xs bg-orange-200 text-orange-800 rounded">Extra</span>
+                                  )}
+                                </p>
+                                <p className={`text-sm ${itemTextColor}`}>
                                   Cantidad: {item.quantity} × ${product?.pricing.toLocaleString()}
                                 </p>
                               </div>
