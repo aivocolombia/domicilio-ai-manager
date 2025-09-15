@@ -1,8 +1,6 @@
 import React, { createContext, useContext, useEffect, useState, useRef } from 'react'
-import { User as SupabaseUser } from '@supabase/supabase-js'
-import { supabase, type Database } from '@/lib/supabase'
-import { sedeServiceSimple } from '@/services/sedeServiceSimple'
-import { logDebug, logError, logWarn } from '@/utils/logger'
+import { customAuthService, type AuthUser } from '@/services/customAuthService'
+import { logDebug, logError } from '@/utils/logger'
 
 // Declarar función de emergencia en window para TypeScript
 declare global {
@@ -11,393 +9,129 @@ declare global {
   }
 }
 
-type Profile = Database['public']['Tables']['profiles']['Row'] & {
-  sede_name?: string; // Campo adicional para el nombre de la sede
-}
-
 interface AuthContextType {
-  user: SupabaseUser | null
-  profile: Profile | null
+  user: AuthUser | null
   loading: boolean
-  signIn: (email: string, password: string) => Promise<{ error?: string }>
+  signIn: (nickname: string, password: string) => Promise<{ error?: string }>
   signOut: () => Promise<void>
   refreshProfile: () => Promise<void>
+  // Funciones de utilidad para roles (mantener compatibilidad)
+  profile: AuthUser | null // Alias para mantener compatibilidad
+  canManageUsers: () => boolean
+  canManageAllSedes: () => boolean
+  canAccessAdminPanel: () => boolean
+  getUserSedeId: () => string | null
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [user, setUser] = useState<SupabaseUser | null>(null)
-  const [profile, setProfile] = useState<Profile | null>(null)
+  const [user, setUser] = useState<AuthUser | null>(null)
   const [loading, setLoading] = useState(true)
 
-  // Caché simple para perfiles (5 minutos TTL)
-  const profileCacheRef = useRef<Map<string, { profile: Profile; timestamp: number }>>(new Map())
-
-  const enrichProfileWithSedeName = async (profile: Profile): Promise<Profile> => {
+  // Función para iniciar sesión
+  const signIn = async (nickname: string, password: string) => {
     try {
-      if (!profile.sede_id) return profile;
-      
-      logDebug('AuthProvider', `🏢 Obteniendo nombre de sede para ID: ${profile.sede_id}`);
-      
-      // Usar el servicio optimizado con caché
-      const sedeInfo = await sedeServiceSimple.getSedeById(profile.sede_id);
-      
-      const enrichedProfile = {
-        ...profile,
-        sede_name: sedeInfo?.name || 'Sede Desconocida'
-      };
-      
-      console.log('✅ Perfil enriquecido con nombre de sede:', enrichedProfile.sede_name);
-      return enrichedProfile;
-    } catch (error) {
-      console.error('❌ Error enriching profile:', error);
-      return profile;
-    }
-  };
-
-  const createTempProfile = async (userId: string, userEmail: string, userData?: SupabaseUser): Promise<Profile> => {
-    // Si ya tenemos un perfil válido, preservar sus datos
-    if (profile) {
-      console.log('📋 Perfil existente detectado, preservando datos actuales');
-      return {
-        ...profile,
-        id: userId,
-        email: userEmail
-      };
-    }
-    
-    let userRole: 'admin' | 'agent' = 'agent';
-    let sedeId: string | null = null;
-    
-    // Detección más robusta del rol admin
-    if (userEmail.includes('admin') || userEmail.includes('carlos') || userEmail === 'admin@ajiaco.com') {
-      userRole = 'admin';
-    }
-    
-    // PRIMERO: Intentar obtener el perfil real de la base de datos por si existe
-    console.log('🔍 Intentando obtener perfil real de la base de datos antes de crear temporal...');
-    try {
-      const { data: realProfile, error: profileError } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('id', userId)
-        .single();
-      
-      if (!profileError && realProfile) {
-        console.log('✅ Perfil real encontrado en la base de datos:', realProfile);
-        // Enriquecer con nombre de sede si tiene sede_id
-        if (realProfile.sede_id) {
-          const enrichedProfile = await enrichProfileWithSedeName(realProfile);
-          return enrichedProfile;
-        }
-        return realProfile;
-      }
-    } catch (error) {
-      console.log('ℹ️ No se encontró perfil real, continuando con temporal...');
-    }
-    
-    // SEGUNDO: Si no existe perfil real, crear temporal con sede por defecto
-    // Asignar sede_id por defecto basado en el email para usuarios conocidos
-    if (userEmail === 'agente@ajiaco.com') {
-      sedeId = '310368ae-1ab6-49bb-908b-8f95a77581f8'; // Sede que aparece en los logs
-    } else if (userEmail === 'admin@ajiaco.com') {
-      sedeId = '310368ae-1ab6-49bb-908b-8f95a77581f8'; // Misma sede por defecto
-    } else {
-      // Para cualquier otro usuario, asignar sede por defecto
-      sedeId = '310368ae-1ab6-49bb-908b-8f95a77581f8';
-    }
-    
-    console.log('🏢 Creando perfil temporal con sede por defecto:', { email: userEmail, sedeId, role: userRole });
-    
-    const tempProfile: Profile = {
-      id: userId,
-      email: userEmail,
-      name: userData?.user_metadata?.name || userEmail || 'Usuario',
-      role: userRole,
-      sede_id: sedeId,
-      is_active: true,
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString()
-    };
-    
-    // Enriquecer con nombre de sede
-    const enrichedProfile = await enrichProfileWithSedeName(tempProfile);
-    return enrichedProfile;
-  };
-
-  const fetchProfile = async (userId: string) => {
-    try {
-      console.log('🔍 Intentando obtener perfil para usuario:', userId)
-      
-      // Verificar que hay un userId válido
-      if (!userId) {
-        logDebug('AuthProvider', '⚠️ No se proporcionó userId, retornando null')
-        return null
-      }
-
-      // Verificar caché primero (5 minutos TTL)
-      const cached = profileCacheRef.current.get(userId);
-      if (cached && (Date.now() - cached.timestamp) < 5 * 60 * 1000) {
-        logDebug('AuthProvider', `✅ Profile cache hit para usuario ${userId}`);
-        return cached.profile;
-      }
-      
-      // Timeout reducido para mejor UX
-      const timeoutPromise = new Promise<never>((_, reject) => {
-        setTimeout(() => reject(new Error('Timeout')), 8000) // 8 segundos
-      })
-      
-      console.log('🔍 Intentando obtener perfil desde base de datos...')
-      
-      const fetchPromise = supabase
-        .from('profiles')
-        .select('*')
-        .eq('id', userId)
-        .single()
-
-      const result = await Promise.race([fetchPromise, timeoutPromise]);
-      const { data, error } = result;
-
-      if (error) {
-        console.error('❌ Error fetching profile:', error)
-        
-        // Solo crear perfil temporal si no encontramos el perfil y es un error específico de "no encontrado"
-        if (error.code === 'PGRST116' || error.code === 'PGRST001') {
-          console.log('🔄 Perfil no encontrado en base de datos, creando temporal...')
-          const userEmail = user?.email || '';
-          const tempProfile = await createTempProfile(userId, userEmail, user);
-          console.log('✅ Perfil temporal creado:', tempProfile)
-          return tempProfile
-        }
-        
-        // Para otros errores, no crear perfil temporal automáticamente
-        console.warn('⚠️ Error de conexión/timeout, manteniendo perfil actual:', error)
-        return null
-      }
-
-      console.log('✅ Perfil obtenido desde base de datos:', data)
-      
-      // Si el perfil tiene sede_id, obtener el nombre de la sede y pre-cargar datos
-      if (data && data.sede_id) {
-        const sedeProfile = await enrichProfileWithSedeName(data);
-        
-        // Guardar en caché
-        profileCacheRef.current.set(userId, {
-          profile: sedeProfile,
-          timestamp: Date.now()
-        });
-        
-        // Pre-cargar datos críticos en background para mejor rendimiento
-        sedeServiceSimple.preloadCriticalData(data.sede_id).catch(error => 
-          logWarn('AuthProvider', 'Error pre-cargando datos críticos', error)
-        );
-        
-        logDebug('AuthProvider', `💾 Profile cached para usuario ${userId}`);
-        return sedeProfile;
-      }
-      
-      // Guardar perfil sin sede en caché también
-      if (data) {
-        profileCacheRef.current.set(userId, {
-          profile: data,
-          timestamp: Date.now()
-        });
-        logDebug('AuthProvider', `💾 Profile (sin sede) cached para usuario ${userId}`);
-      }
-      
-      return data
-    } catch (error: unknown) {
-      console.error('❌ Error fetching profile:', error)
-      
-      // Solo crear perfil temporal si es un error específico de "perfil no encontrado"
-      if (error instanceof Error && (
-        error.message.includes('not found') || 
-        error.message.includes('PGRST116') ||
-        error.message.includes('Row not found')
-      )) {
-        console.log('🔄 Perfil no encontrado (catch), creando temporal...')
-        const userEmail = user?.email || '';
-        const tempProfile = await createTempProfile(userId, userEmail, user);
-        console.log('✅ Perfil temporal creado:', tempProfile)
-        return tempProfile
-      }
-      
-      // Para errores de timeout/red, retornar null en lugar de crear perfil temporal
-      console.warn('⚠️ Error de conexión/timeout, no creando perfil temporal:', error)
-      
-      if (error instanceof Error && error.message === 'Timeout') {
-        // Crear función de emergencia para logout global
-        window.emergencyLogout = async () => {
-          try {
-            console.log('🚨 LOGOUT DE EMERGENCIA ACTIVADO')
-            await supabase.auth.signOut()
-            localStorage.clear()
-            sessionStorage.clear()
-            window.location.href = '/'
-          } catch (e) {
-            console.error('Error en logout de emergencia:', e)
-            window.location.href = '/'
-          }
-        }
-        console.error('🚨 Para logout de emergencia desde consola, ejecuta: window.emergencyLogout()')
-      }
-      
-      return null
-    }
-  }
-
-  const refreshProfile = async () => {
-    if (user?.id) {
-      try {
-        console.log('🔄 Refrescando perfil de usuario...')
-        const profileData = await fetchProfile(user.id)
-        setProfile(profileData)
-        console.log('✅ Perfil refrescado exitosamente')
-      } catch (error) {
-        console.error('❌ Error refrescando perfil:', error)
-        // No establecer profile como null aquí para mantener el estado actual
-      }
-    } else {
-      console.log('⚠️ No hay usuario para refrescar perfil')
-    }
-  }
-
-  useEffect(() => {
-    console.log('🚀 AuthProvider iniciando...')
-    
-    // Get initial session
-    supabase.auth.getSession().then(async ({ data: { session } }) => {
-      console.log('📋 Sesión inicial:', session ? 'Presente' : 'Ausente')
-      setUser(session?.user ?? null)
-      if (session?.user) {
-        console.log('👤 Usuario encontrado:', session.user.email)
-        const profileData = await fetchProfile(session.user.id)
-        setProfile(profileData)
-      } else {
-        console.log('👤 No hay usuario en sesión')
-      }
-      setLoading(false)
-    })
-
-    // Listen for auth changes
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange(async (event, session) => {
-      console.log('🔄 Auth state change:', event, session?.user?.email)
-      
-      // Si es un evento de sign out, limpiar estado inmediatamente
-      if (event === 'SIGNED_OUT') {
-        console.log('👋 Usuario cerró sesión, limpiando estado...')
-        setUser(null)
-        setProfile(null)
-        setLoading(false)
-        // Limpiar localStorage de vista activa
-        localStorage.removeItem('ajiaco-active-tab')
-        localStorage.removeItem('ajiaco-admin-active-tab')
-        console.log('🧹 Vistas activas limpiadas del localStorage (SIGNED_OUT)')
-        return
-      }
-      
-      setUser(session?.user ?? null)
-      if (session?.user && event !== 'SIGNED_OUT') {
-        try {
-          const profileData = await fetchProfile(session.user.id)
-          // Solo actualizar perfil si obtenemos datos válidos
-          if (profileData) {
-            setProfile(profileData)
-          }
-          // Si profileData es null pero ya tenemos un perfil, mantenerlo
-        } catch (error) {
-          console.error('❌ Error obteniendo perfil en auth change:', error)
-          // No sobrescribir el perfil existente en caso de error temporal
-        }
-        // Solo setear loading false después de intentar obtener el perfil
-        setLoading(false)
-      } else {
-        setProfile(null)
-        setLoading(false)
-      }
-    })
-
-    return () => subscription.unsubscribe()
-  }, [])
-
-  const signIn = async (email: string, password: string) => {
-    try {
-      console.log('🔐 Intentando iniciar sesión con:', email)
-      
-      const { data, error } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-      })
-
-      if (error) {
-        console.error('❌ Error de autenticación:', error.message)
-        return { error: error.message }
-      }
-
-      console.log('✅ Autenticación exitosa')
-      console.log('Usuario autenticado:', data.user.email)
-      
-      // Intentar obtener el perfil inmediatamente después del login
-      if (data.user) {
-        const profileData = await fetchProfile(data.user.id)
-        setProfile(profileData)
-      }
-      
-      return {}
-    } catch (error) {
-      console.error('❌ Error inesperado:', error)
-      return { error: 'Error inesperado al iniciar sesión' }
-    }
-  }
-
-  const signOut = async () => {
-    try {
-      console.log('🚪 Cerrando sesión...')
+      console.log('🔐 Intentando autenticar con nickname:', nickname)
       setLoading(true)
       
-      // Limpiar estado inmediatamente para evitar llamadas adicionales
-      setProfile(null)
+      const result = await customAuthService.signIn(nickname, password)
       
-      // Limpiar localStorage de vista activa y navegación (SEGURIDAD CRÍTICA)
-      localStorage.removeItem('ajiaco-active-tab')
-      localStorage.removeItem('ajiaco-admin-active-tab')
-      localStorage.removeItem('ajiaco-app-view')  // Limpiar vista guardada del useAppState
-      localStorage.removeItem('ajiaco-navigation-history')  // Limpiar historial de navegación
-      
-      // Limpiar caché de sede y perfiles para seguridad y datos frescos en próximo login
-      sedeServiceSimple.invalidateSedeCache()
-      profileCacheRef.current.clear()
-      logDebug('AuthProvider', '🧹 Cache de sedes y perfiles limpiado al cerrar sesión')
-      
-      console.log('🧹 Vistas activas, navegación y caché limpiados')
-      
-      // Cerrar sesión en Supabase
-      const { error } = await supabase.auth.signOut()
-      if (error) {
-        console.error('❌ Error cerrando sesión:', error)
-        // Aún así limpiamos el estado local
+      if (result.error) {
+        console.error('❌ Error de autenticación:', result.error)
+        return { error: result.error }
       }
-      
-      console.log('✅ Sesión cerrada exitosamente')
+
+      if (result.user) {
+        setUser(result.user)
+        console.log('✅ Autenticación exitosa:', result.user.nickname, '-', result.user.role)
+      }
+
+      return {}
     } catch (error) {
-      console.error('❌ Error durante signOut:', error)
-      // Forzar limpieza del estado incluso si hay error
-      setProfile(null)
+      const errorMessage = error instanceof Error ? error.message : 'Error desconocido'
+      console.error('❌ Error inesperado en signIn:', error)
+      return { error: errorMessage }
     } finally {
       setLoading(false)
     }
   }
 
-  const value = {
+  // Función para cerrar sesión
+  const signOut = async () => {
+    try {
+      console.log('🚪 Cerrando sesión...')
+      await customAuthService.signOut()
+      setUser(null)
+      console.log('✅ Sesión cerrada exitosamente')
+    } catch (error) {
+      console.error('❌ Error inesperado en signOut:', error)
+      setUser(null) // Limpiar estado local incluso en caso de error
+    }
+  }
+
+  // Función para refrescar perfil (mantener compatibilidad)
+  const refreshProfile = async () => {
+    const currentUser = customAuthService.getCurrentUser()
+    if (currentUser) {
+      setUser(currentUser)
+      logDebug('AuthProvider', '✅ Perfil refrescado desde servicio de auth')
+    }
+  }
+
+  // Funciones de utilidad para roles
+  const canManageUsers = () => customAuthService.canManageUsers()
+  const canManageAllSedes = () => customAuthService.canManageAllSedes()
+  const canAccessAdminPanel = () => customAuthService.canAccessAdminPanel()
+  const getUserSedeId = () => customAuthService.getUserSedeId()
+
+  // Configurar función de emergencia
+  useEffect(() => {
+    window.emergencyLogout = async () => {
+      console.log('🚨 Ejecutando logout de emergencia...')
+      await signOut()
+    }
+    
+    return () => {
+      delete window.emergencyLogout
+    }
+  }, [])
+
+  // Efecto para restaurar sesión al cargar
+  useEffect(() => {
+    const restoreSession = async () => {
+      try {
+        setLoading(true)
+        console.log('🔄 Restaurando sesión...')
+        
+        const restoredUser = await customAuthService.restoreSession()
+        if (restoredUser) {
+          setUser(restoredUser)
+          console.log('✅ Sesión restaurada:', restoredUser.nickname)
+        } else {
+          console.log('ℹ️ No hay sesión previa para restaurar')
+        }
+      } catch (error) {
+        console.error('❌ Error restaurando sesión:', error)
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    restoreSession()
+  }, [])
+
+  const value: AuthContextType = {
     user,
-    profile,
+    profile: user, // Alias para mantener compatibilidad con código existente
     loading,
     signIn,
     signOut,
     refreshProfile,
+    canManageUsers,
+    canManageAllSedes,
+    canAccessAdminPanel,
+    getUserSedeId,
   }
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

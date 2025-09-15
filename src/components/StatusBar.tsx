@@ -132,7 +132,8 @@ export const StatusBar: React.FC<StatusBarProps> = ({ orders, currentSede = 'Niz
       loadInventoryConSede();
     },
     onError: (error) => {
-      console.error('❌ StatusBar: Error en realtime sede_platos:', error);
+      console.warn('⚠️ StatusBar: Advertencia en realtime sede_platos:', error.message);
+      // No es un error crítico, solo un problema de conectividad temporal
     },
     onSubscribed: () => {
       console.log('✅ StatusBar: Suscrito a cambios en sede_platos');
@@ -149,7 +150,8 @@ export const StatusBar: React.FC<StatusBarProps> = ({ orders, currentSede = 'Niz
       loadInventoryConSede();
     },
     onError: (error) => {
-      console.error('❌ StatusBar: Error en realtime sede_bebidas:', error);
+      console.warn('⚠️ StatusBar: Advertencia en realtime sede_bebidas:', error.message);
+      // No es un error crítico, solo un problema de conectividad temporal
     },
     onSubscribed: () => {
       console.log('✅ StatusBar: Suscrito a cambios en sede_bebidas');
@@ -166,7 +168,8 @@ export const StatusBar: React.FC<StatusBarProps> = ({ orders, currentSede = 'Niz
       loadInventoryConSede();
     },
     onError: (error) => {
-      console.error('❌ StatusBar: Error en realtime sede_toppings:', error);
+      console.warn('⚠️ StatusBar: Advertencia en realtime sede_toppings:', error.message);
+      // No es un error crítico, solo un problema de conectividad temporal
     },
     onSubscribed: () => {
       console.log('✅ StatusBar: Suscrito a cambios en sede_toppings');

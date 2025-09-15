@@ -1,20 +1,20 @@
 import { supabase } from '@/lib/supabase';
 
 export interface CreateUserData {
-  email: string;
+  nickname: string;
   password: string;
-  name: string;
+  display_name: string;
   role: string;
-  sede_id?: string;
+  sede_id: string;
   is_active: boolean;
 }
 
 export interface User {
   id: string;
-  email: string;
-  name: string;
+  nickname: string;
+  display_name: string;
   role: string;
-  sede_id?: string;
+  sede_id: string;
   is_active: boolean;
   created_at: string;
   updated_at: string;
@@ -217,6 +217,18 @@ export class AdminService {
     try {
       console.log('🔄 Actualizando estado de usuario:', { userId, isActive });
 
+      // Verificar permisos usando el servicio de autenticación personalizado
+      const { customAuthService } = await import('@/services/customAuthService');
+      const currentUser = customAuthService.getCurrentUser();
+      
+      if (!currentUser) {
+        throw new Error('Usuario no autenticado');
+      }
+
+      if (!customAuthService.canManageUsers()) {
+        throw new Error('Solo los administradores pueden actualizar usuarios');
+      }
+
       const { error } = await supabase
         .from('profiles')
         .update({ is_active: isActive })
@@ -239,19 +251,15 @@ export class AdminService {
     try {
       console.log('🏢 Actualizando sede de usuario:', { userId, sedeId });
 
-      // Verificar que el usuario actual sea admin
-      const { data: currentUser } = await supabase.auth.getUser();
-      if (!currentUser.user) {
+      // Verificar permisos usando el servicio de autenticación personalizado
+      const { customAuthService } = await import('@/services/customAuthService');
+      const currentUser = customAuthService.getCurrentUser();
+      
+      if (!currentUser) {
         throw new Error('Usuario no autenticado');
       }
 
-      const { data: userProfile } = await supabase
-        .from('profiles')
-        .select('role')
-        .eq('id', currentUser.user.id)
-        .single();
-
-      if (!userProfile || userProfile.role !== 'admin') {
+      if (!customAuthService.canManageUsers()) {
         throw new Error('Solo los administradores pueden reasignar sedes');
       }
 
@@ -276,6 +284,18 @@ export class AdminService {
   async deleteUser(userId: string): Promise<void> {
     try {
       console.log('🗑️ Eliminando usuario:', userId);
+
+      // Verificar permisos usando el servicio de autenticación personalizado
+      const { customAuthService } = await import('@/services/customAuthService');
+      const currentUser = customAuthService.getCurrentUser();
+      
+      if (!currentUser) {
+        throw new Error('Usuario no autenticado');
+      }
+
+      if (!customAuthService.canManageUsers()) {
+        throw new Error('Solo los administradores pueden eliminar usuarios');
+      }
 
       const { error } = await supabase
         .from('profiles')
@@ -345,20 +365,17 @@ export class AdminService {
     try {
       console.log('➕ Creando nueva sede:', sedeData.name);
 
-      // Verificar que el usuario actual sea admin
-      const { data: currentUser } = await supabase.auth.getUser();
-      if (!currentUser.user) {
+      // Verificar permisos usando el servicio de autenticación personalizado
+      const { customAuthService } = await import('@/services/customAuthService');
+      const currentUser = customAuthService.getCurrentUser();
+      
+      if (!currentUser) {
         throw new Error('Usuario no autenticado');
       }
 
-      const { data: userProfile } = await supabase
-        .from('profiles')
-        .select('role')
-        .eq('id', currentUser.user.id)
-        .single();
-
-      if (!userProfile || userProfile.role !== 'admin') {
-        throw new Error('Solo los administradores pueden crear sedes');
+      // Solo admin_global puede crear sedes
+      if (currentUser.role !== 'admin_global') {
+        throw new Error('Solo el administrador global puede crear sedes');
       }
 
       // Verificar que el nombre no exista (usar maybeSingle para evitar error 406)
@@ -518,19 +535,16 @@ export class AdminService {
     try {
       console.log('🔄 Actualizando sede:', { sedeId, updateData });
 
-      // Verificar que el usuario actual sea admin
-      const { data: currentUser } = await supabase.auth.getUser();
-      if (!currentUser.user) {
+      // Verificar permisos usando el servicio de autenticación personalizado
+      const { customAuthService } = await import('@/services/customAuthService');
+      const currentUser = customAuthService.getCurrentUser();
+      
+      if (!currentUser) {
         throw new Error('Usuario no autenticado');
       }
 
-      const { data: userProfile } = await supabase
-        .from('profiles')
-        .select('role')
-        .eq('id', currentUser.user.id)
-        .single();
-
-      if (!userProfile || userProfile.role !== 'admin') {
+      // admin_global puede actualizar cualquier sede, admin_punto solo su sede
+      if (currentUser.role !== 'admin_global' && currentUser.role !== 'admin_punto') {
         throw new Error('Solo los administradores pueden actualizar sedes');
       }
 
@@ -574,20 +588,17 @@ export class AdminService {
     try {
       console.log('🗑️ Eliminando sede:', sedeId);
 
-      // Verificar que el usuario actual sea admin
-      const { data: currentUser } = await supabase.auth.getUser();
-      if (!currentUser.user) {
+      // Verificar permisos usando el servicio de autenticación personalizado
+      const { customAuthService } = await import('@/services/customAuthService');
+      const currentUser = customAuthService.getCurrentUser();
+      
+      if (!currentUser) {
         throw new Error('Usuario no autenticado');
       }
 
-      const { data: userProfile } = await supabase
-        .from('profiles')
-        .select('role')
-        .eq('id', currentUser.user.id)
-        .single();
-
-      if (!userProfile || userProfile.role !== 'admin') {
-        throw new Error('Solo los administradores pueden eliminar sedes');
+      // Solo admin_global puede eliminar sedes (admin_punto no puede)
+      if (currentUser.role !== 'admin_global') {
+        throw new Error('Solo el administrador global puede eliminar sedes');
       }
 
       // Verificar si hay usuarios asignados a esta sede

@@ -4,7 +4,11 @@
       "Bash(npm run build:*)",
       "Bash(npm run lint)",
       "Bash(find:*)",
-      "Bash(npm run dev:*)"
+      "Bash(npm run dev:*)",
+      "Bash(node:*)",
+      "Bash(echo:*)",
+      "Bash(export VITE_SUPABASE_URL=https://hcyxhuvyqvtlvfsnrhjw.supabase.co)",
+      "Bash(export:*)"
     ],
     "deny": [],
     "ask": [],

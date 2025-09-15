@@ -61,14 +61,14 @@ export function AdminPanel({ onBack, onNavigateToTimeMetrics }: AdminPanelProps)
   // Dialog and form states
   const [selectedRepartidor, setSelectedRepartidor] = useState<Repartidor | null>(null)
   const [isRepartidorSedeEditOpen, setIsRepartidorSedeEditOpen] = useState(false)
-  const [repartidorSedeFormData, setRepartidorSedeFormData] = useState({ sede_id: '' })
+  const [repartidorSedeFormData, setRepartidorSedeFormData] = useState({ sede_id: 'none' })
   const [isCreateRepartidorOpen, setIsCreateRepartidorOpen] = useState(false)
   const [isDeleteRepartidorOpen, setIsDeleteRepartidorOpen] = useState(false)
   const [repartidorFormData, setRepartidorFormData] = useState({
     nombre: '',
     telefono: '',
     placas: '',
-    sede_id: ''
+    sede_id: 'none'
   })
   
   // Cancelled orders modal state
@@ -90,7 +90,7 @@ export function AdminPanel({ onBack, onNavigateToTimeMetrics }: AdminPanelProps)
   const { activeSection, setActiveSection } = useAdminSection()
 
   const { toast } = useToast()
-  const { signOut } = useAuth()
+  const { user, signOut } = useAuth()
 
   // Form states
   const [formData, setFormData] = useState({
@@ -117,6 +117,14 @@ export function AdminPanel({ onBack, onNavigateToTimeMetrics }: AdminPanelProps)
     from: new Date(), // Hoy por defecto
     to: new Date()    // Hoy por defecto
   })
+
+  // Configurar filtro de sede automáticamente para admin_punto
+  useEffect(() => {
+    if (user?.role === 'admin_punto' && user?.sede_id) {
+      setSelectedSedeFilter(user.sede_id);
+      console.log('🏢 Admin punto: configurando filtro automático a sede', user.sede_name || user.sede_id);
+    }
+  }, [user?.role, user?.sede_id, user?.sede_name]);
 
   // Initialize data loading on mount
   useEffect(() => {
@@ -310,12 +318,19 @@ export function AdminPanel({ onBack, onNavigateToTimeMetrics }: AdminPanelProps)
       setIsCreatingUser(true)
       logger.info('Creating user with optimistic updates...')
       
+      // Para admin_punto: forzar que el usuario se cree solo en su sede
+      let sedeId = formData.sede_id;
+      if (user?.role === 'admin_punto') {
+        sedeId = user.sede_id; // Forzar la sede del admin_punto
+        console.log('🏢 Admin punto: forzando creación de usuario en sede', user.sede_name);
+      }
+      
       const userData: CreateUserData = {
         email: formData.email,
         password: formData.password,
         name: formData.name,
         role: formData.role,
-        sede_id: formData.sede_id || undefined,
+        sede_id: sedeId || undefined,
         is_active: formData.is_active
       }
 
@@ -717,8 +732,8 @@ export function AdminPanel({ onBack, onNavigateToTimeMetrics }: AdminPanelProps)
     }
   }
 
-  const handleDeleteUser = async (userId: string, userName: string, userEmail: string) => {
-    if (!confirm(`¿Estás seguro de que deseas eliminar el usuario "${userName}" (${userEmail})? Esta acción no se puede deshacer.`)) {
+  const handleDeleteUser = async (userId: string, userDisplayName: string, userNickname: string) => {
+    if (!confirm(`¿Estás seguro de que deseas eliminar el usuario "${userDisplayName}" (@${userNickname})? Esta acción no se puede deshacer.`)) {
       return
     }
 
@@ -731,7 +746,7 @@ export function AdminPanel({ onBack, onNavigateToTimeMetrics }: AdminPanelProps)
           onSuccess: () => {
             toast({
               title: "Usuario eliminado",
-              description: `El usuario ${userName} ha sido eliminado exitosamente`,
+              description: `El usuario ${userDisplayName} ha sido eliminado exitosamente`,
             })
             adminDataLoader.invalidateCache(['users'])
           },
@@ -765,7 +780,7 @@ export function AdminPanel({ onBack, onNavigateToTimeMetrics }: AdminPanelProps)
 
   const handleRepartidorSedeEdit = (repartidor: Repartidor) => {
     setSelectedRepartidor(repartidor)
-    setRepartidorSedeFormData({ sede_id: repartidor.sede_id || '' })
+    setRepartidorSedeFormData({ sede_id: repartidor.sede_id || 'none' })
     setIsRepartidorSedeEditOpen(true)
   }
 
@@ -775,13 +790,13 @@ export function AdminPanel({ onBack, onNavigateToTimeMetrics }: AdminPanelProps)
     if (!selectedRepartidor) return
     
     try {
-      const updates = { sede_id: repartidorSedeFormData.sede_id || null }
+      const updates = { sede_id: repartidorSedeFormData.sede_id === 'none' ? null : repartidorSedeFormData.sede_id || null }
       
       const { optimisticItems, execute } = optimisticUpdate(
         repartidores,
         selectedRepartidor.id,
         updates,
-        () => adminService.updateRepartidorSede(selectedRepartidor.id, repartidorSedeFormData.sede_id || null),
+        () => adminService.updateRepartidorSede(selectedRepartidor.id, repartidorSedeFormData.sede_id === 'none' ? null : repartidorSedeFormData.sede_id || null),
         {
           onSuccess: () => {
             toast({
@@ -790,7 +805,7 @@ export function AdminPanel({ onBack, onNavigateToTimeMetrics }: AdminPanelProps)
             })
             setIsRepartidorSedeEditOpen(false)
             setSelectedRepartidor(null)
-            setRepartidorSedeFormData({ sede_id: '' })
+            setRepartidorSedeFormData({ sede_id: 'none' })
             adminDataLoader.invalidateCache(['repartidores'])
           },
           onError: (error, rollback) => {
@@ -877,7 +892,7 @@ export function AdminPanel({ onBack, onNavigateToTimeMetrics }: AdminPanelProps)
         nombre: repartidorFormData.nombre.trim(),
         telefono: repartidorFormData.telefono.trim(),
         placas: repartidorFormData.placas.trim() || undefined,
-        sede_id: repartidorFormData.sede_id || null,
+        sede_id: repartidorFormData.sede_id === 'none' ? null : repartidorFormData.sede_id || null,
         disponible: true,
         created_at: new Date().toISOString()
       }
@@ -889,7 +904,7 @@ export function AdminPanel({ onBack, onNavigateToTimeMetrics }: AdminPanelProps)
           nombre: repartidorFormData.nombre.trim(),
           telefono: repartidorFormData.telefono.trim(),
           placas: repartidorFormData.placas.trim() || undefined,
-          sede_id: repartidorFormData.sede_id || null
+          sede_id: repartidorFormData.sede_id === 'none' ? null : repartidorFormData.sede_id || null
         }),
         {
           onSuccess: (newRepartidor) => {
@@ -903,7 +918,7 @@ export function AdminPanel({ onBack, onNavigateToTimeMetrics }: AdminPanelProps)
               nombre: '',
               telefono: '',
               placas: '',
-              sede_id: ''
+              sede_id: 'none'
             })
             adminDataLoader.invalidateCache(['repartidores'])
           },
@@ -971,16 +986,34 @@ export function AdminPanel({ onBack, onNavigateToTimeMetrics }: AdminPanelProps)
     }
   }
 
-  const filteredUsers = users.filter(user =>
-    user.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    user.email.toLowerCase().includes(searchTerm.toLowerCase())
-  )
+  const filteredUsers = users.filter(userRow => {
+    // Filtro de búsqueda
+    const matchesSearch = userRow.display_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                         userRow.nickname?.toLowerCase().includes(searchTerm.toLowerCase());
+    
+    // Filtro por rol: admin_punto solo ve usuarios de su sede
+    if (user?.role === 'admin_punto') {
+      return matchesSearch && userRow.sede_id === user?.sede_id;
+    }
+    
+    // admin_global ve todos los usuarios
+    return matchesSearch;
+  })
 
-  const filteredRepartidores = repartidores.filter(repartidor =>
-    repartidor.nombre.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    repartidor.telefono.includes(searchTerm) ||
-    (repartidor.placas && repartidor.placas.toLowerCase().includes(searchTerm.toLowerCase()))
-  )
+  const filteredRepartidores = repartidores.filter(repartidor => {
+    // Filtro de búsqueda
+    const matchesSearch = repartidor.nombre.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                         repartidor.telefono.includes(searchTerm) ||
+                         (repartidor.placas && repartidor.placas.toLowerCase().includes(searchTerm.toLowerCase()));
+    
+    // Filtro por rol: admin_punto solo ve repartidores de su sede
+    if (user?.role === 'admin_punto') {
+      return matchesSearch && repartidor.sede_id === user?.sede_id;
+    }
+    
+    // admin_global ve todos los repartidores
+    return matchesSearch;
+  })
 
   const getRoleBadge = (role: string) => {
     switch (role) {
@@ -1158,25 +1191,41 @@ export function AdminPanel({ onBack, onNavigateToTimeMetrics }: AdminPanelProps)
                   </div>
                 </CardHeader>
                 <CardContent>
-                  <div className="text-2xl font-bold">{users.length}</div>
+                  <div className="text-2xl font-bold">
+                    {user?.role === 'admin_punto' ? filteredUsers.length : users.length}
+                  </div>
                   <p className="text-xs text-muted-foreground">
-                    {users.filter(u => u.is_active).length} activos
+                    {user?.role === 'admin_punto' 
+                      ? filteredUsers.filter(u => u.is_active).length 
+                      : users.filter(u => u.is_active).length
+                    } activos {user?.role === 'admin_punto' ? 'en tu sede' : ''}
                   </p>
                 </CardContent>
               </Card>
 
               <Card>
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                  <CardTitle className="text-sm font-medium">Total Sedes</CardTitle>
+                  <CardTitle className="text-sm font-medium">
+                    {user?.role === 'admin_punto' ? 'Total Repartidores' : 'Total Sedes'}
+                  </CardTitle>
                   <div className="flex items-center gap-2">
-                    <Building2 className="h-4 w-4 text-muted-foreground" />
-                    <StatusIndicator {...getLoadingInfo('sedes')} size="sm" />
+                    {user?.role === 'admin_punto' ? (
+                      <Truck className="h-4 w-4 text-muted-foreground" />
+                    ) : (
+                      <Building2 className="h-4 w-4 text-muted-foreground" />
+                    )}
+                    <StatusIndicator {...getLoadingInfo(user?.role === 'admin_punto' ? 'repartidores' : 'sedes')} size="sm" />
                   </div>
                 </CardHeader>
                 <CardContent>
-                  <div className="text-2xl font-bold">{sedes.length}</div>
+                  <div className="text-2xl font-bold">
+                    {user?.role === 'admin_punto' ? filteredRepartidores.length : sedes.length}
+                  </div>
                   <p className="text-xs text-muted-foreground">
-                    Todas activas
+                    {user?.role === 'admin_punto' 
+                      ? `${filteredRepartidores.filter(r => r.is_active).length} activos en tu sede`
+                      : 'Todas activas'
+                    }
                   </p>
                 </CardContent>
               </Card>
@@ -1188,10 +1237,16 @@ export function AdminPanel({ onBack, onNavigateToTimeMetrics }: AdminPanelProps)
                 </CardHeader>
                 <CardContent>
                   <div className="text-2xl font-bold">
-                    {users.filter(u => u.role === 'admin' && u.is_active).length}
+                    {user?.role === 'admin_punto' 
+                      ? filteredUsers.filter(u => (u.role === 'admin_global' || u.role === 'admin_punto') && u.is_active).length
+                      : users.filter(u => u.role === 'admin' && u.is_active).length
+                    }
                   </div>
                   <p className="text-xs text-muted-foreground">
-                    Usuarios con permisos de administrador
+                    {user?.role === 'admin_punto' 
+                      ? 'Administradores en tu sede'
+                      : 'Usuarios con permisos de administrador'
+                    }
                   </p>
                 </CardContent>
               </Card>
@@ -1207,7 +1262,7 @@ export function AdminPanel({ onBack, onNavigateToTimeMetrics }: AdminPanelProps)
             </TabsTrigger>
             <TabsTrigger value="sedes" className="flex items-center gap-2">
               <Building2 className="h-4 w-4" />
-              Sedes
+              {user?.role === 'admin_global' ? 'Sedes' : 'Mi Sede'}
             </TabsTrigger>
             <TabsTrigger value="repartidores" className="flex items-center gap-2">
               <Truck className="h-4 w-4" />
@@ -1300,22 +1355,32 @@ export function AdminPanel({ onBack, onNavigateToTimeMetrics }: AdminPanelProps)
                             </Select>
                           </div>
                           <div className="space-y-2">
-                            <Label htmlFor="sede">Sede (Opcional)</Label>
-                            <Select
-                              value={formData.sede_id}
-                              onValueChange={(value) => setFormData({ ...formData, sede_id: value })}
-                            >
-                              <SelectTrigger>
-                                <SelectValue placeholder="Seleccionar sede" />
-                              </SelectTrigger>
-                              <SelectContent>
-                                {sedesSimple.map((sede) => (
-                                  <SelectItem key={sede.id} value={sede.id}>
-                                    {sede.name}
-                                  </SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
+                            <Label htmlFor="sede">
+                              {user?.role === 'admin_punto' ? 'Sede Asignada' : 'Sede (Opcional)'}
+                            </Label>
+                            {user?.role === 'admin_punto' ? (
+                              // Para admin_punto: mostrar su sede asignada (no editable)
+                              <div className="px-3 py-2 border rounded-md bg-muted">
+                                📍 {user?.sede_name || 'Sede Asignada'}
+                              </div>
+                            ) : (
+                              // Para admin_global: selector normal
+                              <Select
+                                value={formData.sede_id}
+                                onValueChange={(value) => setFormData({ ...formData, sede_id: value })}
+                              >
+                                <SelectTrigger>
+                                  <SelectValue placeholder="Seleccionar sede" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {sedesSimple.map((sede) => (
+                                    <SelectItem key={sede.id} value={sede.id}>
+                                      {sede.name}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            )}
                           </div>
                           <div className="flex items-center space-x-2">
                             <Switch
@@ -1394,8 +1459,8 @@ export function AdminPanel({ onBack, onNavigateToTimeMetrics }: AdminPanelProps)
                           <TableRow key={user.id}>
                             <TableCell>
                               <div>
-                                <div className="font-medium">{user.name}</div>
-                                <div className="text-sm text-muted-foreground">{user.email}</div>
+                                <div className="font-medium">{user.display_name}</div>
+                                <div className="text-sm text-muted-foreground">@{user.nickname}</div>
                               </div>
                             </TableCell>
                             <TableCell>{getRoleBadge(user.role)}</TableCell>
@@ -1436,7 +1501,7 @@ export function AdminPanel({ onBack, onNavigateToTimeMetrics }: AdminPanelProps)
                                 <Button
                                   variant="destructive"
                                   size="sm"
-                                  onClick={() => handleDeleteUser(user.id, user.name, user.email)}
+                                  onClick={() => handleDeleteUser(user.id, user.display_name, user.nickname)}
                                   title="Eliminar usuario"
                                 >
                                   <Trash2 className="h-4 w-4" />
@@ -1460,9 +1525,14 @@ export function AdminPanel({ onBack, onNavigateToTimeMetrics }: AdminPanelProps)
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-3">
                     <div>
-                      <CardTitle>Gestión de Sedes</CardTitle>
+                      <CardTitle>
+                        {user?.role === 'admin_global' ? 'Gestión de Sedes' : 'Mi Sede'}
+                      </CardTitle>
                       <CardDescription>
-                        Administra las sedes del sistema
+                        {user?.role === 'admin_global' 
+                          ? 'Administra las sedes del sistema'
+                          : 'Configuración de tu sede asignada'
+                        }
                       </CardDescription>
                     </div>
                     <StatusIndicator {...getLoadingInfo('sedes')} />
@@ -1477,13 +1547,15 @@ export function AdminPanel({ onBack, onNavigateToTimeMetrics }: AdminPanelProps)
                       <RefreshCw className={`h-4 w-4 ${loadingStates.sedes.isLoading ? 'animate-spin' : ''}`} />
                       Actualizar
                     </Button>
-                    <Dialog open={isCreateSedeOpen} onOpenChange={setIsCreateSedeOpen}>
-                      <DialogTrigger asChild>
-                        <Button>
-                          <Plus className="mr-2 h-4 w-4" />
-                          Crear Sede
-                        </Button>
-                      </DialogTrigger>
+                    {/* Solo admin_global puede crear sedes */}
+                    {user?.role === 'admin_global' && (
+                      <Dialog open={isCreateSedeOpen} onOpenChange={setIsCreateSedeOpen}>
+                        <DialogTrigger asChild>
+                          <Button>
+                            <Plus className="mr-2 h-4 w-4" />
+                            Crear Sede
+                          </Button>
+                        </DialogTrigger>
                       <DialogContent>
                         <DialogHeader>
                           <DialogTitle>Crear Nueva Sede</DialogTitle>
@@ -1555,6 +1627,7 @@ export function AdminPanel({ onBack, onNavigateToTimeMetrics }: AdminPanelProps)
                         </form>
                       </DialogContent>
                     </Dialog>
+                    )}
                   </div>
                 </div>
                 
@@ -1604,10 +1677,19 @@ export function AdminPanel({ onBack, onNavigateToTimeMetrics }: AdminPanelProps)
                       </TableHeader>
                       <TableBody>
                         {sedes
-                          .filter(sede => 
-                            sede.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                            sede.address.toLowerCase().includes(searchTerm.toLowerCase())
-                          )
+                          .filter(sede => {
+                            // Filtro de búsqueda
+                            const matchesSearch = sede.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                                                sede.address.toLowerCase().includes(searchTerm.toLowerCase());
+                            
+                            // Filtro por rol: admin_punto solo ve su sede
+                            if (user?.role === 'admin_punto') {
+                              return matchesSearch && sede.id === user.sede_id;
+                            }
+                            
+                            // admin_global ve todas las sedes
+                            return matchesSearch;
+                          })
                           .map((sede) => (
                           <TableRow key={sede.id}>
                             <TableCell>
@@ -1642,30 +1724,49 @@ export function AdminPanel({ onBack, onNavigateToTimeMetrics }: AdminPanelProps)
                             </TableCell>
                             <TableCell>
                               <div className="flex items-center gap-2">
-                                <Button
-                                  variant="outline"
-                                  size="sm"
-                                  onClick={() => openEditSede(sede)}
-                                  title="Editar sede"
-                                >
-                                  <Edit className="h-4 w-4" />
-                                </Button>
-                                <Button
-                                  variant="outline"
-                                  size="sm"
-                                  onClick={() => handleInitializeSedeProducts(sede)}
-                                  title="Inicializar productos para esta sede"
-                                >
-                                  <Package className="h-4 w-4" />
-                                </Button>
-                                <Button
-                                  variant="outline"
-                                  size="sm"
-                                  onClick={() => handleDeleteSede(sede)}
-                                  title="Eliminar sede"
-                                >
-                                  <Trash2 className="h-4 w-4" />
-                                </Button>
+                                {/* admin_global tiene acceso completo */}
+                                {user?.role === 'admin_global' && (
+                                  <>
+                                    <Button
+                                      variant="outline"
+                                      size="sm"
+                                      onClick={() => openEditSede(sede)}
+                                      title="Editar sede"
+                                    >
+                                      <Edit className="h-4 w-4" />
+                                    </Button>
+                                    <Button
+                                      variant="outline"
+                                      size="sm"
+                                      onClick={() => handleInitializeSedeProducts(sede)}
+                                      title="Inicializar productos para esta sede"
+                                    >
+                                      <Package className="h-4 w-4" />
+                                    </Button>
+                                    <Button
+                                      variant="outline"
+                                      size="sm"
+                                      onClick={() => handleDeleteSede(sede)}
+                                      title="Eliminar sede"
+                                    >
+                                      <Trash2 className="h-4 w-4" />
+                                    </Button>
+                                  </>
+                                )}
+                                {/* admin_punto solo puede editar su sede */}
+                                {user?.role === 'admin_punto' && (
+                                  <>
+                                    <Button
+                                      variant="outline"
+                                      size="sm"
+                                      onClick={() => openEditSede(sede)}
+                                      title="Editar configuración de sede"
+                                    >
+                                      <Edit className="h-4 w-4" />
+                                    </Button>
+                                    <span className="text-sm text-muted-foreground">Solo edición</span>
+                                  </>
+                                )}
                               </div>
                             </TableCell>
                           </TableRow>
@@ -1968,20 +2069,30 @@ export function AdminPanel({ onBack, onNavigateToTimeMetrics }: AdminPanelProps)
 
                       {/* Selector de Sede */}
                       <div className="flex flex-col gap-2">
-                        <Label>Filtrar por Sede</Label>
-                        <Select value={selectedSedeFilter} onValueChange={setSelectedSedeFilter}>
-                          <SelectTrigger className="w-[200px]">
-                            <SelectValue placeholder="Seleccionar sede" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="all">🌐 Todas las sedes</SelectItem>
-                            {sedesSimple.map((sede) => (
-                              <SelectItem key={sede.id} value={sede.id}>
-                                📍 {sede.name}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
+                        <Label>
+                          {user?.role === 'admin_punto' ? 'Sede Asignada' : 'Filtrar por Sede'}
+                        </Label>
+                        {user?.role === 'admin_punto' ? (
+                          // Para admin_punto: mostrar solo su sede asignada (no editable)
+                          <div className="w-[200px] px-3 py-2 border rounded-md bg-muted">
+                            📍 {user?.sede_name || 'Sede Asignada'}
+                          </div>
+                        ) : (
+                          // Para admin_global: selector completo
+                          <Select value={selectedSedeFilter} onValueChange={setSelectedSedeFilter}>
+                            <SelectTrigger className="w-[200px]">
+                              <SelectValue placeholder="Seleccionar sede" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="all">🌐 Todas las sedes</SelectItem>
+                              {sedesSimple.map((sede) => (
+                                <SelectItem key={sede.id} value={sede.id}>
+                                  📍 {sede.name}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        )}
                       </div>
 
                       {/* Botón de Actualizar */}
@@ -2297,7 +2408,7 @@ export function AdminPanel({ onBack, onNavigateToTimeMetrics }: AdminPanelProps)
                     <SelectValue placeholder="Seleccionar sede" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="">Sin sede</SelectItem>
+                    <SelectItem value="none">Sin sede</SelectItem>
                     {sedesSimple.map((sede) => (
                       <SelectItem key={sede.id} value={sede.id}>
                         {sede.name}
@@ -2359,20 +2470,30 @@ export function AdminPanel({ onBack, onNavigateToTimeMetrics }: AdminPanelProps)
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="repartidor-sede">Sede (opcional)</Label>
-                <Select value={repartidorFormData.sede_id} onValueChange={(value) => setRepartidorFormData({ ...repartidorFormData, sede_id: value })}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Seleccionar sede" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="">Sin sede</SelectItem>
-                    {sedesSimple.map((sede) => (
-                      <SelectItem key={sede.id} value={sede.id}>
-                        {sede.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <Label htmlFor="repartidor-sede">
+                  {user?.role === 'admin_punto' ? 'Sede Asignada' : 'Sede (opcional)'}
+                </Label>
+                {user?.role === 'admin_punto' ? (
+                  // Para admin_punto: mostrar su sede asignada (no editable)
+                  <div className="px-3 py-2 border rounded-md bg-muted">
+                    📍 {user?.sede_name || 'Sede Asignada'}
+                  </div>
+                ) : (
+                  // Para admin_global: selector normal
+                  <Select value={repartidorFormData.sede_id} onValueChange={(value) => setRepartidorFormData({ ...repartidorFormData, sede_id: value })}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Seleccionar sede" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">Sin sede</SelectItem>
+                      {sedesSimple.map((sede) => (
+                        <SelectItem key={sede.id} value={sede.id}>
+                          {sede.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
               </div>
               <div className="flex justify-end space-x-2">
                 <Button type="button" variant="outline" onClick={() => setIsCreateRepartidorOpen(false)}>

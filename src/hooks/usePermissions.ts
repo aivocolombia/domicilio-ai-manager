@@ -147,8 +147,10 @@ export const usePermissions = () => {
     switch (profile.role.toLowerCase()) {
       case 'admin':
       case 'administrador':
+      case 'admin_global':  // Nuevo rol agregado
         return 'admin';
       case 'administrador_punto':
+      case 'admin_punto':   // Nuevo rol agregado
       case 'administrador de punto':
         return 'administrador_punto';
       case 'agent':

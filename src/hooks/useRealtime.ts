@@ -74,9 +74,14 @@ export const useRealtime = ({
           isSubscribedRef.current = true;
           onSubscribed?.();
         } else if (status === REALTIME_SUBSCRIBE_STATES.CHANNEL_ERROR) {
-          console.error(`❌ [${table}] Realtime subscription error:`, err);
+          if (err && err.message) {
+            console.error(`❌ [${table}] Realtime subscription error:`, err);
+            onError?.(new Error(`Realtime subscription failed: ${err.message}`));
+          } else {
+            console.warn(`⚠️ [${table}] Realtime connectivity issue (temporary)`);
+            onError?.(new Error(`Temporary connectivity issue for ${table}`));
+          }
           isSubscribedRef.current = false;
-          onError?.(new Error(`Realtime subscription failed: ${err?.message || 'Unknown error'}`));
         } else if (status === REALTIME_SUBSCRIBE_STATES.TIMED_OUT) {
           console.warn(`⏰ [${table}] Realtime subscription timed out`);
           isSubscribedRef.current = false;

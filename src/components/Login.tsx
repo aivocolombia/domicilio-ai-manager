@@ -8,7 +8,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert'
 import { useAuth } from '@/hooks/useAuth'
 
 export function Login() {
-  const [email, setEmail] = useState('')
+  const [nickname, setNickname] = useState('')
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
   const [loading, setLoading] = useState(false)
@@ -21,7 +21,7 @@ export function Login() {
     setLoading(true)
     setError('')
 
-    const result = await signIn(email, password)
+    const result = await signIn(nickname.trim(), password.trim())
     
     if (result.error) {
       setError(result.error)
@@ -61,15 +61,15 @@ export function Login() {
               )}
 
               <div className="space-y-2">
-                <Label htmlFor="email" className="text-sm font-medium">
-                  Correo Electrónico
+                <Label htmlFor="nickname" className="text-sm font-medium">
+                  Nickname
                 </Label>
                 <Input
-                  id="email"
-                  type="email"
-                  placeholder="tu@email.com"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
+                  id="nickname"
+                  type="text"
+                  placeholder="tu_nickname"
+                  value={nickname}
+                  onChange={(e) => setNickname(e.target.value)}
                   required
                   className="h-11 bg-background/50"
                   disabled={loading}
@@ -132,8 +132,9 @@ export function Login() {
             <div className="text-center text-sm text-muted-foreground">
               <p className="font-medium mb-2">Cuentas de prueba:</p>
               <div className="space-y-1">
-                <p><strong>Administrador:</strong> admin@ajiaco.com / admin123</p>
-                <p><strong>Agente:</strong> agente@ajiaco.com / agente123</p>
+                <p><strong>Admin Global:</strong> admin_global / admin123</p>
+                <p><strong>Admin Punto:</strong> admin_punto / admin123</p>
+                <p><strong>Agente:</strong> agente / agente123</p>
               </div>
             </div>
           </CardContent>

@@ -112,30 +112,33 @@ export interface Database {
       profiles: {
         Row: {
           id: string; // uuid
-          email: string;
-          name: string;
-          role: string | null;
-          sede_id: string | null; // uuid
+          nickname: string;
+          display_name: string;
+          password_hash: string;
+          role: 'agent' | 'admin_punto' | 'admin_global';
+          sede_id: string; // uuid - OBLIGATORIO
           is_active: boolean | null;
           created_at: string | null;
           updated_at: string | null;
         };
         Insert: {
           id?: string;
-          email: string;
-          name: string;
-          role?: string | null;
-          sede_id?: string | null;
+          nickname: string;
+          display_name: string;
+          password_hash: string;
+          role: 'agent' | 'admin_punto' | 'admin_global';
+          sede_id: string; // uuid - OBLIGATORIO
           is_active?: boolean | null;
           created_at?: string | null;
           updated_at?: string | null;
         };
         Update: {
           id?: string;
-          email?: string;
-          name?: string;
-          role?: string | null;
-          sede_id?: string | null;
+          nickname?: string;
+          display_name?: string;
+          password_hash?: string;
+          role?: 'agent' | 'admin_punto' | 'admin_global';
+          sede_id?: string; // uuid
           is_active?: boolean | null;
           created_at?: string | null;
           updated_at?: string | null;

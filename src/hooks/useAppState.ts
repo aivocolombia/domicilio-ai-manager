@@ -7,7 +7,7 @@ const STORAGE_KEY = 'ajiaco-app-view';
 const NAVIGATION_HISTORY_KEY = 'ajiaco-navigation-history';
 
 export const useAppState = () => {
-  const { profile } = useAuth();
+  const { user } = useAuth();
   const [showAdminPanel, setShowAdminPanel] = useState(false);
   const [showTimeMetrics, setShowTimeMetrics] = useState(false);
   const [navigationHistory, setNavigationHistory] = useState<AppView[]>([]);
@@ -18,7 +18,7 @@ export const useAppState = () => {
       const savedView = localStorage.getItem(STORAGE_KEY) as AppView;
       const savedHistory = localStorage.getItem(NAVIGATION_HISTORY_KEY);
       console.log('🔄 Cargando vista guardada:', savedView);
-      console.log('🔐 Rol del usuario:', profile?.role);
+      console.log('🔐 Rol del usuario:', user?.role);
       
       if (savedHistory) {
         setNavigationHistory(JSON.parse(savedHistory));
@@ -26,7 +26,7 @@ export const useAppState = () => {
       
       // VALIDACIÓN DE SEGURIDAD: Solo permitir vista admin si el usuario es admin
       if (savedView === 'admin') {
-        if (profile?.role === 'admin') {
+        if (user?.role === 'admin_global' || user?.role === 'admin_punto') {
           setShowAdminPanel(true);
           setShowTimeMetrics(false);
           console.log('✅ Usuario admin autorizado para vista admin');
@@ -53,12 +53,12 @@ export const useAppState = () => {
       setShowTimeMetrics(false);
       setNavigationHistory([]);
     }
-  }, [profile?.role]);
+  }, [user?.role]);
 
   // Función para mostrar AdminPanel
   const navigateToAdmin = () => {
     // VALIDACIÓN DE SEGURIDAD: Solo permitir acceso a usuarios admin
-    if (profile?.role !== 'admin') {
+    if (user?.role !== 'admin_global' && user?.role !== 'admin_punto') {
       console.error('🚫 ACCESO DENEGADO: Solo usuarios admin pueden acceder al panel de administración');
       return;
     }

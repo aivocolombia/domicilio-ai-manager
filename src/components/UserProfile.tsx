@@ -8,22 +8,24 @@ import { User, MapPin, Calendar, UserRound, LogOut } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 
 export const UserProfile: React.FC = () => {
-  const { profile, signOut } = useAuth();
+  const { user, signOut } = useAuth();
   
-  // Datos mock como fallback si no hay perfil
-  const fallbackProfile = {
-    name: 'Carlos Admin',
-    email: 'carlos@ajiaco.com',
-    role: 'admin' as const,
+  // Datos mock como fallback si no hay usuario
+  const fallbackUser = {
+    display_name: 'Admin Global',
+    nickname: 'admin_global',
+    role: 'admin_global' as const,
     sede_id: 'sede-1',
+    sede_name: 'Sede Norte',
     created_at: '2024-01-01T00:00:00Z'
   };
 
-  const currentProfile = profile || fallbackProfile;
+  const currentUser = user || fallbackUser;
 
   const getRoleColor = (role: string) => {
     switch (role) {
-      case 'admin': return 'bg-destructive/10 text-destructive';
+      case 'admin_global': return 'bg-red-500/10 text-red-600';
+      case 'admin_punto': return 'bg-orange-500/10 text-orange-600';
       case 'agent': return 'bg-primary/10 text-primary';
       default: return 'bg-muted text-muted-foreground';
     }
@@ -31,7 +33,8 @@ export const UserProfile: React.FC = () => {
 
   const getRoleText = (role: string) => {
     switch (role) {
-      case 'admin': return 'Administrador';
+      case 'admin_global': return 'Administrador Global';
+      case 'admin_punto': return 'Administrador de Punto';
       case 'agent': return 'Agente';
       default: return role;
     }
@@ -46,7 +49,7 @@ export const UserProfile: React.FC = () => {
           className="flex items-center gap-2 text-white hover:bg-white/10 transition-colors"
         >
           <UserRound className="h-5 w-5" />
-          <span className="hidden md:inline">{currentProfile.name}</span>
+          <span className="hidden md:inline">{currentUser.display_name}</span>
         </Button>
       </PopoverTrigger>
       <PopoverContent 
@@ -63,24 +66,25 @@ export const UserProfile: React.FC = () => {
           </CardHeader>
           <CardContent className="space-y-4 p-4">
             <div className="space-y-2">
-              <p className="font-semibold text-lg text-foreground">{currentProfile.name}</p>
-              <p className="text-sm text-muted-foreground">{currentProfile.email}</p>
-              <Badge className={getRoleColor(currentProfile.role)}>
-                {getRoleText(currentProfile.role)}
+              <p className="font-semibold text-lg text-foreground">{currentUser.display_name}</p>
+              <p className="text-sm text-muted-foreground">@{currentUser.nickname}</p>
+              <Badge className={getRoleColor(currentUser.role)}>
+                {getRoleText(currentUser.role)}
               </Badge>
             </div>
             
             <div className="space-y-3">
-              {currentProfile.sede_id && (
-                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              {currentUser.sede_id && (
+                <div className="flex items-center gap-2 text-sm">
                   <MapPin className="h-4 w-4 text-primary" />
-                  <span>Sede asignada</span>
+                  <span className="text-muted-foreground">Sede asignada:</span>
+                  <span className="font-medium text-foreground">{currentUser.sede_name || 'Sede Norte'}</span>
                 </div>
               )}
               
               <div className="flex items-center gap-2 text-sm text-muted-foreground">
                 <Calendar className="h-4 w-4 text-primary" />
-                <span>Desde: <span className="font-medium text-foreground">{new Date(currentProfile.created_at).toLocaleDateString('es-CO')}</span></span>
+                <span>Desde: <span className="font-medium text-foreground">{new Date(currentUser.created_at).toLocaleDateString('es-CO')}</span></span>
               </div>
             </div>
 

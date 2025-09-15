@@ -434,8 +434,8 @@ const Index = () => {
                   </div>
                 )}
 
-                {/* Admin Panel Button - Solo visible para administradores */}
-                {isAdmin && (
+                {/* Admin Panel Button - Visible para admin_global y admin_punto */}
+                {(isAdmin || isAdministradorPunto) && (
                   <Button
                     variant="outline"
                     onClick={navigateToAdmin}
