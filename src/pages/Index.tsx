@@ -461,7 +461,7 @@ const Index = () => {
                   <div className="flex items-center gap-2 text-white">
                     <Building2 className="h-4 w-4" />
                     <Select value={selectedSedeId} onValueChange={setSelectedSedeId}>
-                      <SelectTrigger className="w-48 bg-brand-secondary text-white border-brand-secondary hover:bg-brand-primary">
+                      <SelectTrigger className="w-48 bg-brand-secondary text-red-500 border-brand-secondary hover:bg-brand-primary hover:text-yellow-400">
                         <SelectValue placeholder="Seleccionar sede" />
                       </SelectTrigger>
                       <SelectContent>
@@ -480,7 +480,7 @@ const Index = () => {
                   <Button
                     variant="outline"
                     onClick={navigateToAdmin}
-                    className="flex items-center gap-2 bg-brand-secondary text-white border-brand-secondary hover:bg-brand-primary"
+                    className="flex items-center gap-2 bg-brand-secondary text-red-500 border-brand-secondary hover:bg-brand-primary hover:text-yellow-400"
                   >
                     <Settings className="h-4 w-4" />
                     Admin Panel

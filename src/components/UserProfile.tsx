@@ -82,10 +82,6 @@ export const UserProfile: React.FC = () => {
                 </div>
               )}
               
-              <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                <Calendar className="h-4 w-4 text-primary" />
-                <span>Desde: <span className="font-medium text-foreground">{new Date(currentUser.created_at).toLocaleDateString('es-CO')}</span></span>
-              </div>
             </div>
 
             <div className="pt-2 border-t space-y-2">
