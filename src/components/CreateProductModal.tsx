@@ -30,7 +30,7 @@ export const CreateProductModal: React.FC<CreateProductModalProps> = ({
   onSuccess
 }) => {
   // Estado del formulario
-  const [productType, setProductType] = useState<'plato' | 'bebida'>('plato');
+  const [productType, setProductType] = useState<'plato' | 'bebida' | 'topping'>('plato');
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [price, setPrice] = useState('');
@@ -41,9 +41,15 @@ export const CreateProductModal: React.FC<CreateProductModalProps> = ({
   const [selectedToppings, setSelectedToppings] = useState<number[]>([]);
   const [toppingSearchTerm, setToppingSearchTerm] = useState('');
   
+  // Estado para crear topping independiente
+  const [platosDisponibles, setPlatosDisponibles] = useState<any[]>([]);
+  const [selectedPlatos, setSelectedPlatos] = useState<number[]>([]);
+  const [platoSearchTerm, setPlatoSearchTerm] = useState('');
+  
   // Estado de carga
   const [loading, setLoading] = useState(false);
   const [loadingToppings, setLoadingToppings] = useState(false);
+  const [loadingPlatos, setLoadingPlatos] = useState(false);
 
   // Cargar toppings disponibles
   useEffect(() => {
@@ -69,9 +75,38 @@ export const CreateProductModal: React.FC<CreateProductModalProps> = ({
     loadToppings();
   }, [open, productType]);
 
+  // Cargar platos disponibles para enlazar toppings
+  useEffect(() => {
+    const loadPlatos = async () => {
+      if (!open || productType !== 'topping') return;
+
+      try {
+        setLoadingPlatos(true);
+        const menuData = await menuService.getMenuConSede(effectiveSedeId);
+        setPlatosDisponibles(menuData.platos);
+      } catch (error) {
+        console.error('Error cargando platos:', error);
+        toast({
+          title: "Error",
+          description: "No se pudieron cargar los platos disponibles.",
+          variant: "destructive"
+        });
+      } finally {
+        setLoadingPlatos(false);
+      }
+    };
+
+    loadPlatos();
+  }, [open, productType, effectiveSedeId]);
+
   // Filtrar toppings por búsqueda
   const filteredToppings = toppingsDisponibles.filter(topping =>
     topping.name.toLowerCase().includes(toppingSearchTerm.toLowerCase())
+  );
+
+  // Filtrar platos por búsqueda
+  const filteredPlatos = platosDisponibles.filter(plato =>
+    plato.name.toLowerCase().includes(platoSearchTerm.toLowerCase())
   );
 
   const handleToggleTopping = (toppingId: number) => {
@@ -79,6 +114,14 @@ export const CreateProductModal: React.FC<CreateProductModalProps> = ({
       prev.includes(toppingId) 
         ? prev.filter(id => id !== toppingId)
         : [...prev, toppingId]
+    );
+  };
+
+  const handleTogglePlato = (platoId: number) => {
+    setSelectedPlatos(prev => 
+      prev.includes(platoId) 
+        ? prev.filter(id => id !== platoId)
+        : [...prev, platoId]
     );
   };
 
@@ -101,14 +144,10 @@ export const CreateProductModal: React.FC<CreateProductModalProps> = ({
       return false;
     }
 
-    if (productType === 'plato' && !category.trim()) {
-      toast({
-        title: "Error",
-        description: "La categoría es requerida para platos.",
-        variant: "destructive"
-      });
-      return false;
-    }
+    // Categoría es opcional para platos
+
+    // Para toppings, no requerir productos (pueden ser independientes)
+    // La validación de precio y nombre ya se hace arriba
 
     return true;
   };
@@ -126,11 +165,12 @@ export const CreateProductModal: React.FC<CreateProductModalProps> = ({
         const platoData = {
           name: name.trim(),
           description: description.trim() || undefined,
-          price: Number(price),
-          category: category.trim(),
+          pricing: Number(price),
+          toppingIds: selectedToppings.length > 0 ? selectedToppings : undefined
         };
 
-        productId = await menuService.createPlato(platoData);
+        const newPlato = await menuService.createPlato(platoData);
+        productId = newPlato.id;
 
         // Agregar toppings seleccionados al plato
         if (selectedToppings.length > 0) {
@@ -142,22 +182,43 @@ export const CreateProductModal: React.FC<CreateProductModalProps> = ({
         // Crear registro en sede_platos (habilitado por defecto)
         await menuService.createSedePlatoRecord(effectiveSedeId, productId, Number(price), true);
 
-      } else {
+      } else if (productType === 'bebida') {
         // Crear bebida
         const bebidaData = {
           name: name.trim(),
-          price: Number(price),
+          pricing: Number(price),
         };
 
-        productId = await menuService.createBebida(bebidaData);
+        const newBebida = await menuService.createBebida(bebidaData);
+        productId = newBebida.id;
 
         // Crear registro en sede_bebidas (habilitado por defecto)
         await menuService.createSedeBebidaRecord(effectiveSedeId, productId, Number(price), true);
+        
+      } else {
+        // Crear topping
+        const toppingData = {
+          name: name.trim(),
+          pricing: Number(price),
+        };
+
+        const newTopping = await menuService.createTopping(toppingData);
+        productId = newTopping.id;
+
+        // Enlazar a platos seleccionados (opcional)
+        if (selectedPlatos.length > 0) {
+          for (const platoId of selectedPlatos) {
+            await menuService.addToppingToPlato(platoId, productId);
+          }
+        }
+
+        // Crear registro en sede_toppings (habilitado por defecto)
+        await menuService.createSedeToppingRecord(effectiveSedeId, productId, Number(price), true);
       }
 
       toast({
         title: "Producto creado",
-        description: `${productType === 'plato' ? 'Plato' : 'Bebida'} "${name}" creado exitosamente.`,
+        description: `${productType === 'plato' ? 'Plato' : productType === 'bebida' ? 'Bebida' : 'Topping'} "${name}" creado exitosamente.`,
       });
 
       // Limpiar formulario
@@ -186,6 +247,8 @@ export const CreateProductModal: React.FC<CreateProductModalProps> = ({
     setCategory('');
     setSelectedToppings([]);
     setToppingSearchTerm('');
+    setSelectedPlatos([]);
+    setPlatoSearchTerm('');
     setProductType('plato');
   };
 
@@ -217,10 +280,11 @@ export const CreateProductModal: React.FC<CreateProductModalProps> = ({
 
         <div className="space-y-6">
           {/* Selector de tipo de producto */}
-          <Tabs value={productType} onValueChange={(value) => setProductType(value as 'plato' | 'bebida')}>
-            <TabsList className="grid w-full grid-cols-2">
+          <Tabs value={productType} onValueChange={(value) => setProductType(value as 'plato' | 'bebida' | 'topping')}>
+            <TabsList className="grid w-full grid-cols-3">
               <TabsTrigger value="plato">Plato</TabsTrigger>
               <TabsTrigger value="bebida">Bebida</TabsTrigger>
+              <TabsTrigger value="topping">Topping</TabsTrigger>
             </TabsList>
 
             <TabsContent value="plato" className="space-y-4 mt-4">
@@ -251,10 +315,10 @@ export const CreateProductModal: React.FC<CreateProductModalProps> = ({
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="category">Categoría *</Label>
+                <Label htmlFor="category">Categoría</Label>
                 <Select value={category} onValueChange={setCategory}>
                   <SelectTrigger>
-                    <SelectValue placeholder="Selecciona una categoría" />
+                    <SelectValue placeholder="Selecciona una categoría (opcional)" />
                   </SelectTrigger>
                   <SelectContent>
                     {categorias.map((cat) => (
@@ -323,7 +387,7 @@ export const CreateProductModal: React.FC<CreateProductModalProps> = ({
                                 {topping.name}
                               </label>
                               <div className="text-xs text-muted-foreground">
-                                {formatCurrency(topping.price)}
+                                {formatCurrency(topping.pricing || topping.price || 0)}
                               </div>
                             </div>
                           </div>
@@ -390,6 +454,122 @@ export const CreateProductModal: React.FC<CreateProductModalProps> = ({
                 />
               </div>
             </TabsContent>
+
+            <TabsContent value="topping" className="space-y-4 mt-4">
+              {/* Información básica del topping */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="topping-name">Nombre del Topping *</Label>
+                  <Input
+                    id="topping-name"
+                    placeholder="Ej. Queso Extra"
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                  />
+                </div>
+                
+                <div className="space-y-2">
+                  <Label htmlFor="topping-price">Precio *</Label>
+                  <Input
+                    id="topping-price"
+                    type="number"
+                    placeholder="0"
+                    value={price}
+                    onChange={(e) => setPrice(e.target.value)}
+                    min="0"
+                    step="0.01"
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="topping-description">Descripción</Label>
+                <Textarea
+                  id="topping-description"
+                  placeholder="Describe el topping (opcional)"
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
+                  rows={3}
+                />
+              </div>
+
+              <Separator />
+
+              {/* Enlazar a platos (opcional) */}
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <Label>Enlazar a Platos (Opcional)</Label>
+                  <Badge variant="secondary">
+                    {selectedPlatos.length} seleccionados
+                  </Badge>
+                </div>
+                <p className="text-sm text-muted-foreground">
+                  Puedes enlazar este topping a platos específicos o dejarlo independiente para uso libre.
+                </p>
+
+                {/* Buscador de platos */}
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    placeholder="Buscar platos para enlazar..."
+                    value={platoSearchTerm}
+                    onChange={(e) => setPlatoSearchTerm(e.target.value)}
+                    className="pl-10"
+                  />
+                </div>
+
+                {loadingPlatos ? (
+                  <div className="flex items-center justify-center py-4">
+                    <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                    <span className="text-sm text-muted-foreground">Cargando platos...</span>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3 max-h-40 overflow-y-auto">
+                    {filteredPlatos.map((plato) => (
+                      <Card key={plato.id} className="cursor-pointer hover:bg-accent/50">
+                        <CardContent className="p-3">
+                          <div className="flex items-center space-x-2">
+                            <Checkbox
+                              id={`plato-${plato.id}`}
+                              checked={selectedPlatos.includes(plato.id)}
+                              onCheckedChange={() => handleTogglePlato(plato.id)}
+                            />
+                            <div className="flex-1">
+                              <label 
+                                htmlFor={`plato-${plato.id}`}
+                                className="text-sm font-medium cursor-pointer"
+                              >
+                                {plato.name}
+                              </label>
+                              <div className="text-xs text-muted-foreground">
+                                {formatCurrency(plato.sede_price || plato.pricing || 0)}
+                              </div>
+                            </div>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    ))}
+                  </div>
+                )}
+
+                {/* Resumen de platos seleccionados */}
+                {selectedPlatos.length > 0 && (
+                  <div className="space-y-2">
+                    <Label>Platos Seleccionados</Label>
+                    <div className="flex flex-wrap gap-2">
+                      {selectedPlatos.map((platoId) => {
+                        const plato = platosDisponibles.find(p => p.id === platoId);
+                        return plato ? (
+                          <Badge key={platoId} variant="default">
+                            {plato.name}
+                          </Badge>
+                        ) : null;
+                      })}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </TabsContent>
           </Tabs>
 
           {/* Resumen del producto */}
@@ -397,12 +577,18 @@ export const CreateProductModal: React.FC<CreateProductModalProps> = ({
             <CardContent className="p-4">
               <h4 className="font-medium mb-2">Resumen del Producto</h4>
               <div className="space-y-1 text-sm">
-                <div><span className="font-medium">Tipo:</span> {productType === 'plato' ? 'Plato' : 'Bebida'}</div>
+                <div><span className="font-medium">Tipo:</span> {productType === 'plato' ? 'Plato' : productType === 'bebida' ? 'Bebida' : 'Topping'}</div>
                 <div><span className="font-medium">Nombre:</span> {name || 'Sin nombre'}</div>
                 {category && <div><span className="font-medium">Categoría:</span> {category}</div>}
                 <div><span className="font-medium">Precio:</span> {price ? formatCurrency(Number(price)) : 'No definido'}</div>
                 {productType === 'plato' && selectedToppings.length > 0 && (
                   <div><span className="font-medium">Toppings:</span> {selectedToppings.length} seleccionados</div>
+                )}
+                {productType === 'topping' && selectedPlatos.length > 0 && (
+                  <div><span className="font-medium">Enlazado a:</span> {selectedPlatos.length} platos</div>
+                )}
+                {productType === 'topping' && selectedPlatos.length === 0 && (
+                  <div><span className="font-medium">Estado:</span> Topping independiente</div>
                 )}
               </div>
             </CardContent>
@@ -423,7 +609,7 @@ export const CreateProductModal: React.FC<CreateProductModalProps> = ({
             disabled={loading || !name.trim() || !price.trim()}
           >
             {loading && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
-            Crear {productType === 'plato' ? 'Plato' : 'Bebida'}
+            Crear
           </Button>
         </div>
       </DialogContent>

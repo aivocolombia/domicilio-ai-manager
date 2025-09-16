@@ -85,33 +85,40 @@ export class AdminService {
   // Crear usuario con Auth y perfil
   async createUser(userData: CreateUserData): Promise<User> {
     try {
-      console.log('➕ Creando usuario completo:', userData.email);
+      console.log('➕ Creando usuario completo:', userData.nickname);
 
-      // Verificar que el usuario actual sea admin
-      const { data: currentUser } = await supabase.auth.getUser();
-      if (!currentUser.user) {
+      // Verificar permisos usando el servicio de autenticación personalizado
+      const { customAuthService } = await import('@/services/customAuthService');
+      const currentUser = customAuthService.getCurrentUser();
+      
+      if (!currentUser) {
         throw new Error('Usuario no autenticado');
       }
 
-      const { data: userProfile } = await supabase
-        .from('profiles')
-        .select('role')
-        .eq('id', currentUser.user.id)
-        .single();
-
-      if (!userProfile || userProfile.role !== 'admin') {
+      if (!customAuthService.canManageUsers()) {
         throw new Error('Solo los administradores pueden crear usuarios');
       }
 
-      // Verificar que el email no exista
+      // Validar restricciones específicas para admin_punto
+      if (currentUser.role === 'admin_punto') {
+        // Admin punto solo puede crear agentes en su propia sede
+        if (userData.role !== 'agent') {
+          throw new Error('Admin de punto solo puede crear usuarios con rol de agente');
+        }
+        if (userData.sede_id !== currentUser.sede_id) {
+          throw new Error('Admin de punto solo puede crear usuarios en su propia sede');
+        }
+      }
+
+      // Verificar que el nickname no exista
       const { data: existingUser } = await supabase
         .from('profiles')
         .select('id')
-        .eq('email', userData.email)
+        .eq('nickname', userData.nickname)
         .single();
 
       if (existingUser) {
-        throw new Error('El email ya está registrado');
+        throw new Error('El nickname ya está registrado');
       }
 
       // Intentar usar función RPC primero (si existe)

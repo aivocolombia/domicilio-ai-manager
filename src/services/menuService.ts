@@ -1077,8 +1077,37 @@ class MenuService {
     }
   }
 
-  // Eliminar producto (plato o bebida)
-  async deleteProduct(productId: number, type: 'plato' | 'bebida'): Promise<void> {
+  // Crear registro en sede_toppings
+  async createSedeToppingRecord(sedeId: string, toppingId: number, price: number, available: boolean = true): Promise<void> {
+    try {
+      console.log('🏢 Creando registro sede_toppings:', { sedeId, toppingId, price, available });
+
+      const { data, error } = await supabase
+        .from('sede_toppings')
+        .insert({
+          sede_id: sedeId,
+          topping_id: toppingId,
+          available,
+          price_override: price,
+          updated_at: new Date().toISOString()
+        })
+        .select();
+
+      if (error) {
+        console.error('❌ Error creando sede_toppings:', error);
+        throw error;
+      }
+
+      console.log('✅ Registro sede_toppings creado exitosamente:', data);
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      console.error('❌ Error completo en createSedeToppingRecord:', error);
+      throw new Error(`Error al crear registro sede_toppings: ${msg}`);
+    }
+  }
+
+  // Eliminar producto (plato, bebida o topping)
+  async deleteProduct(productId: number, type: 'plato' | 'bebida' | 'topping'): Promise<void> {
     try {
       console.log('🗑️ Eliminando producto:', { productId, type });
 
@@ -1103,7 +1132,7 @@ class MenuService {
 
         if (error) throw error;
 
-      } else {
+      } else if (type === 'bebida') {
         // Eliminar registros de sede_bebidas
         await supabase
           .from('sede_bebidas')
@@ -1113,6 +1142,27 @@ class MenuService {
         // Eliminar la bebida
         const { error } = await supabase
           .from(TABLES.BEBIDAS)
+          .delete()
+          .eq('id', productId);
+
+        if (error) throw error;
+
+      } else if (type === 'topping') {
+        // Primero eliminar todas las relaciones con platos
+        await supabase
+          .from(TABLES.PLATO_TOPPINGS)
+          .delete()
+          .eq('topping_id', productId);
+
+        // Eliminar registros de sede_toppings
+        await supabase
+          .from('sede_toppings')
+          .delete()
+          .eq('topping_id', productId);
+
+        // Eliminar el topping
+        const { error } = await supabase
+          .from(TABLES.TOPPINGS)
           .delete()
           .eq('id', productId);
 

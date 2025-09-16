@@ -1159,14 +1159,6 @@ export const Dashboard: React.FC<DashboardProps> = ({
             </Button>
           )}
           
-          <Button
-            onClick={() => setIsTransferModalOpen(true)}
-            variant="outline"
-            className="flex items-center gap-2"
-          >
-            <Building2 className="h-4 w-4" />
-            Transferir Pedido
-          </Button>
         </div>
       </div>
 

@@ -36,6 +36,7 @@ import { useSedeOrders } from '@/hooks/useSedeOrders';
 import { useAuth } from '@/hooks/useAuth';
 import { CreateOrderData } from '@/services/sedeOrdersService';
 import { addressService } from '@/services/addressService';
+import { sedeServiceSimple } from '@/services/sedeServiceSimple';
 import { supabase } from '@/lib/supabase';
 
 interface SedeOrdersProps {
@@ -64,6 +65,14 @@ export const SedeOrders: React.FC<SedeOrdersProps> = ({
   const { profile } = useAuth();
   const { platos, bebidas, toppings, loading: menuLoading, loadToppings } = useMenu();
   
+  // Estado para productos específicos de sede con disponibilidad
+  const [sedeProducts, setSedeProducts] = useState({
+    platos: [] as any[],
+    bebidas: [] as any[],
+    toppings: [] as any[]
+  });
+  const [loadingSedeProducts, setLoadingSedeProducts] = useState(false);
+  
   // Hook para manejar pedidos de sede con datos reales
   const {
     orders: realOrders,
@@ -88,6 +97,44 @@ export const SedeOrders: React.FC<SedeOrdersProps> = ({
     phone: '',
     address: ''
   });
+  // Función para cargar productos específicos de sede
+  const loadSedeProducts = useCallback(async () => {
+    if (!effectiveSedeId) return;
+    
+    setLoadingSedeProducts(true);
+    try {
+      console.log('🏢 Cargando productos para sede:', effectiveSedeId);
+      
+      const { platos, bebidas, toppings } = await sedeServiceSimple.getSedeCompleteInfo(effectiveSedeId, true);
+      
+      // Filtrar solo productos disponibles en la sede
+      const availablePlatos = platos.filter(p => p.is_available);
+      const availableBebidas = bebidas.filter(b => b.is_available);
+      const availableToppings = toppings.filter(t => t.is_available);
+      
+      setSedeProducts({
+        platos: availablePlatos,
+        bebidas: availableBebidas,
+        toppings: availableToppings
+      });
+      
+      console.log('✅ Productos de sede cargados:', {
+        platos: availablePlatos.length,
+        bebidas: availableBebidas.length,
+        toppings: availableToppings.length
+      });
+    } catch (error) {
+      console.error('❌ Error cargando productos de sede:', error);
+      toast({
+        title: "Error",
+        description: "No se pudieron cargar los productos disponibles para esta sede.",
+        variant: "destructive"
+      });
+    } finally {
+      setLoadingSedeProducts(false);
+    }
+  }, [effectiveSedeId]);
+
   const [newOrder, setNewOrder] = useState({
     address: '',
     items: [] as { productId: string; quantity: number; toppings: string[] }[],
@@ -193,12 +240,17 @@ export const SedeOrders: React.FC<SedeOrdersProps> = ({
     if (!address.trim() || address.length < 5 || !effectiveSedeId) {
       // Si no hay dirección válida, resetear precio
       setNewOrder(prev => ({ ...prev, deliveryCost: 0 }));
+      console.log('🔄 SedeOrders: Precio reseteado a 0 (dirección inválida)');
       return;
     }
 
     try {
       setSearchingPrice(true);
       console.log('🔍 SedeOrders: Buscando precio para dirección:', address);
+      
+      // IMPORTANTE: Resetear precio antes de buscar
+      setNewOrder(prev => ({ ...prev, deliveryCost: 0 }));
+      console.log('🔄 SedeOrders: Precio reseteado a 0 antes de buscar');
       
       const lastPrice = await addressService.getLastDeliveryPriceForAddress(address, effectiveSedeId);
       
@@ -210,10 +262,19 @@ export const SedeOrders: React.FC<SedeOrdersProps> = ({
           description: `Se estableció $${lastPrice.toLocaleString()} basado en entregas anteriores`,
         });
       } else {
-        console.log('ℹ️ SedeOrders: No se encontró precio previo para esta dirección');
+        console.log('❌ SedeOrders: No se encontró precio, mantiene en 0');
+        // El precio ya está en 0, así que no hay que hacer nada más
+        toast({
+          title: "Precio no encontrado",
+          description: "Ingrese manualmente el costo del domicilio",
+          variant: "destructive"
+        });
       }
     } catch (error) {
       console.error('❌ SedeOrders: Error buscando precio:', error);
+      // En caso de error, también resetear precio
+      setNewOrder(prev => ({ ...prev, deliveryCost: 0 }));
+      console.log('🔄 SedeOrders: Precio reseteado a 0 por error');
     } finally {
       setSearchingPrice(false);
     }
@@ -221,24 +282,31 @@ export const SedeOrders: React.FC<SedeOrdersProps> = ({
 
   // Efecto para buscar precio cuando cambia la dirección (con debounce)
   useEffect(() => {
-    if (customerData.address && newOrder.deliveryType === 'delivery') {
+    if (newOrder.deliveryType === 'delivery') {
       // Limpiar timeout anterior
       if (priceSearchTimeout) {
         clearTimeout(priceSearchTimeout);
       }
 
-      // Configurar nuevo timeout
-      const timeout = setTimeout(() => {
-        searchDeliveryPrice(customerData.address);
-      }, 800); // Buscar después de 800ms de inactividad
+      // Si hay dirección, buscar precio. Si no hay, resetear
+      if (customerData.address && customerData.address.trim()) {
+        // Configurar timeout para buscar precio
+        const timeout = setTimeout(() => {
+          searchDeliveryPrice(customerData.address);
+        }, 800); // Buscar después de 800ms de inactividad
 
-      setPriceSearchTimeout(timeout);
+        setPriceSearchTimeout(timeout);
 
-      return () => {
-        if (timeout) {
-          clearTimeout(timeout);
-        }
-      };
+        return () => {
+          if (timeout) {
+            clearTimeout(timeout);
+          }
+        };
+      } else {
+        // Si no hay dirección o está vacía, resetear inmediatamente
+        setNewOrder(prev => ({ ...prev, deliveryCost: 0 }));
+        console.log('🔄 SedeOrders: Precio reseteado a 0 (dirección vacía)');
+      }
     }
   }, [customerData.address, newOrder.deliveryType, searchDeliveryPrice]);
 
@@ -298,6 +366,11 @@ export const SedeOrders: React.FC<SedeOrdersProps> = ({
     console.log('🔍 SedeOrders: Cargando toppings...');
     loadToppings();
   }, [loadToppings]);
+
+  // Cargar productos específicos de sede
+  useEffect(() => {
+    loadSedeProducts();
+  }, [loadSedeProducts]);
 
   // Debug toppings
   useEffect(() => {
@@ -467,12 +540,16 @@ export const SedeOrders: React.FC<SedeOrdersProps> = ({
       const [productType, realProductId] = item.productId.split('_');
       
       let product = null;
+      // Buscar en productos específicos de sede primero, luego en menú general
       if (productType === 'plato') {
-        product = platos.find(p => p.id.toString() === realProductId);
+        product = sedeProducts.platos.find(p => p.id.toString() === realProductId) ||
+                 platos.find(p => p.id.toString() === realProductId);
       } else if (productType === 'bebida') {
-        product = bebidas.find(b => b.id.toString() === realProductId);
+        product = sedeProducts.bebidas.find(b => b.id.toString() === realProductId) ||
+                 bebidas.find(b => b.id.toString() === realProductId);
       } else if (productType === 'topping') {
-        product = toppings.find(t => t.id.toString() === realProductId);
+        product = sedeProducts.toppings.find(t => t.id.toString() === realProductId) ||
+                 toppings.find(t => t.id.toString() === realProductId);
       }
       
       // Debug solo si no se encuentra el producto o el precio es 0
@@ -1014,22 +1091,23 @@ export const SedeOrders: React.FC<SedeOrdersProps> = ({
                   </div>
 
                   <div>
-                    <Label>Productos Disponibles</Label>
+                    <Label>Productos Disponibles en {currentSedeName}</Label>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-2 max-h-40 overflow-y-auto border rounded p-2">
-                      {menuLoading ? (
-                        <p className="text-center text-gray-500">Cargando productos...</p>
+                      {loadingSedeProducts ? (
+                        <p className="text-center text-gray-500">Cargando productos de la sede...</p>
                       ) : (
                         <>
-                          {platos.filter(item => !('available' in item) || (item as any).available !== false).map((item) => (
-                            <div key={item.id} className="flex items-center justify-between p-2 border rounded">
+                          {sedeProducts.platos.map((item) => (
+                            <div key={`plato-${item.id}`} className="flex items-center justify-between p-2 border rounded bg-green-50">
                               <div>
                                 <p className="font-medium">{item.name}</p>
                                 <p className="text-sm text-gray-600">${item.pricing.toLocaleString()}</p>
+                                <span className="text-xs bg-green-100 text-green-800 px-1 rounded">Disponible</span>
                               </div>
                               <Button
                                 size="sm"
                                 onClick={() => {
-                                  console.log('🔍 DEBUG: Clic en plato:', { id: item.id, name: item.name });
+                                  console.log('🔍 DEBUG: Clic en plato disponible:', { id: item.id, name: item.name });
                                   addItemToOrder(item.id.toString(), 'plato');
                                 }}
                                 className="bg-brand-primary hover:bg-brand-primary/90"
@@ -1038,16 +1116,17 @@ export const SedeOrders: React.FC<SedeOrdersProps> = ({
                               </Button>
                             </div>
                           ))}
-                          {bebidas.filter(item => !('available' in item) || (item as any).available !== false).map((item) => (
-                            <div key={item.id} className="flex items-center justify-between p-2 border rounded">
+                          {sedeProducts.bebidas.map((item) => (
+                            <div key={`bebida-${item.id}`} className="flex items-center justify-between p-2 border rounded bg-blue-50">
                               <div>
                                 <p className="font-medium">{item.name}</p>
                                 <p className="text-sm text-gray-600">${item.pricing.toLocaleString()}</p>
+                                <span className="text-xs bg-blue-100 text-blue-800 px-1 rounded">Disponible</span>
                               </div>
                               <Button
                                 size="sm"
                                 onClick={() => {
-                                  console.log('🔍 DEBUG: Clic en bebida:', { id: item.id, name: item.name });
+                                  console.log('🔍 DEBUG: Clic en bebida disponible:', { id: item.id, name: item.name });
                                   addItemToOrder(item.id.toString(), 'bebida');
                                 }}
                                 className="bg-brand-primary hover:bg-brand-primary/90"
@@ -1056,30 +1135,42 @@ export const SedeOrders: React.FC<SedeOrdersProps> = ({
                               </Button>
                             </div>
                           ))}
+                          {sedeProducts.platos.length === 0 && sedeProducts.bebidas.length === 0 && (
+                            <div className="col-span-2 text-center py-4">
+                              <AlertTriangle className="h-8 w-8 mx-auto text-amber-500 mb-2" />
+                              <p className="text-sm text-gray-500">No hay productos disponibles en esta sede</p>
+                              <p className="text-xs text-gray-400">Contacta al administrador para activar productos</p>
+                            </div>
+                          )}
                         </>
                       )}
                     </div>
                   </div>
 
                   <div>
-                    <Label>Toppings Extra</Label>
+                    <Label>Toppings Extra Disponibles en {currentSedeName}</Label>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-2 max-h-32 overflow-y-auto border rounded p-2">
-                      {menuLoading ? (
-                        <p className="text-center text-gray-500">Cargando toppings...</p>
-                      ) : toppings.length === 0 ? (
-                        <p className="text-center text-gray-500">No hay toppings disponibles</p>
+                      {loadingSedeProducts ? (
+                        <p className="text-center text-gray-500">Cargando toppings de la sede...</p>
+                      ) : sedeProducts.toppings.length === 0 ? (
+                        <div className="col-span-2 text-center py-4">
+                          <AlertTriangle className="h-6 w-6 mx-auto text-amber-500 mb-2" />
+                          <p className="text-sm text-gray-500">No hay toppings disponibles en esta sede</p>
+                          <p className="text-xs text-gray-400">Contacta al administrador para activar toppings</p>
+                        </div>
                       ) : (
                         <>
-                          {toppings.filter(item => !('available' in item) || (item as any).available !== false).map((item) => (
-                            <div key={item.id} className="flex items-center justify-between p-2 border rounded bg-orange-50">
+                          {sedeProducts.toppings.map((item) => (
+                            <div key={`topping-${item.id}`} className="flex items-center justify-between p-2 border rounded bg-orange-50">
                               <div>
                                 <p className="font-medium text-orange-800">{item.name}</p>
                                 <p className="text-sm text-orange-600">${item.pricing.toLocaleString()}</p>
+                                <span className="text-xs bg-orange-100 text-orange-800 px-1 rounded">Disponible</span>
                               </div>
                               <Button
                                 size="sm"
                                 onClick={() => {
-                                  console.log('🔍 DEBUG: Clic en topping:', { id: item.id, name: item.name });
+                                  console.log('🔍 DEBUG: Clic en topping disponible:', { id: item.id, name: item.name });
                                   addToppingToOrder(item.id.toString());
                                 }}
                                 className="bg-orange-500 hover:bg-orange-600 text-white"

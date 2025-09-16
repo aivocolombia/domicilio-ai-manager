@@ -8,7 +8,10 @@
       "Bash(node:*)",
       "Bash(echo:*)",
       "Bash(export VITE_SUPABASE_URL=https://hcyxhuvyqvtlvfsnrhjw.supabase.co)",
-      "Bash(export:*)"
+      "Bash(export:*)",
+      "Bash(grep:*)",
+      "Bash(sed:*)",
+      "Bash(npx tsc:*)"
     ],
     "deny": [],
     "ask": [],

@@ -243,7 +243,7 @@ export const AddToppingsModal: React.FC<AddToppingsModalProps> = ({
                                 {topping.name}
                               </label>
                               <div className="text-xs text-muted-foreground">
-                                {formatCurrency(topping.price)}
+                                {formatCurrency(topping.pricing)}
                               </div>
                             </div>
                           </div>

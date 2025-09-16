@@ -17,6 +17,7 @@ import { useAdminTab } from '@/hooks/useAdminTab'
 import { useAdminSection } from '@/hooks/useAdminSection'
 import { useLoadingStates } from '@/hooks/useLoadingStates'
 import { adminService, CreateUserData, User, CreateSedeData, UpdateSedeData, Sede, Repartidor } from '@/services/adminService'
+import { customAuthService } from '@/services/customAuthService'
 import { metricsService, DashboardMetrics, MetricsFilters } from '@/services/metricsService'
 import { adminDataLoader } from '@/services/adminDataLoader'
 import { optimisticAdd, optimisticUpdate, optimisticDelete } from '@/utils/optimisticUpdates'
@@ -95,7 +96,7 @@ export function AdminPanel({ onBack, onNavigateToTimeMetrics }: AdminPanelProps)
   // Form states
   const [formData, setFormData] = useState({
     name: '',
-    email: '',
+    nickname: '',
     password: '',
     role: 'agent' as 'admin' | 'agent',
     sede_id: '',
@@ -312,10 +313,10 @@ export function AdminPanel({ onBack, onNavigateToTimeMetrics }: AdminPanelProps)
 
   // Optimistic CRUD operations
   const handleCreateUser = async (e: React.FormEvent) => {
-    e.preventDefault()
+    e.preventDefault();
     
     try {
-      setIsCreatingUser(true)
+      setIsCreatingUser(true);
       logger.info('Creating user with optimistic updates...')
       
       // Para admin_punto: forzar que el usuario se cree solo en su sede
@@ -325,93 +326,101 @@ export function AdminPanel({ onBack, onNavigateToTimeMetrics }: AdminPanelProps)
         console.log('🏢 Admin punto: forzando creación de usuario en sede', user.sede_name);
       }
       
-      const userData: CreateUserData = {
-        email: formData.email,
-        password: formData.password,
-        name: formData.name,
-        role: formData.role,
-        sede_id: sedeId || undefined,
-        is_active: formData.is_active
+      // Validar que se haya seleccionado una sede (obligatorio)
+      if (!sedeId) {
+        toast({
+          title: "Error",
+          description: "Debes seleccionar una sede para el usuario.",
+          variant: "destructive"
+        });
+        setIsCreatingUser(false);
+        return;
       }
+      
+      const userData = {
+        nickname: formData.nickname,
+        password: formData.password,
+        display_name: formData.name,
+        role: formData.role,
+        sede_id: sedeId,
+        is_active: formData.is_active
+      };
 
       // Create temporary user for optimistic update
       const tempUser: User = {
         id: 'temp-' + Date.now(),
-        email: userData.email,
-        name: userData.name,
+        nickname: userData.nickname,
+        display_name: userData.display_name,
         role: userData.role,
         sede_id: userData.sede_id,
         is_active: userData.is_active,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString()
+      };
+
+      // Add temp user for optimistic update
+      setUsers(prev => [...prev, tempUser]);
+
+      const result = await customAuthService.createUser(userData);
+      
+      if (result.error) {
+        // Remove temp user on error
+        setUsers(prev => prev.filter(u => u.id !== tempUser.id));
+        toast({
+          title: "Error al crear usuario",
+          description: result.error,
+          variant: "destructive",
+        });
+        return;
       }
 
-      const { optimisticItems, execute } = optimisticAdd(
-        users,
-        tempUser,
-        () => adminService.createUser(userData),
-        {
-          onSuccess: (newUser) => {
-            // Replace temp user with real user
-            setUsers(prev => prev.map(u => u.id === tempUser.id ? newUser : u))
-            toast({
-              title: "Usuario creado exitosamente",
-              description: `${formData.name} ha sido creado y puede iniciar sesión inmediatamente con: ${formData.email}`,
-            })
-            setFormData({
-              name: '',
-              email: '',
-              password: '',
-              role: 'agent',
-              sede_id: '',
-              is_active: true
-            })
-            setIsCreateUserOpen(false)
-            // Invalidate cache to ensure fresh data on next load
-            adminDataLoader.invalidateCache(['users'])
-          },
-          onError: (error, rollback) => {
-            // Remove the optimistically added user
-            setUsers(prev => prev.filter(u => u.id !== tempUser.id))
-            toast({
-              title: "Error",
-              description: error.message || "No se pudo crear el perfil de usuario",
-              variant: "destructive",
-            })
-          }
-        }
-      )
-
-      // Apply optimistic update immediately
-      setUsers(optimisticItems)
-      
-      // Execute the actual operation
-      await execute()
-    } catch (error: any) {
-      logger.error('Error creating user:', error)
+      // Success - reload users to get the real data
       toast({
-        title: "Error",
-        description: error.message || "No se pudo crear el perfil de usuario",
+        title: "Usuario creado exitosamente",
+        description: `${formData.name} ha sido creado y puede iniciar sesión inmediatamente con: ${formData.nickname}`,
+      });
+      
+      setFormData({
+        name: '',
+        nickname: '',
+        password: '',
+        role: 'agent',
+        sede_id: '',
+        is_active: true
+      });
+      
+      setIsCreateUserOpen(false);
+      
+      // Reload users data
+      adminDataLoader.invalidateCache(['users']);
+        
+    } catch (error: any) {
+      // Remove temp user on error
+      setUsers(prev => prev.filter(u => u.id !== tempUser.id));
+      logger.error('Error creating user:', error);
+      toast({
+        title: "Error al crear usuario",
+        description: error.message || 'Ocurrió un error inesperado',
         variant: "destructive",
-      })
+      });
     } finally {
-      setIsCreatingUser(false)
+      setIsCreatingUser(false);
     }
-  }
+  };
 
   const handleUserSedeEdit = (user: Profile) => {
-    setSelectedUser(user)
-    setUserSedeFormData({ sede_id: user.sede_id || '' })
-    setIsUserSedeEditOpen(true)
-  }
+    setSelectedUser(user);
+    setUserSedeFormData({ sede_id: user.sede_id || '' });
+    setIsUserSedeEditOpen(true);
+  };
 
   const handleUpdateUserSede = async (e: React.FormEvent) => {
-    e.preventDefault()
+    e.preventDefault();
     
-    if (!selectedUser) return
+    if (!selectedUser) return;
     
     try {
-      const updates = { sede_id: userSedeFormData.sede_id }
+      const updates = { sede_id: userSedeFormData.sede_id };
       
       const { optimisticItems, execute } = optimisticUpdate(
         users,
@@ -424,14 +433,14 @@ export function AdminPanel({ onBack, onNavigateToTimeMetrics }: AdminPanelProps)
               title: "Sede actualizada",
               description: `La sede de ${selectedUser.name} ha sido actualizada exitosamente.`,
             })
-            setIsUserSedeEditOpen(false)
-            setSelectedUser(null)
-            setUserSedeFormData({ sede_id: '' })
-            adminDataLoader.invalidateCache(['users'])
+            setIsUserSedeEditOpen(false);
+            setSelectedUser(null);
+            setUserSedeFormData({ sede_id: '' });
+            adminDataLoader.invalidateCache(['users']);
           },
           onError: (error, rollback) => {
             // Rollback optimistic update
-            setUsers(prev => prev.map(u => u.id === selectedUser.id ? selectedUser : u))
+            setUsers(prev => prev.map(u => u.id === selectedUser.id ? selectedUser : u));
             toast({
               title: "Error",
               description: error.message || "No se pudo actualizar la sede del usuario",
@@ -439,27 +448,27 @@ export function AdminPanel({ onBack, onNavigateToTimeMetrics }: AdminPanelProps)
             })
           }
         }
-      )
+      );
       
       // Apply optimistic update
-      setUsers(optimisticItems)
+      setUsers(optimisticItems);
       
       // Execute actual operation
-      await execute()
+      await execute();
     } catch (error: any) {
-      logger.error('Error updating user sede:', error)
+      logger.error('Error updating user sede:', error);
       toast({
         title: "Error",
         description: error.message || "No se pudo actualizar la sede del usuario",
         variant: "destructive",
-      })
+      });
     }
-  }
+  };
 
   const handleCreateSede = async (e: React.FormEvent) => {
-    e.preventDefault()
+    e.preventDefault();
     
-    setIsCreatingSede(true)
+    setIsCreatingSede(true);
     
     try {
       logger.info('Creating sede with optimistic updates...')
@@ -533,14 +542,14 @@ export function AdminPanel({ onBack, onNavigateToTimeMetrics }: AdminPanelProps)
         variant: "destructive",
       })
     } finally {
-      setIsCreatingSede(false)
+      setIsCreatingSede(false);
     }
-  }
+  };
 
   const handleEditSede = async (e: React.FormEvent) => {
-    e.preventDefault()
+    e.preventDefault();
     
-    if (!selectedSede) return
+    if (!selectedSede) return;
 
     try {
       logger.info('Updating sede with optimistic updates...')
@@ -601,11 +610,11 @@ export function AdminPanel({ onBack, onNavigateToTimeMetrics }: AdminPanelProps)
         variant: "destructive",
       })
     }
-  }
+  };
 
   const handleDeleteSede = async (sede: Sede) => {
     if (!confirm(`¿Estás seguro de que quieres eliminar la sede "${sede.name}"?`)) {
-      return
+      return;
     }
 
     try {
@@ -648,22 +657,22 @@ export function AdminPanel({ onBack, onNavigateToTimeMetrics }: AdminPanelProps)
         variant: "destructive",
       })
     }
-  }
+  };
 
   const openEditSede = (sede: Sede) => {
-    setSelectedSede(sede)
+    setSelectedSede(sede);
     setSedeFormData({
       name: sede.name,
       address: sede.address,
       phone: sede.phone,
       is_active: sede.is_active
-    })
-    setIsEditSedeOpen(true)
-  }
+    });
+    setIsEditSedeOpen(true);
+  };
 
   const handleInitializeSedeProducts = async (sede: Sede) => {
     if (!confirm(`¿Inicializar productos para la sede "${sede.name}"?\n\nEsto creará registros de productos, bebidas y toppings con disponibilidad activada.`)) {
-      return
+      return;
     }
 
     try {
@@ -687,7 +696,7 @@ export function AdminPanel({ onBack, onNavigateToTimeMetrics }: AdminPanelProps)
         variant: "destructive",
       })
     }
-  }
+  };
 
   const toggleUserStatus = async (userId: string, currentStatus: boolean) => {
     try {
@@ -779,15 +788,15 @@ export function AdminPanel({ onBack, onNavigateToTimeMetrics }: AdminPanelProps)
   // ======= FUNCIONES PARA REPARTIDORES =======
 
   const handleRepartidorSedeEdit = (repartidor: Repartidor) => {
-    setSelectedRepartidor(repartidor)
-    setRepartidorSedeFormData({ sede_id: repartidor.sede_id || 'none' })
-    setIsRepartidorSedeEditOpen(true)
-  }
+    setSelectedRepartidor(repartidor);
+    setRepartidorSedeFormData({ sede_id: repartidor.sede_id || 'none' });
+    setIsRepartidorSedeEditOpen(true);
+  };
 
   const handleUpdateRepartidorSede = async (e: React.FormEvent) => {
-    e.preventDefault()
+    e.preventDefault();
     
-    if (!selectedRepartidor) return
+    if (!selectedRepartidor) return;
     
     try {
       const updates = { sede_id: repartidorSedeFormData.sede_id === 'none' ? null : repartidorSedeFormData.sede_id || null }
@@ -875,7 +884,7 @@ export function AdminPanel({ onBack, onNavigateToTimeMetrics }: AdminPanelProps)
   }
 
   const handleCreateRepartidor = async (e: React.FormEvent) => {
-    e.preventDefault()
+    e.preventDefault();
     
     if (!repartidorFormData.nombre.trim() || !repartidorFormData.telefono.trim()) {
       toast({
@@ -1018,13 +1027,13 @@ export function AdminPanel({ onBack, onNavigateToTimeMetrics }: AdminPanelProps)
   const getRoleBadge = (role: string) => {
     switch (role) {
       case 'admin':
-        return <Badge variant="destructive">Administrador</Badge>
+        return <Badge variant="destructive">Administrador</Badge>;
       case 'agent':
-        return <Badge variant="secondary">Agente</Badge>
+        return <Badge variant="secondary">Agente</Badge>;
       default:
-        return <Badge variant="outline">{role}</Badge>
+        return <Badge variant="outline">{role}</Badge>;
     }
-  }
+  };
 
   logger.info('🎨 Rendering optimized AdminPanel', {
     isAnyLoading,
@@ -1320,13 +1329,14 @@ export function AdminPanel({ onBack, onNavigateToTimeMetrics }: AdminPanelProps)
                             />
                           </div>
                           <div className="space-y-2">
-                            <Label htmlFor="email">Email</Label>
+                            <Label htmlFor="nickname">Nickname</Label>
                             <Input
-                              id="email"
-                              type="email"
-                              value={formData.email}
-                              onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                              id="nickname"
+                              type="text"
+                              value={formData.nickname}
+                              onChange={(e) => setFormData({ ...formData, nickname: e.target.value })}
                               required
+                              placeholder="Ej: admin_cedritos"
                             />
                           </div>
                           <div className="space-y-2">
@@ -1356,7 +1366,7 @@ export function AdminPanel({ onBack, onNavigateToTimeMetrics }: AdminPanelProps)
                           </div>
                           <div className="space-y-2">
                             <Label htmlFor="sede">
-                              {user?.role === 'admin_punto' ? 'Sede Asignada' : 'Sede (Opcional)'}
+                              {user?.role === 'admin_punto' ? 'Sede Asignada' : 'Sede *'}
                             </Label>
                             {user?.role === 'admin_punto' ? (
                               // Para admin_punto: mostrar su sede asignada (no editable)
@@ -1364,10 +1374,11 @@ export function AdminPanel({ onBack, onNavigateToTimeMetrics }: AdminPanelProps)
                                 📍 {user?.sede_name || 'Sede Asignada'}
                               </div>
                             ) : (
-                              // Para admin_global: selector normal
+                              // Para admin_global: selector obligatorio
                               <Select
                                 value={formData.sede_id}
                                 onValueChange={(value) => setFormData({ ...formData, sede_id: value })}
+                                required
                               >
                                 <SelectTrigger>
                                   <SelectValue placeholder="Seleccionar sede" />

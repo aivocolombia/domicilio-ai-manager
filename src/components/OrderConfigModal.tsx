@@ -112,17 +112,40 @@ export const OrderConfigModal: React.FC<OrderConfigModalProps> = ({
     try {
       setIsUpdating(true);
       
-      // Verificar si hay órdenes en camino que impiden cambiar repartidores
-      const ordersInTransit = selectedOrders.filter(order => {
+      // Verificar si hay órdenes de pickup en espera (estado "Camino" para pickup)
+      const pickupOrdersInWaiting = selectedOrders.filter(order => {
         const currentStatus = isRealOrder(order) ? order.estado : order.status;
-        return currentStatus === 'Camino' || currentStatus === 'En Camino';
+        const orderType = ('type_order' in order && order.type_order) || 
+                         ('tipo_orden' in order && (order as any).tipo_orden) || 
+                         'delivery';
+        return currentStatus === 'Camino' && orderType === 'pickup';
       });
 
-      // Si se intenta asignar repartidor a órdenes en camino, bloquear
-      if (assignedDeliveryPersonId && ordersInTransit.length > 0) {
+      // Si se intenta asignar repartidor a órdenes de pickup en espera, bloquear
+      if (assignedDeliveryPersonId && pickupOrdersInWaiting.length > 0) {
+        toast({
+          title: "Operación no válida",
+          description: `No se puede asignar repartidor a ${pickupOrdersInWaiting.length} pedido(s) de recolección. El cliente recoge directamente en la sede.`,
+          variant: "destructive"
+        });
+        setIsUpdating(false);
+        return;
+      }
+
+      // Verificar si hay órdenes de delivery en camino que impiden cambiar repartidores  
+      const deliveryOrdersInTransit = selectedOrders.filter(order => {
+        const currentStatus = isRealOrder(order) ? order.estado : order.status;
+        const orderType = ('type_order' in order && order.type_order) || 
+                         ('tipo_orden' in order && (order as any).tipo_orden) || 
+                         'delivery';
+        return (currentStatus === 'Camino' || currentStatus === 'En Camino') && orderType === 'delivery';
+      });
+
+      // Si se intenta asignar repartidor a órdenes de delivery en camino, bloquear
+      if (assignedDeliveryPersonId && deliveryOrdersInTransit.length > 0) {
         toast({
           title: "Operación bloqueada",
-          description: `No se puede cambiar el repartidor de ${ordersInTransit.length} pedido(s) que están "En Camino".`,
+          description: `No se puede cambiar el repartidor de ${deliveryOrdersInTransit.length} pedido(s) que están "En Camino".`,
           variant: "destructive"
         });
         setIsUpdating(false);
@@ -431,13 +454,58 @@ export const OrderConfigModal: React.FC<OrderConfigModalProps> = ({
                 );
               }
 
-              // Verificar si alguna orden seleccionada está "en camino"
-              const hasOrdersInTransit = selectedOrders.some(order => {
+              // Verificar si hay pedidos de pickup "en espera" (estado "Camino" para pickup)
+              const hasPickupOrdersInWaiting = selectedOrders.some(order => {
                 const currentStatus = isRealOrder(order) ? order.estado : order.status;
-                return currentStatus === 'Camino' || currentStatus === 'En Camino';
+                const orderType = ('type_order' in order && order.type_order) || 
+                                 ('tipo_orden' in order && (order as any).tipo_orden) || 
+                                 'delivery';
+                return currentStatus === 'Camino' && orderType === 'pickup';
               });
 
-              if (hasOrdersInTransit) {
+              if (hasPickupOrdersInWaiting) {
+                return (
+                  <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                    <div className="flex items-center gap-2 text-blue-800">
+                      <span className="text-sm font-medium">🚫 Pedidos de recolección</span>
+                    </div>
+                    <p className="text-sm text-blue-700 mt-1">
+                      Los pedidos de recolección "En Espera" no necesitan repartidor porque el cliente los recoge directamente en la sede.
+                    </p>
+                    <div className="mt-2 text-xs text-blue-600">
+                      {selectedOrders
+                        .filter(order => {
+                          const currentStatus = isRealOrder(order) ? order.estado : order.status;
+                          const orderType = ('type_order' in order && order.type_order) || 
+                                           ('tipo_orden' in order && (order as any).tipo_orden) || 
+                                           'delivery';
+                          return currentStatus === 'Camino' && orderType === 'pickup';
+                        })
+                        .map(order => {
+                          const orderId = isRealOrder(order) ? order.id_display : order.id;
+                          return (
+                            <div key={orderId} className="flex justify-between">
+                              <span>{orderId}:</span>
+                              <span className="font-medium">Pickup - En Espera</span>
+                            </div>
+                          );
+                        })
+                      }
+                    </div>
+                  </div>
+                );
+              }
+
+              // Verificar si alguna orden seleccionada está "en camino" (delivery)
+              const hasDeliveryOrdersInTransit = selectedOrders.some(order => {
+                const currentStatus = isRealOrder(order) ? order.estado : order.status;
+                const orderType = ('type_order' in order && order.type_order) || 
+                                 ('tipo_orden' in order && (order as any).tipo_orden) || 
+                                 'delivery';
+                return (currentStatus === 'Camino' || currentStatus === 'En Camino') && orderType === 'delivery';
+              });
+
+              if (hasDeliveryOrdersInTransit) {
                 return (
                   <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg">
                     <div className="flex items-center gap-2 text-amber-800">
@@ -452,7 +520,10 @@ export const OrderConfigModal: React.FC<OrderConfigModalProps> = ({
                       {selectedOrders
                         .filter(order => {
                           const currentStatus = isRealOrder(order) ? order.estado : order.status;
-                          return currentStatus === 'Camino' || currentStatus === 'En Camino';
+                          const orderType = ('type_order' in order && order.type_order) || 
+                                           ('tipo_orden' in order && (order as any).tipo_orden) || 
+                                           'delivery';
+                          return (currentStatus === 'Camino' || currentStatus === 'En Camino') && orderType === 'delivery';
                         })
                         .map(order => {
                           const orderId = isRealOrder(order) ? order.id_display : order.id;

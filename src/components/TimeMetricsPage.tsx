@@ -32,6 +32,7 @@ import {
 } from '@/services/metricsService';
 import { OrderStatesStatsPanel } from './OrderStatesStatsPanel';
 import { useTimeMetricsState } from '@/hooks/useTimeMetricsState';
+import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/lib/supabase';
 import {
   ChartContainer,
@@ -70,7 +71,8 @@ interface PhaseTimeTrend {
 }
 
 export const TimeMetricsPage: React.FC<TimeMetricsPageProps> = ({ onBack }) => {
-  // Usar hook persistente para el estado
+  // Hooks
+  const { user } = useAuth();
   const { viewMode, selectedSede, dateRange, updateState } = useTimeMetricsState();
   const [isDatePickerOpen, setIsDatePickerOpen] = useState(false);
   
@@ -296,11 +298,18 @@ export const TimeMetricsPage: React.FC<TimeMetricsPageProps> = ({ onBack }) => {
   // Cargar sedes disponibles
   const loadSedes = async () => {
     try {
-      const { data, error } = await supabase
+      let query = supabase
         .from('sedes')
         .select('id, name')
-        .eq('is_active', true)
-        .order('name');
+        .eq('is_active', true);
+
+      // Filtrar por sede específica si es admin_punto
+      if (user?.role === 'admin_punto' && user?.sede_id) {
+        query = query.eq('id', user.sede_id);
+        console.log('🏢 Admin punto: cargando solo sede asignada', user.sede_name || user.sede_id);
+      }
+
+      const { data, error } = await query.order('name');
 
       if (error) {
         console.error('❌ Error cargando sedes:', error);
@@ -308,6 +317,11 @@ export const TimeMetricsPage: React.FC<TimeMetricsPageProps> = ({ onBack }) => {
       }
 
       setSedes(data || []);
+      
+      // Si es admin_punto, auto-seleccionar su sede
+      if (user?.role === 'admin_punto' && user?.sede_id && data?.length > 0) {
+        updateState({ selectedSede: user.sede_id });
+      }
     } catch (err) {
       console.error('❌ Error en loadSedes:', err);
     }
@@ -496,7 +510,7 @@ export const TimeMetricsPage: React.FC<TimeMetricsPageProps> = ({ onBack }) => {
 
   useEffect(() => {
     loadSedes();
-  }, []);
+  }, [user?.role, user?.sede_id]); // Recargar cuando cambie el usuario
 
   useEffect(() => {
     loadData();
@@ -667,20 +681,30 @@ export const TimeMetricsPage: React.FC<TimeMetricsPageProps> = ({ onBack }) => {
 
             {/* Selector de sede */}
             <div className="space-y-2">
-              <label className="text-sm font-medium">Sede</label>
-              <Select value={selectedSede} onValueChange={(sede) => updateState({ selectedSede: sede })}>
-                <SelectTrigger className="w-[200px]">
-                  <SelectValue placeholder="Seleccionar sede" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="global">🌍 Global (Todas las sedes)</SelectItem>
-                  {sedes.map((sede) => (
-                    <SelectItem key={sede.id} value={sede.id}>
-                      🏢 {sede.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <label className="text-sm font-medium">
+                {user?.role === 'admin_punto' ? 'Sede Asignada' : 'Sede'}
+              </label>
+              {user?.role === 'admin_punto' ? (
+                // Para admin_punto: mostrar solo su sede asignada (no editable)
+                <div className="w-[200px] px-3 py-2 border rounded-md bg-muted">
+                  🏢 {user?.sede_name || sedes.find(s => s.id === user?.sede_id)?.name || 'Sede Asignada'}
+                </div>
+              ) : (
+                // Para admin_global: selector completo
+                <Select value={selectedSede} onValueChange={(sede) => updateState({ selectedSede: sede })}>
+                  <SelectTrigger className="w-[200px]">
+                    <SelectValue placeholder="Seleccionar sede" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="global">🌍 Global (Todas las sedes)</SelectItem>
+                    {sedes.map((sede) => (
+                      <SelectItem key={sede.id} value={sede.id}>
+                        🏢 {sede.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
             </div>
 
             {/* Selector de modo de vista */}
