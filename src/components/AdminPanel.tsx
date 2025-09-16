@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { Plus, Search, Edit, Trash2, Users, Building2, UserCheck, UserX, TrendingUp, DollarSign, Package, Clock, LayoutDashboard, Phone, MapPin, Settings, RefreshCw, Cog, ChartLine, Timer, BarChart3, Truck, Eye, AlertTriangle, ChevronLeft, ChevronRight, XCircle, Star } from 'lucide-react'
+import { Plus, Search, Edit, Trash2, Users, Building2, UserCheck, UserX, TrendingUp, DollarSign, Package, Clock, LayoutDashboard, Phone, MapPin, Settings, RefreshCw, Cog, ChartLine, Timer, BarChart3, Truck, Eye, AlertTriangle, ChevronLeft, ChevronRight, XCircle, Star, BarChart } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -31,6 +31,7 @@ import { logger } from '@/utils/logger'
 import { CancelledOrdersModal } from '@/components/CancelledOrdersModal'
 import { useRealtimeMetrics } from '@/hooks/useRealtimeMetrics'
 import { DeliveryPersonMetrics } from '@/components/DeliveryPersonMetrics'
+import { CRM } from '@/components/CRM'
 
 type Profile = User
 
@@ -1264,7 +1265,7 @@ export function AdminPanel({ onBack, onNavigateToTimeMetrics }: AdminPanelProps)
 
         {/* Tabs para Gestión */}
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-          <TabsList className="grid w-full grid-cols-3">
+          <TabsList className="grid w-full grid-cols-4">
             <TabsTrigger value="users" className="flex items-center gap-2">
               <Users className="h-4 w-4" />
               Usuarios
@@ -1276,6 +1277,10 @@ export function AdminPanel({ onBack, onNavigateToTimeMetrics }: AdminPanelProps)
             <TabsTrigger value="repartidores" className="flex items-center gap-2">
               <Truck className="h-4 w-4" />
               Repartidores
+            </TabsTrigger>
+            <TabsTrigger value="crm" className="flex items-center gap-2">
+              <BarChart className="h-4 w-4" />
+              CRM
             </TabsTrigger>
           </TabsList>
 
@@ -1940,6 +1945,11 @@ export function AdminPanel({ onBack, onNavigateToTimeMetrics }: AdminPanelProps)
                 )}
               </CardContent>
             </Card>
+          </TabsContent>
+
+          {/* Tab Content: CRM */}
+          <TabsContent value="crm">
+            <CRM effectiveSedeId={selectedSedeFilter === 'all' ? undefined : selectedSedeFilter} />
           </TabsContent>
 
         </Tabs>
