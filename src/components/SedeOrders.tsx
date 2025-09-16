@@ -36,6 +36,7 @@ import { useSedeOrders } from '@/hooks/useSedeOrders';
 import { useAuth } from '@/hooks/useAuth';
 import { CreateOrderData } from '@/services/sedeOrdersService';
 import { addressService } from '@/services/addressService';
+import { supabase } from '@/lib/supabase';
 
 interface SedeOrdersProps {
   orders: Order[];
@@ -80,6 +81,8 @@ export const SedeOrders: React.FC<SedeOrdersProps> = ({
   const [searchPhone, setSearchPhone] = useState('');
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [showZeroDeliveryConfirm, setShowZeroDeliveryConfirm] = useState(false);
+  const [foundCustomer, setFoundCustomer] = useState<any>(null);
+  const [searchingCustomer, setSearchingCustomer] = useState(false);
   const [customerData, setCustomerData] = useState({
     name: '',
     phone: '',
@@ -99,6 +102,7 @@ export const SedeOrders: React.FC<SedeOrdersProps> = ({
   });
   const [searchingPrice, setSearchingPrice] = useState(false);
   const [priceSearchTimeout, setPriceSearchTimeout] = useState<NodeJS.Timeout | null>(null);
+  const [customerSearchTimeout, setCustomerSearchTimeout] = useState<NodeJS.Timeout | null>(null);
 
 
   // Usar SOLO pedidos reales - NUNCA legacy/dummy
@@ -106,8 +110,32 @@ export const SedeOrders: React.FC<SedeOrdersProps> = ({
 
   // Función para abrir Google Maps con navegación
   const openGoogleMaps = (orderAddress: string) => {
-    // Dirección de la sede (se puede obtener del perfil o configurar por defecto)
-    const sedeAddress = profile?.sede_name || currentUser.sede || 'Restaurante Ajiaco, Bogotá, Colombia';
+    // Debug: mostrar todas las sedes disponibles
+    console.log('🏢 Todas las sedes disponibles:', sedes);
+    console.log('📍 Buscando sede con ID:', effectiveSedeId);
+    
+    // Obtener la dirección real de la sede actual
+    const currentSede = sedes.find(sede => sede.id === effectiveSedeId);
+    console.log('🎯 Sede encontrada:', currentSede);
+    
+    // Verificar si tenemos la dirección
+    let sedeAddress;
+    if (currentSede && currentSede.address && currentSede.address.trim()) {
+      sedeAddress = currentSede.address;
+      console.log('✅ Usando dirección de BD:', sedeAddress);
+    } else {
+      sedeAddress = `${currentSedeName}, Bogotá, Colombia`;
+      console.log('⚠️ Usando fallback porque no hay dirección en BD:', sedeAddress);
+      console.log('❓ Motivo: currentSede =', currentSede, 'address =', currentSede?.address);
+    }
+    
+    console.log('🗺️ Generando ruta desde sede:', {
+      sedeId: effectiveSedeId,
+      sedeName: currentSedeName,
+      sedeAddressUsed: sedeAddress,
+      orderAddress: orderAddress,
+      sedeData: currentSede
+    });
     
     // URL de Google Maps para navegación desde sede hasta dirección del pedido
     const googleMapsUrl = `https://www.google.com/maps/dir/${encodeURIComponent(sedeAddress)}/${encodeURIComponent(orderAddress)}`;
@@ -116,9 +144,55 @@ export const SedeOrders: React.FC<SedeOrdersProps> = ({
     window.open(googleMapsUrl, '_blank');
   };
 
+  // Función para normalizar número de teléfono (remover espacios, guiones, etc.)
+  const normalizePhone = (phone: string): string => {
+    return phone.replace(/[\s\-\(\)\+]/g, '').trim();
+  };
+
+  // Función para buscar cliente por teléfono
+  const searchCustomerByPhone = useCallback(async (phone: string) => {
+    if (!phone.trim() || phone.length < 7) {
+      return;
+    }
+
+    const normalizedPhone = normalizePhone(phone);
+    
+    try {
+      console.log('📞 Buscando cliente por teléfono:', normalizedPhone);
+      
+      const { data: clienteData, error } = await supabase
+        .from('clientes')
+        .select('*')
+        .eq('telefono', normalizedPhone)
+        .single();
+
+      if (error) {
+        if (error.code !== 'PGRST116') { // No encontrado es normal, otros errores no
+          console.error('❌ Error buscando cliente:', error);
+        }
+        return null;
+      }
+
+      if (clienteData) {
+        console.log('✅ Cliente encontrado:', clienteData);
+        return {
+          nombre: clienteData.nombre,
+          telefono: clienteData.telefono,
+          direccion_reciente: clienteData.direccion || ''
+        };
+      }
+    } catch (error) {
+      console.error('❌ Error inesperado buscando cliente:', error);
+    }
+    
+    return null;
+  }, []);
+
   // Función para buscar precio de envío basado en dirección
   const searchDeliveryPrice = useCallback(async (address: string) => {
     if (!address.trim() || address.length < 5 || !effectiveSedeId) {
+      // Si no hay dirección válida, resetear precio
+      setNewOrder(prev => ({ ...prev, deliveryCost: 0 }));
       return;
     }
 
@@ -168,6 +242,49 @@ export const SedeOrders: React.FC<SedeOrdersProps> = ({
     }
   }, [customerData.address, newOrder.deliveryType, searchDeliveryPrice]);
 
+  // Efecto para buscar cliente cuando cambia el teléfono (con debounce)
+  useEffect(() => {
+    if (customerData.phone && customerData.phone.length >= 7) {
+      // Limpiar timeout anterior
+      if (customerSearchTimeout) {
+        clearTimeout(customerSearchTimeout);
+      }
+
+      // Configurar nuevo timeout
+      const timeout = setTimeout(async () => {
+        setSearchingCustomer(true);
+        const foundClient = await searchCustomerByPhone(customerData.phone);
+        
+        if (foundClient) {
+          setFoundCustomer(foundClient);
+          
+          // Solo llenar campos vacíos (lógica inteligente)
+          setCustomerData(prev => ({
+            name: prev.name.trim() ? prev.name : foundClient.nombre,
+            phone: prev.phone, // Mantener el teléfono actual
+            address: prev.address.trim() ? prev.address : foundClient.direccion_reciente
+          }));
+          
+          console.log('🎯 Cliente encontrado y datos actualizados inteligentemente');
+        } else {
+          setFoundCustomer(null);
+        }
+        setSearchingCustomer(false);
+      }, 600); // Buscar después de 600ms de inactividad
+
+      setCustomerSearchTimeout(timeout);
+
+      return () => {
+        if (timeout) {
+          clearTimeout(timeout);
+        }
+      };
+    } else {
+      // Si el teléfono es muy corto, limpiar cliente encontrado
+      setFoundCustomer(null);
+    }
+  }, [customerData.phone, searchCustomerByPhone]);
+
   // Cargar pedidos al montar el componente usando effectiveSedeId
   useEffect(() => {
     if (effectiveSedeId) {
@@ -190,10 +307,6 @@ export const SedeOrders: React.FC<SedeOrdersProps> = ({
       menuLoading 
     });
   }, [toppings, menuLoading]);
-
-  const normalizePhone = (phone: string) => {
-    return phone.replace(/[\s\-()]/g, '');
-  };
 
   const handleSearchCustomer = async () => {
     if (!searchPhone.trim()) return;
@@ -704,7 +817,7 @@ export const SedeOrders: React.FC<SedeOrdersProps> = ({
               </DialogTrigger>
               <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
                 <DialogHeader>
-                  <DialogTitle>Crear Nuevo Pedido - Sede {currentUser.sede}</DialogTitle>
+                  <DialogTitle>Crear Nuevo Pedido - Sede {currentSedeName}</DialogTitle>
                 </DialogHeader>
                 
                 {!settings.acceptingOrders && (
@@ -737,19 +850,37 @@ export const SedeOrders: React.FC<SedeOrdersProps> = ({
                     
                     <div>
                       <Label htmlFor="customerPhone">Teléfono *</Label>
-                      <Input
-                        id="customerPhone"
-                        type="tel"
-                        value={customerData.phone}
-                        onChange={(e) => setCustomerData(prev => ({ ...prev, phone: e.target.value }))}
-                        placeholder="Ingrese el teléfono del cliente"
-                      />
+                      <div className="relative">
+                        <Input
+                          id="customerPhone"
+                          type="tel"
+                          value={customerData.phone}
+                          onChange={(e) => setCustomerData(prev => ({ ...prev, phone: e.target.value }))}
+                          placeholder="Ingrese el teléfono del cliente"
+                          className={searchingCustomer ? 'pr-8' : ''}
+                        />
+                        {searchingCustomer && (
+                          <div className="absolute right-2 top-1/2 transform -translate-y-1/2">
+                            <RefreshCw className="h-4 w-4 animate-spin text-muted-foreground" />
+                          </div>
+                        )}
+                      </div>
                     </div>
                     
-                    {customer && (
-                      <div className="text-sm text-green-600 flex items-center gap-2">
+                    {foundCustomer && (
+                      <div className="text-sm text-green-600 flex items-center gap-2 bg-green-50 p-2 rounded-md">
                         <User className="h-4 w-4" />
-                        Cliente encontrado - Datos precargados (puedes editarlos)
+                        <div>
+                          <div className="font-medium">Cliente encontrado: {foundCustomer.nombre}</div>
+                          <div className="text-xs">Datos completados automáticamente (solo campos vacíos)</div>
+                        </div>
+                      </div>
+                    )}
+                    
+                    {!foundCustomer && customerData.phone.length >= 7 && !searchingCustomer && (
+                      <div className="text-sm text-blue-600 flex items-center gap-2">
+                        <User className="h-4 w-4" />
+                        Cliente nuevo - Se creará automáticamente
                       </div>
                     )}
                   </div>

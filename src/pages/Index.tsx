@@ -203,6 +203,45 @@ const Index = () => {
                           profile?.sede_name || 
                           'Sede Desconocida';
 
+  // Cargar la sede del usuario actual (para agentes)
+  const loadCurrentUserSede = async () => {
+    if (permissions.canViewAllSedes || !userSedeId) return; // Solo para usuarios sin permiso de ver todas las sedes
+    
+    try {
+      console.log('🏢 Cargando sede del usuario actual:', userSedeId);
+      
+      const { data: sedeData, error } = await supabase
+        .from('sedes')
+        .select('id, name, address, phone, is_active, current_capacity, max_capacity')
+        .eq('id', userSedeId)
+        .eq('is_active', true)
+        .single();
+      
+      if (error) {
+        console.error('❌ Error cargando sede del usuario:', error);
+        return;
+      }
+      
+      if (sedeData) {
+        // Mapear al formato esperado
+        const mappedSede: Sede = {
+          id: sedeData.id,
+          name: sedeData.name,
+          address: sedeData.address || '',
+          phone: sedeData.phone || '',
+          isActive: sedeData.is_active,
+          currentCapacity: sedeData.current_capacity || 0,
+          maxCapacity: sedeData.max_capacity || 10
+        };
+        
+        setSedes([mappedSede]); // Solo la sede del usuario
+        console.log('✅ Sede del usuario cargada:', mappedSede);
+      }
+    } catch (error) {
+      console.error('❌ Error al cargar sede del usuario:', error);
+    }
+  };
+
   // Cargar sedes reales desde la base de datos
   const loadSedes = async () => {
     if (!permissions.canViewAllSedes) return; // Solo usuarios con permiso pueden cargar todas las sedes
@@ -343,12 +382,14 @@ const Index = () => {
     }
   }, [effectiveSedeId, showAdminPanel, showTimeMetrics]);
 
-  // Cargar sedes cuando el perfil esté disponible (solo para admins)
+  // Cargar sedes cuando el perfil esté disponible
   useEffect(() => {
     if (permissions.canViewAllSedes) {
-      loadSedes();
+      loadSedes(); // Admins cargan todas las sedes
+    } else {
+      loadCurrentUserSede(); // Agentes cargan solo su sede
     }
-  }, [permissions.canViewAllSedes]);
+  }, [permissions.canViewAllSedes, userSedeId]);
 
 
 

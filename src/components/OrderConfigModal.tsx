@@ -50,6 +50,7 @@ export const OrderConfigModal: React.FC<OrderConfigModalProps> = ({
   const [validPaymentStatuses, setValidPaymentStatuses] = useState<Array<{ value: string; label: string }>>([]);
   const [isUpdating, setIsUpdating] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [hasMixedStates, setHasMixedStates] = useState(false);
 
   // Cargar datos cuando se abre el modal o cambia la sede
   useEffect(() => {
@@ -73,6 +74,15 @@ export const OrderConfigModal: React.FC<OrderConfigModalProps> = ({
       const currentStatuses = selectedOrders.map(order => 
         'status' in order ? order.status : order.estado
       ).filter((status): status is string => Boolean(status));
+      
+      // Detectar si hay estados mixtos (diferentes estados entre las órdenes seleccionadas)
+      const uniqueStatuses = [...new Set(currentStatuses)];
+      const hasMixedStates = uniqueStatuses.length > 1;
+      setHasMixedStates(hasMixedStates);
+      
+      console.log('🔍 Estados detectados:', currentStatuses);
+      console.log('📊 Estados únicos:', uniqueStatuses);
+      console.log('⚠️ Estados mixtos:', hasMixedStates);
       
       const orderTypes = selectedOrders.map(order => 
         'type_order' in order ? order.type_order : (order as any).tipo_orden || 'delivery'
@@ -176,11 +186,12 @@ export const OrderConfigModal: React.FC<OrderConfigModalProps> = ({
       // Preparar actualizaciones para órdenes reales
       const updates: OrderStatusUpdate[] = selectedOrderIds.map(orderId => ({
         orderId: orderId,
-        newStatus: newStatus || undefined,
+        // Si hay estados mixtos, solo aplicar tiempo extra
+        newStatus: hasMixedStates ? undefined : (newStatus || undefined),
         extraTime: extraTime > 0 ? extraTime : undefined,
         extraTimeReason: extraTimeReason || undefined,
-        assignedDeliveryPersonId: assignedDeliveryPersonId || undefined,
-        paymentStatus: newPaymentStatus || undefined
+        assignedDeliveryPersonId: hasMixedStates ? undefined : (assignedDeliveryPersonId || undefined),
+        paymentStatus: hasMixedStates ? undefined : (newPaymentStatus || undefined)
       }));
       
       // Aplicar actualizaciones a la base de datos
@@ -231,7 +242,9 @@ export const OrderConfigModal: React.FC<OrderConfigModalProps> = ({
       
       toast({
         title: "Cambios aplicados",
-        description: `Se actualizaron ${selectedOrderIds.length} pedidos correctamente.`,
+        description: hasMixedStates 
+          ? `Se agregó tiempo extra a ${selectedOrderIds.length} pedidos con estados mixtos.`
+          : `Se actualizaron ${selectedOrderIds.length} pedidos correctamente.`,
       });
       
       // Refrescar datos si hay función disponible
@@ -308,6 +321,30 @@ export const OrderConfigModal: React.FC<OrderConfigModalProps> = ({
             </div>
           </div>
 
+          {/* Mixed States Warning */}
+          {hasMixedStates && (
+            <div className="p-4 bg-amber-50 border border-amber-200 rounded-lg">
+              <div className="flex items-center gap-2 text-amber-800 mb-2">
+                <span className="text-lg">⚠️</span>
+                <span className="font-medium">Estados mixtos detectados</span>
+              </div>
+              <p className="text-sm text-amber-700">
+                Has seleccionado pedidos con diferentes estados. Por seguridad, solo puedes <strong>agregar tiempo extra</strong> cuando hay estados mixtos. 
+                Esto evita conflictos y errores en las validaciones del sistema.
+              </p>
+              <div className="mt-2 text-xs text-amber-600">
+                <span className="font-medium">Estados encontrados:</span> {
+                  [...new Set(selectedOrders.map(order => 
+                    isRealOrder(order) ? order.estado : order.status
+                  ))].join(', ')
+                }
+              </div>
+              <p className="text-xs text-amber-600 mt-1">
+                💡 <strong>Sugerencia:</strong> Selecciona pedidos con el mismo estado para acceder a todas las opciones.
+              </p>
+            </div>
+          )}
+
           {/* Extra Time Configuration */}
           <div className="space-y-3">
             <Label>Tiempo Extra de Entrega</Label>
@@ -339,8 +376,20 @@ export const OrderConfigModal: React.FC<OrderConfigModalProps> = ({
 
           {/* Status Change */}
           <div className="space-y-3">
-            <Label>Cambiar Estado</Label>
-            {isLoading ? (
+            <Label className={hasMixedStates ? 'text-muted-foreground' : ''}>
+              Cambiar Estado
+              {hasMixedStates && <span className="text-xs ml-2">(Bloqueado por estados mixtos)</span>}
+            </Label>
+            {hasMixedStates ? (
+              <div className="p-3 bg-muted border border-dashed rounded-lg">
+                <div className="flex items-center gap-2 text-muted-foreground">
+                  <span className="text-sm">🔒 Campo deshabilitado</span>
+                </div>
+                <p className="text-xs text-muted-foreground mt-1">
+                  No se puede cambiar el estado cuando hay múltiples estados seleccionados.
+                </p>
+              </div>
+            ) : isLoading ? (
               <div className="flex items-center gap-2 p-2">
                 <Loader2 className="h-4 w-4 animate-spin" />
                 <span className="text-sm text-muted-foreground">Cargando estados...</span>
@@ -363,8 +412,25 @@ export const OrderConfigModal: React.FC<OrderConfigModalProps> = ({
 
           {/* Delivery Person Assignment */}
           <div className="space-y-3">
-            <Label>Asignar Repartidor</Label>
+            <Label className={hasMixedStates ? 'text-muted-foreground' : ''}>
+              Asignar Repartidor
+              {hasMixedStates && <span className="text-xs ml-2">(Bloqueado por estados mixtos)</span>}
+            </Label>
             {(() => {
+              // Verificar si hay estados mixtos primero
+              if (hasMixedStates) {
+                return (
+                  <div className="p-3 bg-muted border border-dashed rounded-lg">
+                    <div className="flex items-center gap-2 text-muted-foreground">
+                      <span className="text-sm">🔒 Campo deshabilitado</span>
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      No se puede asignar repartidor cuando hay múltiples estados seleccionados.
+                    </p>
+                  </div>
+                );
+              }
+
               // Verificar si alguna orden seleccionada está "en camino"
               const hasOrdersInTransit = selectedOrders.some(order => {
                 const currentStatus = isRealOrder(order) ? order.estado : order.status;
@@ -428,8 +494,20 @@ export const OrderConfigModal: React.FC<OrderConfigModalProps> = ({
 
           {/* Payment Status Change */}
           <div className="space-y-3">
-            <Label>Estado de Pago</Label>
-            {isLoading ? (
+            <Label className={hasMixedStates ? 'text-muted-foreground' : ''}>
+              Estado de Pago
+              {hasMixedStates && <span className="text-xs ml-2">(Bloqueado por estados mixtos)</span>}
+            </Label>
+            {hasMixedStates ? (
+              <div className="p-3 bg-muted border border-dashed rounded-lg">
+                <div className="flex items-center gap-2 text-muted-foreground">
+                  <span className="text-sm">🔒 Campo deshabilitado</span>
+                </div>
+                <p className="text-xs text-muted-foreground mt-1">
+                  No se puede cambiar el estado de pago cuando hay múltiples estados seleccionados.
+                </p>
+              </div>
+            ) : isLoading ? (
               <div className="flex items-center gap-2 p-2">
                 <Loader2 className="h-4 w-4 animate-spin" />
                 <span className="text-sm text-muted-foreground">Cargando estados de pago...</span>
@@ -458,7 +536,11 @@ export const OrderConfigModal: React.FC<OrderConfigModalProps> = ({
             <Button 
               onClick={handleApplyChanges} 
               className="flex-1"
-              disabled={isUpdating || isLoading || (extraTime === 0 && !newStatus && !assignedDeliveryPersonId && !newPaymentStatus)}
+              disabled={
+                isUpdating || 
+                isLoading || 
+                (hasMixedStates ? extraTime === 0 : (extraTime === 0 && !newStatus && !assignedDeliveryPersonId && !newPaymentStatus))
+              }
             >
               {isUpdating ? (
                 <>
