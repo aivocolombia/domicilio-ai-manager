@@ -4,14 +4,13 @@ import { Dashboard } from '@/components/Dashboard';
 import { Inventory } from '@/components/Inventory';
 import { DeliveryPersonnel } from '@/components/DeliveryPersonnel';
 import { UserProfile } from '@/components/UserProfile';
-import { SedeOrders } from '@/components/SedeOrders';
 
 // Lazy loading para componentes pesados
 const AdminPanel = lazy(() => import('@/components/AdminPanel').then(module => ({ default: module.AdminPanel })));
 const TimeMetricsPage = lazy(() => import('@/components/TimeMetricsPage').then(module => ({ default: module.TimeMetricsPage })));
 
 import { Order, DeliverySettings, OrderSource, DeliveryPerson, PaymentMethod, PaymentStatus, User as UserType, Sede, OrderStatus, DeliveryType } from '@/types/delivery';
-import { LayoutDashboard, Package, Users, Store, Settings, Building2, ChevronDown } from 'lucide-react';
+import { LayoutDashboard, Package, Users, Settings, Building2, ChevronDown } from 'lucide-react';
 import { StatusBar } from '@/components/StatusBar';
 import { Loading } from '@/components/Loading';
 import { PerformanceMonitor } from '@/components/PerformanceMonitor';
@@ -517,13 +516,6 @@ const Index = () => {
               <Users className="h-4 w-4" />
               Repartidores
             </TabsTrigger>
-            {/* Sede Local - Solo para administrador de punto y agentes */}
-            {!isAdmin && (
-              <TabsTrigger value="sede" className="flex items-center gap-2 data-[state=active]:bg-brand-primary data-[state=active]:text-white">
-                <Store className="h-4 w-4" />
-                Sede Local
-              </TabsTrigger>
-            )}
           </TabsList>
 
           <TabsContent value="dashboard">
@@ -553,22 +545,6 @@ const Index = () => {
           </TabsContent>
 
 
-          {/* Sede Local Content - Solo para administrador de punto y agentes */}
-          {!isAdmin && (
-            <TabsContent value="sede">
-              <SedeOrders
-                orders={orders}
-                sedes={sedes}
-                currentUser={currentUser}
-                settings={settings}
-                effectiveSedeId={effectiveSedeId}
-                currentSedeName={currentSedeName}
-                onCreateOrder={handleCreateOrder}
-                onTransferOrder={handleTransferOrder}
-                onNavigateToDashboard={() => setActiveTab('dashboard')}
-              />
-            </TabsContent>
-          )}
         </Tabs>
         </div>
       </div>

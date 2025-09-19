@@ -1539,8 +1539,8 @@ export const Dashboard: React.FC<DashboardProps> = ({
         </div>
         
         <div className="flex gap-3">
-          {/* Botón de Crear Nuevo Pedido - Solo para administradores */}
-          {(profile?.role === 'admin_global' || profile?.role === 'admin_punto') && (
+          {/* Botón de Crear Nuevo Pedido - Para administradores y agentes */}
+          {(profile?.role === 'admin_global' || profile?.role === 'admin_punto' || profile?.role === 'agent') && (
             <Button
               onClick={() => setShowCreateOrderModal(true)}
               disabled={!settings.acceptingOrders}
