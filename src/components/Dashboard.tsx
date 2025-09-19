@@ -112,7 +112,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
   const [transferOrderId, setTransferOrderId] = useState('');
   const [transferSedeId, setTransferSedeId] = useState('');
   const [isTransferModalOpen, setIsTransferModalOpen] = useState(false);
-  const [sedes, setSedes] = useState<Array<{ id: string; name: string }>>([]);
+  const [sedes, setSedes] = useState<Array<{ id: string; name: string; address?: string }>>([]);
 
   // Estados para cancelar pedido
   const [cancelOrderId, setCancelOrderId] = useState<string | null>(null);
@@ -214,6 +214,11 @@ export const Dashboard: React.FC<DashboardProps> = ({
       loadSedes();
     }
   }, [isTransferModalOpen]);
+
+  // Cargar sedes al montar el componente para tener las direcciones disponibles
+  useEffect(() => {
+    loadSedes();
+  }, []);
   
   // Debug: Log sede information
   logDebug('Dashboard', 'IDs de sede calculados', { 
@@ -227,7 +232,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
     try {
       const { data: sedesData, error } = await supabase
         .from('sedes')
-        .select('id, name')
+        .select('id, name, address')
         .eq('is_active', true)
         .order('name');
 
@@ -1213,7 +1218,22 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
   // Función para abrir Google Maps
   const openGoogleMaps = (orderAddress: string) => {
-    const sedeAddress = `${currentSedeName}, Bogotá, Colombia`;
+    // Buscar la sede actual para obtener su dirección real
+    const currentSede = sedes.find(sede => sede.id === sedeIdToUse);
+
+    // Usar la dirección real si está disponible, sino usar el nombre como fallback
+    const sedeAddress = currentSede?.address && currentSede.address.trim()
+      ? `${currentSede.address}, Bogotá, Colombia`
+      : `${currentSedeName}, Bogotá, Colombia`;
+
+    logDebug('Dashboard', 'Abriendo Google Maps', {
+      sedeId: sedeIdToUse,
+      sedeName: currentSedeName,
+      sedeAddress: sedeAddress,
+      orderAddress: orderAddress,
+      sedeData: currentSede
+    });
+
     const googleMapsUrl = `https://www.google.com/maps/dir/${encodeURIComponent(sedeAddress)}/${encodeURIComponent(orderAddress)}`;
     window.open(googleMapsUrl, '_blank');
   };
