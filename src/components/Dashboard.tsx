@@ -278,7 +278,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
       // Recargar datos del dashboard
       if (sedeIdToUse) {
-        loadDashboardOrders();
+        refreshDataWithCurrentFilters();
       }
     } catch (error) {
       logError('Dashboard', 'Error transfiriendo pedido', error);
@@ -487,7 +487,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
       // Recargar datos del dashboard
       if (sedeIdToUse) {
-        loadDashboardOrders();
+        refreshDataWithCurrentFilters();
       }
     } catch (error) {
       logError('Dashboard', 'Error cancelando pedido', error);
@@ -1421,8 +1421,11 @@ export const Dashboard: React.FC<DashboardProps> = ({
       setShowCreateOrderModal(false);
       setShowZeroDeliveryConfirm(false);
 
-      // Refresh dashboard data
-      loadDashboardOrders();
+      // Limpiar búsqueda para evitar mostrar pedidos antiguos
+      setSearchTerm('');
+
+      // Refresh dashboard data respetando filtros actuales
+      refreshDataWithCurrentFilters();
 
     } catch (error) {
       logError('Dashboard', 'Error creando pedido:', error);
