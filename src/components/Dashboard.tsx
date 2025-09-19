@@ -34,7 +34,8 @@ import {
   Eye,
   MessageCircle,
   Edit,
-  Printer
+  Printer,
+  Plus
 } from 'lucide-react';
 import { Calendar as CalendarComponent } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
@@ -57,6 +58,14 @@ import { DashboardOrder } from '@/services/dashboardService';
 import { useAuth } from '@/hooks/useAuth';
 import { toast } from '@/hooks/use-toast';
 import { sedeOrdersService } from '@/services/sedeOrdersService';
+import { useSedeOrders } from '@/hooks/useSedeOrders';
+import { CreateOrderData } from '@/services/sedeOrdersService';
+import { useMenu } from '@/hooks/useMenu';
+import { addressService } from '@/services/addressService';
+import { sedeServiceSimple } from '@/services/sedeServiceSimple';
+import { Textarea } from '@/components/ui/textarea';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { AlertTriangle, Pause, Store, Navigation, ShoppingCart } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { useDebouncedCallback } from '@/hooks/useDebounce';
 import { useAgentDebug } from '@/hooks/useAgentDebug';
@@ -129,6 +138,34 @@ export const Dashboard: React.FC<DashboardProps> = ({
   const [orderDetailsModalOpen, setOrderDetailsModalOpen] = useState(false);
   const [selectedOrderId, setSelectedOrderId] = useState<number | null>(null);
 
+  // Estados para modal de crear pedido
+  const [showCreateOrderModal, setShowCreateOrderModal] = useState(false);
+  const [showZeroDeliveryConfirm, setShowZeroDeliveryConfirm] = useState(false);
+  const [foundCustomer, setFoundCustomer] = useState<any>(null);
+  const [searchingCustomer, setSearchingCustomer] = useState(false);
+  const [customerData, setCustomerData] = useState({
+    name: '',
+    phone: '',
+    address: ''
+  });
+  const [newOrder, setNewOrder] = useState({
+    address: '',
+    items: [] as { productId: string; quantity: number; toppings: string[] }[],
+    paymentMethod: 'cash' as PaymentMethod,
+    specialInstructions: '',
+    deliveryType: 'delivery' as 'delivery' | 'pickup',
+    pickupSede: '',
+    deliveryTimeMinutes: 90,
+    deliveryCost: 0
+  });
+  const [searchingPrice, setSearchingPrice] = useState(false);
+  const [sedeProducts, setSedeProducts] = useState({
+    platos: [] as any[],
+    bebidas: [] as any[],
+    toppings: [] as any[]
+  });
+  const [loadingSedeProducts, setLoadingSedeProducts] = useState(false);
+
   // Estados para modal de impresión de minuta
   const [printMinutaModalOpen, setPrintMinutaModalOpen] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
@@ -145,20 +182,31 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
   // Obtener datos del usuario autenticado
   const { user, profile } = useAuth();
-  
+
+  // Hook para datos del menú
+  const { platos, bebidas, toppings, loading: menuLoading, loadToppings } = useMenu();
+
+  // Hook para datos reales del dashboard
+  // Usar effectiveSedeId cuando esté disponible (admin) o sede_id del usuario (agente)
+  const sedeIdToUse = effectiveSedeId || profile?.sede_id;
+
+  // Hook para crear pedidos
+  const {
+    customer,
+    loading: sedeOrdersLoading,
+    searchCustomer,
+    createOrder,
+  } = useSedeOrders(sedeIdToUse);
+
   // Debug para agentes
   const agentDebug = useAgentDebug();
-  
+
   // Debug: Log user information (solo en desarrollo)
   if (process.env.NODE_ENV === 'development') {
     logDebug('Dashboard', 'Usuario autenticado', { user: user?.id, email: user?.email });
     logDebug('Dashboard', 'Perfil del usuario', { profile: profile?.id, role: profile?.role });
     logDebug('Dashboard', 'Sede ID del usuario', { sede_id: profile?.sede_id, type: typeof profile?.sede_id });
   }
-
-  // Hook para datos reales del dashboard
-  // Usar effectiveSedeId cuando esté disponible (admin) o sede_id del usuario (agente)
-  const sedeIdToUse = effectiveSedeId || profile?.sede_id;
 
   // Cargar sedes cuando se abra el modal de transferencia
   useEffect(() => {
@@ -794,6 +842,170 @@ export const Dashboard: React.FC<DashboardProps> = ({
     registerRefreshFunction(refreshDataWithCurrentFilters);
   }, [registerRefreshFunction, refreshDataWithCurrentFilters]);
 
+  // === FUNCIONES PARA CREAR PEDIDO ===
+
+  // Función para normalizar número de teléfono
+  const normalizePhone = (phone: string): string => {
+    return phone.replace(/[\s\-\(\)\+]/g, '').trim();
+  };
+
+  // Función para buscar cliente por teléfono
+  const searchCustomerByPhone = useCallback(async (phone: string) => {
+    if (!phone.trim() || phone.length < 7) {
+      return null;
+    }
+
+    const normalizedPhone = normalizePhone(phone);
+
+    try {
+      logDebug('Dashboard', 'Buscando cliente por teléfono:', normalizedPhone);
+
+      const { data: clienteData, error } = await supabase
+        .from('clientes')
+        .select('*')
+        .eq('telefono', normalizedPhone)
+        .single();
+
+      if (error) {
+        if (error.code !== 'PGRST116') {
+          logError('Dashboard', 'Error buscando cliente:', error);
+        }
+        return null;
+      }
+
+      if (clienteData) {
+        logDebug('Dashboard', 'Cliente encontrado:', clienteData);
+        return {
+          nombre: clienteData.nombre,
+          telefono: clienteData.telefono,
+          direccion_reciente: clienteData.direccion || ''
+        };
+      }
+    } catch (error) {
+      logError('Dashboard', 'Error inesperado buscando cliente:', error);
+    }
+
+    return null;
+  }, []);
+
+  // Función para buscar precio de envío
+  const searchDeliveryPrice = useCallback(async (address: string) => {
+    if (!address.trim() || address.length < 5 || !sedeIdToUse) {
+      setNewOrder(prev => ({ ...prev, deliveryCost: 0 }));
+      return;
+    }
+
+    try {
+      setSearchingPrice(true);
+      setNewOrder(prev => ({ ...prev, deliveryCost: 0 }));
+
+      const lastPrice = await addressService.getLastDeliveryPriceForAddress(address, sedeIdToUse);
+
+      if (lastPrice && lastPrice > 0) {
+        setNewOrder(prev => ({ ...prev, deliveryCost: lastPrice }));
+        toast({
+          title: "Precio encontrado",
+          description: `Se estableció $${lastPrice.toLocaleString()} basado en entregas anteriores`,
+        });
+      } else {
+        toast({
+          title: "Precio no encontrado",
+          description: "Ingrese manualmente el costo del domicilio",
+          variant: "destructive"
+        });
+      }
+    } catch (error) {
+      logError('Dashboard', 'Error buscando precio:', error);
+      setNewOrder(prev => ({ ...prev, deliveryCost: 0 }));
+    } finally {
+      setSearchingPrice(false);
+    }
+  }, [sedeIdToUse, toast]);
+
+  // Función para cargar productos específicos de sede
+  const loadSedeProducts = useCallback(async () => {
+    if (!sedeIdToUse) return;
+
+    setLoadingSedeProducts(true);
+    try {
+      const { platos, bebidas, toppings } = await sedeServiceSimple.getSedeCompleteInfo(sedeIdToUse, true);
+
+      const availablePlatos = platos.filter(p => p.is_available);
+      const availableBebidas = bebidas.filter(b => b.is_available);
+      const availableToppings = toppings.filter(t => t.is_available);
+
+      setSedeProducts({
+        platos: availablePlatos,
+        bebidas: availableBebidas,
+        toppings: availableToppings
+      });
+    } catch (error) {
+      logError('Dashboard', 'Error cargando productos de sede:', error);
+      toast({
+        title: "Error",
+        description: "No se pudieron cargar los productos disponibles para esta sede.",
+        variant: "destructive"
+      });
+    } finally {
+      setLoadingSedeProducts(false);
+    }
+  }, [sedeIdToUse, toast]);
+
+  // === EFECTOS PARA CREAR PEDIDO ===
+
+  // Cargar toppings al montar el componente
+  useEffect(() => {
+    loadToppings();
+  }, [loadToppings]);
+
+  // Cargar productos específicos de sede
+  useEffect(() => {
+    loadSedeProducts();
+  }, [loadSedeProducts]);
+
+  // Buscar cliente cuando cambia el teléfono (con debounce)
+  useEffect(() => {
+    if (customerData.phone && customerData.phone.length >= 7) {
+      const timeout = setTimeout(async () => {
+        setSearchingCustomer(true);
+        const foundClient = await searchCustomerByPhone(customerData.phone);
+
+        if (foundClient) {
+          setFoundCustomer(foundClient);
+
+          // Solo llenar campos vacíos
+          setCustomerData(prev => ({
+            name: prev.name.trim() ? prev.name : foundClient.nombre,
+            phone: prev.phone,
+            address: prev.address.trim() ? prev.address : foundClient.direccion_reciente
+          }));
+        } else {
+          setFoundCustomer(null);
+        }
+        setSearchingCustomer(false);
+      }, 600);
+
+      return () => clearTimeout(timeout);
+    } else {
+      setFoundCustomer(null);
+    }
+  }, [customerData.phone, searchCustomerByPhone]);
+
+  // Buscar precio cuando cambia la dirección (con debounce)
+  useEffect(() => {
+    if (newOrder.deliveryType === 'delivery') {
+      if (customerData.address && customerData.address.trim()) {
+        const timeout = setTimeout(() => {
+          searchDeliveryPrice(customerData.address);
+        }, 800);
+
+        return () => clearTimeout(timeout);
+      } else {
+        setNewOrder(prev => ({ ...prev, deliveryCost: 0 }));
+      }
+    }
+  }, [customerData.address, newOrder.deliveryType, searchDeliveryPrice]);
+
   // Aplicar filtro inicial cuando el componente se monta (solo una vez)
   useEffect(() => {
     if (sedeIdToUse && !hasAppliedInitialFilter) {
@@ -999,6 +1211,229 @@ export const Dashboard: React.FC<DashboardProps> = ({
     setOrderDetailsModalOpen(true);
   };
 
+  // Función para abrir Google Maps
+  const openGoogleMaps = (orderAddress: string) => {
+    const sedeAddress = `${currentSedeName}, Bogotá, Colombia`;
+    const googleMapsUrl = `https://www.google.com/maps/dir/${encodeURIComponent(sedeAddress)}/${encodeURIComponent(orderAddress)}`;
+    window.open(googleMapsUrl, '_blank');
+  };
+
+  // Función para agregar item al pedido
+  const addItemToOrder = (productId: string, productType: 'plato' | 'bebida') => {
+    const uniqueProductId = `${productType}_${productId}`;
+
+    const existingItem = newOrder.items.find(item => item.productId === uniqueProductId);
+    if (existingItem) {
+      setNewOrder({
+        ...newOrder,
+        items: newOrder.items.map(item =>
+          item.productId === uniqueProductId
+            ? { ...item, quantity: item.quantity + 1 }
+            : item
+        )
+      });
+    } else {
+      setNewOrder({
+        ...newOrder,
+        items: [...newOrder.items, {
+          productId: uniqueProductId,
+          quantity: 1,
+          toppings: []
+        }]
+      });
+    }
+  };
+
+  // Función para agregar topping al pedido
+  const addToppingToOrder = (toppingId: string) => {
+    const uniqueToppingId = `topping_${toppingId}`;
+
+    const existingItem = newOrder.items.find(item => item.productId === uniqueToppingId);
+    if (existingItem) {
+      setNewOrder({
+        ...newOrder,
+        items: newOrder.items.map(item =>
+          item.productId === uniqueToppingId
+            ? { ...item, quantity: item.quantity + 1 }
+            : item
+        )
+      });
+    } else {
+      setNewOrder({
+        ...newOrder,
+        items: [...newOrder.items, {
+          productId: uniqueToppingId,
+          quantity: 1,
+          toppings: []
+        }]
+      });
+    }
+  };
+
+  // Función para remover item del pedido
+  const removeItemFromOrder = (productId: string) => {
+    setNewOrder({
+      ...newOrder,
+      items: newOrder.items.filter(item => item.productId !== productId)
+    });
+  };
+
+  // Función para calcular total del pedido
+  const calculateTotal = () => {
+    const itemsTotal = newOrder.items.reduce((total, item) => {
+      const [productType, realProductId] = item.productId.split('_');
+
+      let product = null;
+      if (productType === 'plato') {
+        product = sedeProducts.platos.find(p => p.id.toString() === realProductId) ||
+                 platos.find(p => p.id.toString() === realProductId);
+      } else if (productType === 'bebida') {
+        product = sedeProducts.bebidas.find(b => b.id.toString() === realProductId) ||
+                 bebidas.find(b => b.id.toString() === realProductId);
+      } else if (productType === 'topping') {
+        product = sedeProducts.toppings.find(t => t.id.toString() === realProductId) ||
+                 toppings.find(t => t.id.toString() === realProductId);
+      }
+
+      return total + (product ? product.pricing * item.quantity : 0);
+    }, 0);
+
+    const deliveryFee = newOrder.deliveryType === 'delivery' ? newOrder.deliveryCost : 0;
+    return itemsTotal + deliveryFee;
+  };
+
+  // Función para crear pedido
+  const handleCreateOrder = async () => {
+    if (newOrder.deliveryType === 'delivery' && !customerData.address) return;
+    if (newOrder.items.length === 0) return;
+    if (!sedeIdToUse) return;
+    if (!customerData.name || !customerData.phone) return;
+
+    if (newOrder.deliveryType === 'delivery' && newOrder.deliveryCost === 0) {
+      setShowZeroDeliveryConfirm(true);
+      return;
+    }
+
+    await executeCreateOrder();
+  };
+
+  // Función para ejecutar creación de pedido
+  const executeCreateOrder = async () => {
+    try {
+      // Validar productos
+      for (const item of newOrder.items) {
+        const [productType, realProductId] = item.productId.split('_');
+
+        if (productType === 'plato') {
+          const product = platos.find(p => p.id.toString() === realProductId);
+          if (!product) {
+            throw new Error(`Plato con ID ${realProductId} no encontrado`);
+          }
+        } else if (productType === 'bebida') {
+          const bebida = bebidas.find(b => b.id.toString() === realProductId);
+          if (!bebida) {
+            throw new Error(`Bebida con ID ${realProductId} no encontrada`);
+          }
+        } else if (productType === 'topping') {
+          const topping = toppings.find(t => t.id.toString() === realProductId);
+          if (!topping) {
+            throw new Error(`Topping con ID ${realProductId} no encontrado`);
+          }
+        }
+      }
+
+      const finalAddress = newOrder.deliveryType === 'pickup'
+        ? `Recogida en ${currentSedeName} - Cliente: ${customerData.name} (${customerData.phone})`
+        : customerData.address;
+
+      const orderData: CreateOrderData = {
+        cliente_nombre: customerData.name,
+        cliente_telefono: customerData.phone,
+        direccion: finalAddress,
+        tipo_entrega: newOrder.deliveryType,
+        sede_recogida: newOrder.deliveryType === 'pickup' ? currentSedeName : undefined,
+        pago_tipo: newOrder.paymentMethod === 'cash' ? 'efectivo' :
+                   newOrder.paymentMethod === 'card' ? 'tarjeta' :
+                   newOrder.paymentMethod === 'nequi' ? 'nequi' : 'transferencia',
+        instrucciones: newOrder.specialInstructions || undefined,
+        delivery_time_minutes: newOrder.deliveryTimeMinutes,
+        delivery_cost: newOrder.deliveryType === 'delivery' ? newOrder.deliveryCost : undefined,
+        items: newOrder.items.map(item => {
+          const [productType, realProductId] = item.productId.split('_');
+
+          if (productType === 'plato') {
+            const product = platos.find(p => p.id.toString() === realProductId);
+            if (product) {
+              return {
+                producto_tipo: 'plato' as const,
+                producto_id: product.id,
+                cantidad: item.quantity
+              };
+            }
+          } else if (productType === 'bebida') {
+            const bebida = bebidas.find(b => b.id.toString() === realProductId);
+            if (bebida) {
+              return {
+                producto_tipo: 'bebida' as const,
+                producto_id: bebida.id,
+                cantidad: item.quantity
+              };
+            }
+          } else if (productType === 'topping') {
+            const topping = toppings.find(t => t.id.toString() === realProductId);
+            if (topping) {
+              return {
+                producto_tipo: 'topping' as const,
+                producto_id: topping.id,
+                cantidad: item.quantity
+              };
+            }
+          }
+
+          throw new Error(`Producto no encontrado: ${item.productId}`);
+        }),
+        sede_id: sedeIdToUse,
+        update_customer_data: {
+          nombre: customerData.name,
+          telefono: customerData.phone,
+          direccion: newOrder.deliveryType === 'delivery' ? customerData.address : undefined
+        }
+      };
+
+      await createOrder(orderData);
+
+      // Reset form
+      setNewOrder({
+        address: '',
+        items: [],
+        paymentMethod: 'cash',
+        specialInstructions: '',
+        deliveryType: 'delivery',
+        pickupSede: '',
+        deliveryTimeMinutes: 90,
+        deliveryCost: 0
+      });
+      setCustomerData({
+        name: '',
+        phone: '',
+        address: ''
+      });
+      setShowCreateOrderModal(false);
+      setShowZeroDeliveryConfirm(false);
+
+      // Refresh dashboard data
+      loadDashboardOrders();
+
+    } catch (error) {
+      logError('Dashboard', 'Error creando pedido:', error);
+      toast({
+        title: "Error",
+        description: error instanceof Error ? error.message : "No se pudo crear el pedido",
+        variant: "destructive"
+      });
+    }
+  };
+
   // Manejar error
   if (error) {
     return (
@@ -1104,16 +1539,18 @@ export const Dashboard: React.FC<DashboardProps> = ({
         </div>
         
         <div className="flex gap-3">
-          <Button
-            onClick={refreshDataWithCurrentFilters}
-            disabled={loading}
-            variant="outline"
-            className="flex items-center gap-2"
-          >
-            <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
-            {loading ? 'Cargando...' : 'Recargar'}
-          </Button>
-          
+          {/* Botón de Crear Nuevo Pedido - Solo para administradores */}
+          {(profile?.role === 'admin_global' || profile?.role === 'admin_punto') && (
+            <Button
+              onClick={() => setShowCreateOrderModal(true)}
+              disabled={!settings.acceptingOrders}
+              className="bg-brand-primary hover:bg-brand-primary/90 text-white"
+            >
+              <Plus className="h-4 w-4 mr-2" />
+              Crear Nuevo Pedido
+            </Button>
+          )}
+
           {/* Botón de descarga CSV - Solo para administradores */}
           {profile?.role === 'admin' && (
             <Button
@@ -1972,6 +2409,431 @@ export const Dashboard: React.FC<DashboardProps> = ({
         order={editingOrderId ? orders.find(order => order.orden_id.toString() === editingOrderId) || null : null}
         onOrderUpdated={refreshDataWithCurrentFilters}
       />
+
+      {/* Modal para crear nuevo pedido */}
+      <Dialog open={showCreateOrderModal} onOpenChange={(open) => {
+        setShowCreateOrderModal(open);
+        if (!open) {
+          setNewOrder({
+            address: '',
+            items: [],
+            paymentMethod: 'cash',
+            specialInstructions: '',
+            deliveryType: 'delivery',
+            pickupSede: '',
+            deliveryTimeMinutes: 90,
+            deliveryCost: 0
+          });
+          setCustomerData({
+            name: '',
+            phone: '',
+            address: ''
+          });
+        }
+      }}>
+        <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Crear Nuevo Pedido - Sede {currentSedeName}</DialogTitle>
+          </DialogHeader>
+
+          {!settings.acceptingOrders && (
+            <Alert className="border-amber-200 bg-amber-50 mb-4">
+              <AlertTriangle className="h-4 w-4 text-amber-600" />
+              <AlertDescription className="text-amber-800">
+                <div className="flex items-center gap-2">
+                  <Pause className="h-4 w-4" />
+                  <span className="font-medium">Los pedidos están pausados.</span>
+                </div>
+                <p className="mt-1 text-sm">No se pueden crear nuevos pedidos en este momento.</p>
+              </AlertDescription>
+            </Alert>
+          )}
+
+          <div className="space-y-4">
+            {/* Datos del Cliente */}
+            <div className="space-y-3 p-4 border rounded-lg bg-gray-50">
+              <h4 className="font-medium text-gray-900">Datos del Cliente</h4>
+
+              <div>
+                <Label htmlFor="customerName">Nombre del Cliente *</Label>
+                <Input
+                  id="customerName"
+                  value={customerData.name}
+                  onChange={(e) => setCustomerData(prev => ({ ...prev, name: e.target.value }))}
+                  placeholder="Ingrese el nombre del cliente"
+                />
+              </div>
+
+              <div>
+                <Label htmlFor="customerPhone">Teléfono *</Label>
+                <div className="relative">
+                  <Input
+                    id="customerPhone"
+                    type="tel"
+                    value={customerData.phone}
+                    onChange={(e) => setCustomerData(prev => ({ ...prev, phone: e.target.value }))}
+                    placeholder="Ingrese el teléfono del cliente"
+                    className={searchingCustomer ? 'pr-8' : ''}
+                  />
+                  {searchingCustomer && (
+                    <div className="absolute right-2 top-1/2 transform -translate-y-1/2">
+                      <RefreshCw className="h-4 w-4 animate-spin text-muted-foreground" />
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {foundCustomer && (
+                <div className="text-sm text-green-600 flex items-center gap-2 bg-green-50 p-2 rounded-md">
+                  <User className="h-4 w-4" />
+                  <div>
+                    <div className="font-medium">Cliente encontrado: {foundCustomer.nombre}</div>
+                    <div className="text-xs">Datos completados automáticamente (solo campos vacíos)</div>
+                  </div>
+                </div>
+              )}
+
+              {!foundCustomer && customerData.phone.length >= 7 && !searchingCustomer && (
+                <div className="text-sm text-blue-600 flex items-center gap-2">
+                  <User className="h-4 w-4" />
+                  Cliente nuevo - Se creará automáticamente
+                </div>
+              )}
+            </div>
+
+            <div>
+              <Label>Tipo de Entrega</Label>
+              <RadioGroup
+                value={newOrder.deliveryType}
+                onValueChange={(value: 'delivery' | 'pickup') => setNewOrder({
+                  ...newOrder,
+                  deliveryType: value,
+                  deliveryCost: value === 'delivery' ? newOrder.deliveryCost : 0
+                })}
+                className="flex gap-6"
+              >
+                <div className="flex items-center space-x-2">
+                  <RadioGroupItem value="delivery" id="delivery" />
+                  <Label htmlFor="delivery">Domicilio</Label>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <RadioGroupItem value="pickup" id="pickup" />
+                  <Label htmlFor="pickup">Recogida en Tienda</Label>
+                </div>
+              </RadioGroup>
+            </div>
+
+            {newOrder.deliveryType === 'delivery' ? (
+              <div className="space-y-3">
+                <div>
+                  <Label htmlFor="address">Dirección de Entrega *</Label>
+                  <div className="flex gap-2">
+                    <Input
+                      id="address"
+                      value={customerData.address}
+                      onChange={(e) => setCustomerData(prev => ({ ...prev, address: e.target.value }))}
+                      placeholder="Ingrese la dirección completa"
+                      className="flex-1"
+                    />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        if (customerData.address.trim()) {
+                          openGoogleMaps(customerData.address);
+                        } else {
+                          toast({
+                            title: "Dirección requerida",
+                            description: "Por favor ingrese una dirección antes de abrir el mapa",
+                            variant: "destructive"
+                          });
+                        }
+                      }}
+                      disabled={!customerData.address.trim()}
+                      className="px-3"
+                      title="Ver ubicación en Google Maps"
+                    >
+                      <Navigation className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+                <div>
+                  <Label htmlFor="deliveryCost">Valor del Domicilio *</Label>
+                  <div className="relative">
+                    <Input
+                      id="deliveryCost"
+                      type="text"
+                      value={newOrder.deliveryCost === 0 ? '' : newOrder.deliveryCost.toString()}
+                      onChange={(e) => {
+                        const value = e.target.value.replace(/[^0-9]/g, '');
+                        const numericValue = value === '' ? 0 : parseInt(value, 10);
+                        setNewOrder({ ...newOrder, deliveryCost: numericValue });
+                      }}
+                      placeholder="Ingrese el valor del domicilio (ej: 6000)"
+                      disabled={searchingPrice}
+                      className={searchingPrice ? 'pr-8' : ''}
+                    />
+                    {searchingPrice && (
+                      <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
+                        <RefreshCw className="h-4 w-4 animate-spin text-gray-400" />
+                      </div>
+                    )}
+                  </div>
+                  <p className="text-xs text-gray-600 mt-1">
+                    {searchingPrice ? 'Buscando precio basado en la dirección...' :
+                     'Si es 0, se mostrará una confirmación antes de crear el pedido'}
+                  </p>
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                <div className="p-3 border rounded-lg bg-green-50">
+                  <div className="flex items-center gap-2 mb-2">
+                    <Store className="h-4 w-4 text-green-600" />
+                    <h5 className="font-medium text-green-900">Recogida en Sede</h5>
+                  </div>
+                  <p className="text-green-800 text-sm">
+                    El pedido se recogerá en: <span className="font-medium">{currentSedeName}</span>
+                  </p>
+                  <p className="text-green-700 text-xs mt-1">
+                    La persona que recoge será: <span className="font-medium">{customerData.name || 'Cliente'}</span>
+                    {customerData.phone && ` - ${customerData.phone}`}
+                  </p>
+                </div>
+              </div>
+            )}
+
+            <div>
+              <Label>Método de Pago</Label>
+              <Select
+                value={newOrder.paymentMethod}
+                onValueChange={(value: PaymentMethod) => setNewOrder({ ...newOrder, paymentMethod: value })}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="cash">Efectivo</SelectItem>
+                  <SelectItem value="card">Tarjeta</SelectItem>
+                  <SelectItem value="nequi">Nequi</SelectItem>
+                  <SelectItem value="transfer">Transferencia</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div>
+              <Label>Productos Disponibles en {currentSedeName}</Label>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-2 max-h-40 overflow-y-auto border rounded p-2">
+                {loadingSedeProducts ? (
+                  <p className="text-center text-gray-500">Cargando productos de la sede...</p>
+                ) : (
+                  <>
+                    {sedeProducts.platos.map((item) => (
+                      <div key={`plato-${item.id}`} className="flex items-center justify-between p-2 border rounded bg-green-50">
+                        <div>
+                          <p className="font-medium">{item.name}</p>
+                          <p className="text-sm text-gray-600">${item.pricing.toLocaleString()}</p>
+                          <span className="text-xs bg-green-100 text-green-800 px-1 rounded">Disponible</span>
+                        </div>
+                        <Button
+                          size="sm"
+                          onClick={() => addItemToOrder(item.id.toString(), 'plato')}
+                          className="bg-brand-primary hover:bg-brand-primary/90"
+                        >
+                          <Plus className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    ))}
+                    {sedeProducts.bebidas.map((item) => (
+                      <div key={`bebida-${item.id}`} className="flex items-center justify-between p-2 border rounded bg-blue-50">
+                        <div>
+                          <p className="font-medium">{item.name}</p>
+                          <p className="text-sm text-gray-600">${item.pricing.toLocaleString()}</p>
+                          <span className="text-xs bg-blue-100 text-blue-800 px-1 rounded">Disponible</span>
+                        </div>
+                        <Button
+                          size="sm"
+                          onClick={() => addItemToOrder(item.id.toString(), 'bebida')}
+                          className="bg-brand-primary hover:bg-brand-primary/90"
+                        >
+                          <Plus className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    ))}
+                    {sedeProducts.platos.length === 0 && sedeProducts.bebidas.length === 0 && (
+                      <div className="col-span-2 text-center py-4">
+                        <AlertTriangle className="h-8 w-8 mx-auto text-amber-500 mb-2" />
+                        <p className="text-sm text-gray-500">No hay productos disponibles en esta sede</p>
+                        <p className="text-xs text-gray-400">Contacta al administrador para activar productos</p>
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
+            </div>
+
+            <div>
+              <Label>Toppings Extra Disponibles en {currentSedeName}</Label>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-2 max-h-32 overflow-y-auto border rounded p-2">
+                {loadingSedeProducts ? (
+                  <p className="text-center text-gray-500">Cargando toppings de la sede...</p>
+                ) : sedeProducts.toppings.length === 0 ? (
+                  <div className="col-span-2 text-center py-4">
+                    <AlertTriangle className="h-6 w-6 mx-auto text-amber-500 mb-2" />
+                    <p className="text-sm text-gray-500">No hay toppings disponibles en esta sede</p>
+                    <p className="text-xs text-gray-400">Contacta al administrador para activar toppings</p>
+                  </div>
+                ) : (
+                  <>
+                    {sedeProducts.toppings.map((item) => (
+                      <div key={`topping-${item.id}`} className="flex items-center justify-between p-2 border rounded bg-orange-50">
+                        <div>
+                          <p className="font-medium text-orange-800">{item.name}</p>
+                          <p className="text-sm text-orange-600">${item.pricing.toLocaleString()}</p>
+                          <span className="text-xs bg-orange-100 text-orange-800 px-1 rounded">Disponible</span>
+                        </div>
+                        <Button
+                          size="sm"
+                          onClick={() => addToppingToOrder(item.id.toString())}
+                          className="bg-orange-500 hover:bg-orange-600 text-white"
+                        >
+                          <Plus className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    ))}
+                  </>
+                )}
+              </div>
+            </div>
+
+            {newOrder.items.length > 0 && (
+              <div>
+                <Label>Productos Seleccionados</Label>
+                <div className="space-y-2 border rounded p-2">
+                  {newOrder.items.map((item) => {
+                    const [productType, realProductId] = item.productId.split('_');
+
+                    let product = null;
+                    let itemBgColor = 'bg-gray-50';
+                    let itemTextColor = 'text-gray-600';
+
+                    if (productType === 'plato') {
+                      product = platos.find(p => p.id.toString() === realProductId);
+                    } else if (productType === 'bebida') {
+                      product = bebidas.find(b => b.id.toString() === realProductId);
+                    } else if (productType === 'topping') {
+                      product = toppings.find(t => t.id.toString() === realProductId);
+                      itemBgColor = 'bg-orange-50';
+                      itemTextColor = 'text-orange-600';
+                    }
+
+                    return (
+                      <div key={item.productId} className={`flex items-center justify-between p-2 ${itemBgColor} rounded`}>
+                        <div>
+                          <p className="font-medium">{product?.name}
+                            {productType === 'topping' && (
+                              <span className="ml-2 px-2 py-1 text-xs bg-orange-200 text-orange-800 rounded">Extra</span>
+                            )}
+                          </p>
+                          <p className={`text-sm ${itemTextColor}`}>
+                            Cantidad: {item.quantity} × ${product?.pricing.toLocaleString()}
+                          </p>
+                        </div>
+                        <Button
+                          size="sm"
+                          variant="destructive"
+                          onClick={() => removeItemFromOrder(item.productId)}
+                        >
+                          Eliminar
+                        </Button>
+                      </div>
+                    );
+                  })}
+                  <div className="border-t pt-2">
+                    {newOrder.deliveryType === 'delivery' && newOrder.deliveryCost > 0 && (
+                      <div className="text-sm text-gray-600 mb-1">
+                        Subtotal productos: ${(calculateTotal() - newOrder.deliveryCost).toLocaleString()}
+                        <br />
+                        Domicilio: ${newOrder.deliveryCost.toLocaleString()}
+                      </div>
+                    )}
+                    <p className="font-bold text-lg">Total: ${calculateTotal().toLocaleString()}</p>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            <div>
+              <Label htmlFor="deliveryTime">Tiempo de Entrega</Label>
+              <Select
+                value={newOrder.deliveryTimeMinutes.toString()}
+                onValueChange={(value) => setNewOrder({ ...newOrder, deliveryTimeMinutes: parseInt(value) })}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Seleccionar tiempo de entrega" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="60">🚀 Rápido - 60 minutos</SelectItem>
+                  <SelectItem value="75">⏰ Estándar - 75 minutos</SelectItem>
+                  <SelectItem value="90">🕒 Normal - 90 minutos</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div>
+              <Label htmlFor="instructions">Instrucciones Especiales</Label>
+              <Textarea
+                id="instructions"
+                value={newOrder.specialInstructions}
+                onChange={(e) => setNewOrder({ ...newOrder, specialInstructions: e.target.value })}
+                placeholder="Instrucciones adicionales para el pedido"
+              />
+            </div>
+
+            <Button
+              onClick={handleCreateOrder}
+              disabled={
+                !settings.acceptingOrders ||
+                !customerData.name ||
+                !customerData.phone ||
+                (newOrder.deliveryType === 'delivery' && !customerData.address) ||
+                newOrder.items.length === 0 ||
+                sedeOrdersLoading
+              }
+              className="w-full bg-brand-primary hover:bg-brand-primary/90"
+            >
+              {sedeOrdersLoading ? 'Creando...' : 'Crear Pedido'}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Modal de confirmación para domicilio con valor 0 */}
+      <Dialog open={showZeroDeliveryConfirm} onOpenChange={setShowZeroDeliveryConfirm}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Confirmar Domicilio Gratis</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <p>¿Está seguro que desea crear un pedido con domicilio gratis (valor $0)?</p>
+            <div className="flex justify-end space-x-2">
+              <Button
+                variant="outline"
+                onClick={() => setShowZeroDeliveryConfirm(false)}
+              >
+                Cancelar
+              </Button>
+              <Button
+                onClick={executeCreateOrder}
+                className="bg-brand-primary hover:bg-brand-primary/90"
+              >
+                Confirmar
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

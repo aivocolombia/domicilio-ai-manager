@@ -362,7 +362,8 @@ export function AdminPanel({ onBack, onNavigateToTimeMetrics }: AdminPanelProps)
       // Add temp user for optimistic update
       setUsers(prev => [...prev, tempUser]);
 
-      const result = await customAuthService.createUser(userData);
+      try {
+        const result = await customAuthService.createUser(userData);
       
       if (result.error) {
         // Remove temp user on error
@@ -395,6 +396,11 @@ export function AdminPanel({ onBack, onNavigateToTimeMetrics }: AdminPanelProps)
       // Reload users data
       adminDataLoader.invalidateCache(['users']);
         
+      } catch (error: any) {
+        // Remove temp user on error
+        setUsers(prev => prev.filter(u => u.id !== tempUser.id));
+        throw error; // Re-throw to be caught by outer catch
+      }
     } catch (error: any) {
       // Remove temp user on error
       setUsers(prev => prev.filter(u => u.id !== tempUser.id));
@@ -1185,9 +1191,17 @@ export function AdminPanel({ onBack, onNavigateToTimeMetrics }: AdminPanelProps)
             <ChartLine className="h-4 w-4" />
             Métricas
           </Button>
+          <Button
+            variant={activeSection === 'crm' ? 'default' : 'ghost'}
+            onClick={() => setActiveSection('crm')}
+            className="flex items-center gap-2"
+          >
+            <BarChart className="h-4 w-4" />
+            CRM
+          </Button>
         </div>
 
-        {activeSection === 'config' ? (
+        {activeSection === 'config' && (
           /* ========== SECCIÓN DE CONFIGURACIONES ========== */
           <div className="space-y-6">
             {/* Stats Cards de Configuración */}
@@ -1277,10 +1291,6 @@ export function AdminPanel({ onBack, onNavigateToTimeMetrics }: AdminPanelProps)
             <TabsTrigger value="repartidores" className="flex items-center gap-2">
               <Truck className="h-4 w-4" />
               Repartidores
-            </TabsTrigger>
-            <TabsTrigger value="crm" className="flex items-center gap-2">
-              <BarChart className="h-4 w-4" />
-              CRM
             </TabsTrigger>
           </TabsList>
 
@@ -1947,14 +1957,12 @@ export function AdminPanel({ onBack, onNavigateToTimeMetrics }: AdminPanelProps)
             </Card>
           </TabsContent>
 
-          {/* Tab Content: CRM */}
-          <TabsContent value="crm">
-            <CRM effectiveSedeId={selectedSedeFilter === 'all' ? undefined : selectedSedeFilter} />
-          </TabsContent>
 
         </Tabs>
           </div>
-        ) : (
+        )}
+
+        {activeSection === 'metrics' && (
           /* ========== SECCIÓN DE MÉTRICAS ========== */
           <div className="space-y-6">
             {/* Métricas de Negocio */}
@@ -2316,6 +2324,13 @@ export function AdminPanel({ onBack, onNavigateToTimeMetrics }: AdminPanelProps)
           </div>
         )}
 
+        {activeSection === 'crm' && (
+          /* ========== SECCIÓN DE CRM ========== */
+          <div className="space-y-6">
+            <CRM effectiveSedeId={selectedSedeFilter === 'all' ? undefined : selectedSedeFilter} />
+          </div>
+        )}
+
         {/* All Dialogs remain the same but are omitted for brevity - they would be included in the full implementation */}
         
         {/* Dialog para editar sede */}
@@ -2557,6 +2572,7 @@ export function AdminPanel({ onBack, onNavigateToTimeMetrics }: AdminPanelProps)
             </div>
           </DialogContent>
         </Dialog>
+
 
       </div>
       

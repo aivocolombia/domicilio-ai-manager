@@ -1,13 +1,10 @@
 import { supabase } from '@/lib/supabase';
 
-export interface CRMUser {
+export interface CRMCustomer {
   id: string;
-  nickname: string;
-  display_name: string;
-  role: string;
-  sede_id: string;
-  sede_name?: string;
-  is_active: boolean;
+  nombre: string;
+  telefono: string;
+  direccion: string;
   created_at: string;
   updated_at: string;
   total_orders: number;
@@ -30,39 +27,18 @@ export interface CRMOrder {
 }
 
 export interface CRMStats {
-  total_users: number;
-  active_users: number;
+  total_customers: number;
+  active_customers: number;
   total_orders: number;
   total_revenue: number;
   average_order_value: number;
-  top_users: CRMUser[];
+  top_customers: CRMCustomer[];
 }
 
 class CRMService {
   // Obtener estadísticas generales de CRM
   async getCRMStats(sedeId?: string): Promise<CRMStats> {
     try {
-      // Obtener usuarios de la sede
-      let usersQuery = supabase
-        .from('profiles')
-        .select(`
-          id,
-          nickname,
-          display_name,
-          role,
-          sede_id,
-          is_active,
-          created_at,
-          updated_at
-        `);
-
-      if (sedeId) {
-        usersQuery = usersQuery.eq('sede_id', sedeId);
-      }
-
-      const { data: users, error: usersError } = await usersQuery;
-      if (usersError) throw usersError;
-
       // Obtener estadísticas de órdenes
       let ordersQuery = supabase
         .from('ordenes')
@@ -84,23 +60,52 @@ class CRMService {
       const { data: orders, error: ordersError } = await ordersQuery;
       if (ordersError) throw ordersError;
 
+      // Obtener clientes únicos que han hecho órdenes
+      const uniqueClienteIds = [...new Set(orders?.map(o => o.cliente_id) || [])];
+      
+      let customersQuery = supabase
+        .from('clientes')
+        .select(`
+          id,
+          nombre,
+          telefono,
+          direccion,
+          created_at,
+          updated_at
+        `);
+
+      // Si hay filtro por sede, solo obtener clientes que han hecho órdenes en esa sede
+      if (uniqueClienteIds.length > 0) {
+        customersQuery = customersQuery.in('id', uniqueClienteIds);
+      }
+
+      const { data: customers, error: customersError } = await customersQuery;
+      if (customersError) throw customersError;
+
       // Calcular estadísticas
-      const totalUsers = users?.length || 0;
-      const activeUsers = users?.filter(u => u.is_active).length || 0;
+      const totalCustomers = customers?.length || 0;
+      
+      // Clientes activos: que han hecho al menos una orden en los últimos 30 días
+      const thirtyDaysAgo = new Date();
+      thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+      const recentOrders = orders?.filter(o => new Date(o.created_at) >= thirtyDaysAgo) || [];
+      const activeCustomerIds = [...new Set(recentOrders.map(o => o.cliente_id))];
+      const activeCustomers = activeCustomerIds.length;
+      
       const totalOrders = orders?.length || 0;
       const totalRevenue = orders?.reduce((sum, order) => sum + (order.pagos?.total_pago || 0), 0) || 0;
       const averageOrderValue = totalOrders > 0 ? totalRevenue / totalOrders : 0;
 
-      // Obtener top usuarios (usuarios con más órdenes)
-      const topUsers = await this.getTopUsers(sedeId);
+      // Obtener top clientes (clientes con más órdenes)
+      const topCustomers = await this.getTopCustomers(sedeId);
 
       return {
-        total_users: totalUsers,
-        active_users: activeUsers,
+        total_customers: totalCustomers,
+        active_customers: activeCustomers,
         total_orders: totalOrders,
         total_revenue: totalRevenue,
         average_order_value: averageOrderValue,
-        top_users: topUsers
+        top_customers: topCustomers
       };
     } catch (error) {
       console.error('Error getting CRM stats:', error);
@@ -108,102 +113,81 @@ class CRMService {
     }
   }
 
-  // Obtener lista de usuarios con estadísticas
-  async getCRMUsers(sedeId?: string): Promise<CRMUser[]> {
+  // Obtener lista de clientes con estadísticas
+  async getCRMCustomers(sedeId?: string): Promise<CRMCustomer[]> {
     try {
-      // Obtener usuarios
-      let usersQuery = supabase
-        .from('profiles')
+      // Primero obtener todas las órdenes (filtradas por sede si aplica)
+      let ordersQuery = supabase
+        .from('ordenes')
         .select(`
           id,
-          nickname,
-          display_name,
-          role,
-          sede_id,
-          is_active,
           created_at,
-          updated_at
+          status,
+          cliente_id,
+          sede_id,
+          pagos!inner(total_pago)
         `);
 
       if (sedeId) {
-        usersQuery = usersQuery.eq('sede_id', sedeId);
+        ordersQuery = ordersQuery.eq('sede_id', sedeId);
       }
 
-      const { data: users, error: usersError } = await usersQuery;
-      if (usersError) throw usersError;
+      const { data: orders, error: ordersError } = await ordersQuery;
+      if (ordersError) throw ordersError;
 
-      if (!users) return [];
-
-      // Para cada usuario, obtener estadísticas de órdenes
-      const usersWithStats = await Promise.all(
-        users.map(async (user) => {
-           // Obtener órdenes del usuario
-           const { data: orders, error: ordersError } = await supabase
-             .from('ordenes')
-             .select(`
-               id,
-               created_at,
-               status,
-               pagos!inner(total_pago)
-             `)
-             .eq('cliente_id', user.id);
-
-          if (ordersError) {
-            console.error('Error getting orders for user:', user.id, ordersError);
-            return {
-              ...user,
-              sede_name: '', // Se llenará después
-              total_orders: 0,
-              total_spent: 0,
-              last_order_date: undefined,
-              average_order_value: 0
-            };
-          }
-
-           const totalOrders = orders?.length || 0;
-           const totalSpent = orders?.reduce((sum, order) => sum + (order.pagos?.total_pago || 0), 0) || 0;
-           const averageOrderValue = totalOrders > 0 ? totalSpent / totalOrders : 0;
-          const lastOrderDate = orders && orders.length > 0 
-            ? orders.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())[0].created_at
-            : undefined;
-
-          return {
-            ...user,
-            sede_name: '', // Se llenará después
-            total_orders: totalOrders,
-            total_spent: totalSpent,
-            last_order_date: lastOrderDate,
-            average_order_value: averageOrderValue
-          };
-        })
-      );
-
-      // Obtener nombres de sedes
-      const sedeIds = [...new Set(usersWithStats.map(u => u.sede_id))];
-      const { data: sedes, error: sedesError } = await supabase
-        .from('sedes')
-        .select('id, name')
-        .in('id', sedeIds);
-
-      if (sedesError) {
-        console.error('Error getting sedes:', sedesError);
-      }
-
-      // Mapear nombres de sedes
-      const sedeMap = new Map(sedes?.map(s => [s.id, s.name]) || []);
+      // Obtener clientes únicos de las órdenes
+      const uniqueClienteIds = [...new Set(orders?.map(o => o.cliente_id) || [])];
       
-      return usersWithStats.map(user => ({
-        ...user,
-        sede_name: sedeMap.get(user.sede_id) || 'Sede no encontrada'
-      }));
+      if (uniqueClienteIds.length === 0) return [];
+
+      // Obtener información de clientes
+      const { data: customers, error: customersError } = await supabase
+        .from('clientes')
+        .select(`
+          id,
+          nombre,
+          telefono,
+          direccion,
+          created_at,
+          updated_at
+        `)
+        .in('id', uniqueClienteIds);
+
+      if (customersError) throw customersError;
+
+      if (!customers) return [];
+
+      // Para cada cliente, calcular estadísticas de órdenes
+      const customersWithStats = customers.map((customer) => {
+        // Filtrar órdenes de este cliente
+        const customerOrders = orders?.filter(o => o.cliente_id === customer.id) || [];
+        
+        const totalOrders = customerOrders.length;
+        const totalSpent = customerOrders.reduce((sum, order) => sum + (order.pagos?.total_pago || 0), 0);
+        const averageOrderValue = totalOrders > 0 ? totalSpent / totalOrders : 0;
+        const lastOrderDate = customerOrders.length > 0 
+          ? customerOrders.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())[0].created_at
+          : undefined;
+
+        return {
+          ...customer,
+          total_orders: totalOrders,
+          total_spent: totalSpent,
+          last_order_date: lastOrderDate,
+          average_order_value: averageOrderValue
+        };
+      });
+
+      // Ordenar por total gastado (mejores clientes primero)
+      return customersWithStats.sort((a, b) => b.total_spent - a.total_spent);
     } catch (error) {
-      console.error('Error getting CRM users:', error);
+      console.error('Error getting CRM customers:', error);
       throw error;
     }
   }
 
-  // Obtener órdenes de un usuario específico
-  async getUserOrders(userId: string, limit: number = 10): Promise<CRMOrder[]> {
+  // Obtener órdenes de un cliente específico
+  async getCustomerOrders(customerId: string, limit: number = 10): Promise<CRMOrder[]> {
     try {
        const { data: orders, error } = await supabase
          .from('ordenes')
@@ -223,7 +207,7 @@ class CRMService {
            ),
            pagos!inner(total_pago)
          `)
-        .eq('cliente_id', userId)
+        .eq('cliente_id', customerId)
         .order('created_at', { ascending: false })
         .limit(limit);
 
@@ -268,57 +252,78 @@ class CRMService {
     }
   }
 
-  // Obtener top usuarios por número de órdenes
-  private async getTopUsers(sedeId?: string, limit: number = 5): Promise<CRMUser[]> {
+  // Obtener top clientes por número de órdenes
+  private async getTopCustomers(sedeId?: string, limit: number = 5): Promise<CRMCustomer[]> {
     try {
-      // Obtener usuarios con conteo de órdenes
-      let query = supabase
-        .from('profiles')
+      // Obtener órdenes (filtradas por sede si aplica)
+      let ordersQuery = supabase
+        .from('ordenes')
         .select(`
-          id,
-          nickname,
-          display_name,
-          role,
-          sede_id,
-          is_active,
-          created_at,
-          updated_at
+          cliente_id,
+          pagos!inner(total_pago)
         `);
 
       if (sedeId) {
-        query = query.eq('sede_id', sedeId);
+        ordersQuery = ordersQuery.eq('sede_id', sedeId);
       }
 
-      const { data: users, error: usersError } = await query;
-      if (usersError) throw usersError;
+      const { data: orders, error: ordersError } = await ordersQuery;
+      if (ordersError) throw ordersError;
 
-      if (!users) return [];
+      if (!orders || orders.length === 0) return [];
 
-      // Obtener conteo de órdenes para cada usuario
-      const usersWithOrderCount = await Promise.all(
-        users.map(async (user) => {
-          const { count } = await supabase
-            .from('ordenes')
-            .select('*', { count: 'exact', head: true })
-            .eq('cliente_id', user.id);
-
-          return {
-            ...user,
-            sede_name: '',
-            total_orders: count || 0,
-            total_spent: 0,
-            last_order_date: undefined,
-            average_order_value: 0
+      // Agrupar órdenes por cliente y calcular estadísticas
+      const customerStats = orders.reduce((acc, order) => {
+        const customerId = order.cliente_id;
+        if (!acc[customerId]) {
+          acc[customerId] = {
+            total_orders: 0,
+            total_spent: 0
           };
-        })
-      );
+        }
+        acc[customerId].total_orders += 1;
+        acc[customerId].total_spent += order.pagos?.total_pago || 0;
+        return acc;
+      }, {} as Record<string, { total_orders: number; total_spent: number }>);
 
-      // Ordenar por número de órdenes y tomar los primeros
-      return usersWithOrderCount
-        .sort((a, b) => b.total_orders - a.total_orders)
-        .slice(0, limit);
+      // Obtener top clientes por total gastado
+      const topCustomerIds = Object.entries(customerStats)
+        .sort(([,a], [,b]) => b.total_spent - a.total_spent)
+        .slice(0, limit)
+        .map(([customerId]) => customerId);
+
+      if (topCustomerIds.length === 0) return [];
+
+      // Obtener información completa de los top clientes
+      const { data: customers, error: customersError } = await supabase
+        .from('clientes')
+        .select(`
+          id,
+          nombre,
+          telefono,
+          direccion,
+          created_at,
+          updated_at
+        `)
+        .in('id', topCustomerIds);
+
+      if (customersError) throw customersError;
+
+      if (!customers) return [];
+
+      // Combinar información del cliente con estadísticas
+      return customers.map(customer => {
+        const stats = customerStats[customer.id];
+        return {
+          ...customer,
+          total_orders: stats.total_orders,
+          total_spent: stats.total_spent,
+          last_order_date: undefined, // Se puede calcular si es necesario
+          average_order_value: stats.total_orders > 0 ? stats.total_spent / stats.total_orders : 0
+        };
+      }).sort((a, b) => b.total_spent - a.total_spent);
     } catch (error) {
-      console.error('Error getting top users:', error);
+      console.error('Error getting top customers:', error);
       return [];
     }
   }

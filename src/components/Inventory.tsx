@@ -45,7 +45,6 @@ export const Inventory: React.FC<InventoryProps> = ({
   const [localSedeName, setLocalSedeName] = useState<string | null>(null);
 
   const [searchTerm, setSearchTerm] = useState('');
-  const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [activeTab, setActiveTab] = useState('productos');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -198,15 +197,12 @@ export const Inventory: React.FC<InventoryProps> = ({
   // Para el conteo total (compatibilidad con código existente)
   const allProducts = [...platosProducts, ...bebidasProducts];
 
-  const categories = ['all', ...new Set(allProducts.map(item => item.category))];
-  
   // Función para filtrar productos según búsqueda
   const filterProducts = (products: any[]) => {
     return products.filter(item => {
       const matchesSearch = item.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
                            item.description.toLowerCase().includes(searchTerm.toLowerCase());
-      const matchesCategory = selectedCategory === 'all' || item.category === selectedCategory;
-      return matchesSearch && matchesCategory;
+      return matchesSearch;
     });
   };
 
@@ -218,8 +214,7 @@ export const Inventory: React.FC<InventoryProps> = ({
   const filteredItems = allProducts.filter(item => {
     const matchesSearch = item.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          item.description.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesCategory = selectedCategory === 'all' || item.category === selectedCategory;
-    return matchesSearch && matchesCategory;
+    return matchesSearch;
   });
 
   const toggleProductAvailability = async (productId: number, type: 'plato' | 'bebida' | 'topping') => {
@@ -858,18 +853,6 @@ export const Inventory: React.FC<InventoryProps> = ({
                 onChange={(e) => setSearchTerm(e.target.value)}
                 className="pl-10"
               />
-            </div>
-            <div className="flex gap-2">
-              {categories.map(category => (
-                <Button
-                  key={category}
-                  variant={selectedCategory === category ? "default" : "outline"}
-                  size="sm"
-                  onClick={() => setSelectedCategory(category)}
-                >
-                  {category === 'all' ? 'Todos' : category}
-                </Button>
-              ))}
             </div>
 
           </div>
