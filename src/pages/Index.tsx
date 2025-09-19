@@ -503,7 +503,7 @@ const Index = () => {
 
         <div className="container mx-auto p-6">
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-          <TabsList className={`grid w-full ${isAdmin ? 'grid-cols-3' : 'grid-cols-4'} lg:w-auto ${isAdmin ? 'lg:grid-cols-3' : 'lg:grid-cols-4'} bg-brand-secondary`}>
+          <TabsList className="grid w-full grid-cols-3 lg:w-auto lg:grid-cols-3 bg-brand-secondary">
             <TabsTrigger value="dashboard" className="flex items-center gap-2 data-[state=active]:bg-brand-primary data-[state=active]:text-white">
               <LayoutDashboard className="h-4 w-4" />
               Dashboard
