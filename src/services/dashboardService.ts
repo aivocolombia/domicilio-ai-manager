@@ -5,7 +5,7 @@ export interface DashboardOrder {
   id_display: string;
   cliente_nombre: string;
   cliente_telefono: string;
-  direccion: string;
+  address: string; // Dirección específica de esta orden (no del cliente)
   sede: string;
   estado: string;
   pago_tipo: string;
@@ -70,7 +70,8 @@ export class DashboardService {
           sede_id,
           source,
           type_order,
-          clientes!left(nombre, telefono, direccion),
+          address,
+          clientes!left(nombre, telefono),
           pagos!left(type, status, total_pago),
           repartidores!left(nombre),
           sedes!left(name),
@@ -240,7 +241,7 @@ export class DashboardService {
         id_display: `ORD-${order.id.toString().padStart(4, '0')}`,
         cliente_nombre: order.clientes?.nombre || 'Sin nombre',
         cliente_telefono: order.clientes?.telefono || 'Sin teléfono',
-        direccion: order.clientes?.direccion || 'Sin dirección',
+        address: order.address || 'Sin dirección',
         sede: order.sedes?.name || 'Sin sede',
         estado: order.status || 'Desconocido',
         pago_tipo: order.pagos?.type || 'Sin pago',
