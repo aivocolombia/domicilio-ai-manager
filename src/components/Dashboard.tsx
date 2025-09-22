@@ -130,7 +130,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
   // Estados para modal de pausar pedidos
   const [isPauseModalOpen, setIsPauseModalOpen] = useState(false);
-  const [pauseOption, setPauseOption] = useState<'agent' | 'global'>('agent');
+  const [pauseOption, setPauseOption] = useState<'global'>('global');
   const [pauseTimer, setPauseTimer] = useState<string>('');
   const [pauseTimerActive, setPauseTimerActive] = useState(false);
 
@@ -1153,11 +1153,11 @@ export const Dashboard: React.FC<DashboardProps> = ({
     toggleAcceptingOrders();
     
     // Show confirmation
-    const pauseTypeText = pauseOption === 'agent' ? 'el agente de AI' : 'el agente de AI y todos los pedidos';
+    const pauseTypeText = 'todos los pedidos';
     const timerText = minutes > 0 ? ` por ${minutes} minutos` : '';
-    
+
     toast({
-      title: pauseOption === 'agent' ? "Agente AI Pausado" : "Sistema Pausado",
+      title: "Sistema Pausado",
       description: `Se ha pausado ${pauseTypeText}${timerText}`,
     });
     
@@ -2294,43 +2294,22 @@ export const Dashboard: React.FC<DashboardProps> = ({
               Pausar Pedidos
             </DialogTitle>
             <DialogDescription>
-              Configura como pausar la recepción de nuevos pedidos
+              Pausa la recepción de todos los nuevos pedidos
             </DialogDescription>
           </DialogHeader>
           
           <div className="space-y-6">
-            {/* Opciones de pausa */}
+            {/* Información de pausa */}
             <div className="space-y-3">
-              <Label className="text-sm font-medium text-gray-900">Tipo de Pausa:</Label>
-              <RadioGroup 
-                value={pauseOption} 
-                onValueChange={(value: 'agent' | 'global') => setPauseOption(value)}
-                className="space-y-3"
-              >
-                <div className="flex items-center space-x-3 p-3 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors">
-                  <RadioGroupItem value="agent" id="pause-agent" />
-                  <div className="flex-1">
-                    <Label htmlFor="pause-agent" className="font-medium cursor-pointer">
-                      Agente AI
-                    </Label>
-                    <p className="text-sm text-gray-600 mt-1">
-                      Solo pausa el agente de inteligencia artificial
-                    </p>
-                  </div>
+              <div className="p-4 border border-blue-200 rounded-lg bg-blue-50">
+                <div className="flex items-center gap-2 mb-2">
+                  <PowerOff className="h-5 w-5 text-blue-600" />
+                  <Label className="text-sm font-medium text-blue-900">Pausa Global</Label>
                 </div>
-                
-                <div className="flex items-center space-x-3 p-3 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors">
-                  <RadioGroupItem value="global" id="pause-global" />
-                  <div className="flex-1">
-                    <Label htmlFor="pause-global" className="font-medium cursor-pointer">
-                      Global
-                    </Label>
-                    <p className="text-sm text-gray-600 mt-1">
-                      Detiene el agente de AI y pausa todos los pedidos
-                    </p>
-                  </div>
-                </div>
-              </RadioGroup>
+                <p className="text-sm text-blue-700">
+                  Se pausará la recepción de todos los nuevos pedidos en el sistema.
+                </p>
+              </div>
             </div>
 
             {/* Timer automático */}
@@ -2361,7 +2340,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
               <div className="text-sm text-red-800">
                 <strong>Resumen:</strong>
                 <br />
-                • Se pausará {pauseOption === 'agent' ? 'solo el agente de AI' : 'el agente de AI y todos los pedidos'}
+                • Se pausarán todos los pedidos
                 {pauseTimer && parseInt(pauseTimer) > 0 && (
                   <>
                     <br />
@@ -2383,7 +2362,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
               variant="outline" 
               onClick={() => {
                 setIsPauseModalOpen(false);
-                setPauseOption('agent');
+                setPauseOption('global');
                 setPauseTimer('');
               }}
             >

@@ -914,12 +914,16 @@ export function AdminPanel({ onBack, onNavigateToTimeMetrics }: AdminPanelProps)
     }
 
     try {
+      // Para admin_punto, forzar la sede a la suya propia
+      const sedeIdToUse = user?.role === 'admin_punto' ? user.sede_id :
+        (repartidorFormData.sede_id === 'none' ? null : repartidorFormData.sede_id || null);
+
       const tempRepartidor: Repartidor = {
         id: Date.now(), // Temporary ID
         nombre: repartidorFormData.nombre.trim(),
         telefono: repartidorFormData.telefono.trim(),
         placas: repartidorFormData.placas.trim() || undefined,
-        sede_id: repartidorFormData.sede_id === 'none' ? null : repartidorFormData.sede_id || null,
+        sede_id: sedeIdToUse,
         disponible: true,
         created_at: new Date().toISOString()
       }
@@ -931,7 +935,7 @@ export function AdminPanel({ onBack, onNavigateToTimeMetrics }: AdminPanelProps)
           nombre: repartidorFormData.nombre.trim(),
           telefono: repartidorFormData.telefono.trim(),
           placas: repartidorFormData.placas.trim() || undefined,
-          sede_id: repartidorFormData.sede_id === 'none' ? null : repartidorFormData.sede_id || null
+          sede_id: sedeIdToUse
         }),
         {
           onSuccess: (newRepartidor) => {
@@ -1294,7 +1298,7 @@ export function AdminPanel({ onBack, onNavigateToTimeMetrics }: AdminPanelProps)
 
         {/* Tabs para Gestión */}
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-          <TabsList className="grid w-full grid-cols-4">
+          <TabsList className="grid w-full grid-cols-3">
             <TabsTrigger value="users" className="flex items-center gap-2">
               <Users className="h-4 w-4" />
               Usuarios
@@ -1502,26 +1506,26 @@ export function AdminPanel({ onBack, onNavigateToTimeMetrics }: AdminPanelProps)
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {filteredUsers.map((user) => (
-                          <TableRow key={user.id}>
+                        {filteredUsers.map((tableUser) => (
+                          <TableRow key={tableUser.id}>
                             <TableCell>
                               <div>
-                                <div className="font-medium">{user.display_name}</div>
-                                <div className="text-sm text-muted-foreground">@{user.nickname}</div>
+                                <div className="font-medium">{tableUser.display_name}</div>
+                                <div className="text-sm text-muted-foreground">@{tableUser.nickname}</div>
                               </div>
                             </TableCell>
-                            <TableCell>{getRoleBadge(user.role)}</TableCell>
+                            <TableCell>{getRoleBadge(tableUser.role)}</TableCell>
                             <TableCell>
-                              {user.sede_id ? (
+                              {tableUser.sede_id ? (
                                 <span className="text-sm text-muted-foreground">
-                                  {sedesSimple.find(s => s.id === user.sede_id)?.name || 'N/A'}
+                                  {sedesSimple.find(s => s.id === tableUser.sede_id)?.name || 'N/A'}
                                 </span>
                               ) : (
                                 <span className="text-sm text-muted-foreground">Sin sede</span>
                               )}
                             </TableCell>
                             <TableCell>
-                              {user.is_active ? (
+                              {tableUser.is_active ? (
                                 <Badge variant="default">Activo</Badge>
                               ) : (
                                 <Badge variant="secondary">Inactivo</Badge>
@@ -1532,27 +1536,33 @@ export function AdminPanel({ onBack, onNavigateToTimeMetrics }: AdminPanelProps)
                                 <Button
                                   variant="outline"
                                   size="sm"
-                                  onClick={() => toggleUserStatus(user.id, user.is_active)}
-                                  title={user.is_active ? 'Desactivar usuario' : 'Activar usuario'}
+                                  onClick={() => toggleUserStatus(tableUser.id, tableUser.is_active)}
+                                  title={tableUser.is_active ? 'Desactivar usuario' : 'Activar usuario'}
                                 >
-                                  {user.is_active ? <UserX className="h-4 w-4" /> : <UserCheck className="h-4 w-4" />}
+                                  {tableUser.is_active ? <UserX className="h-4 w-4" /> : <UserCheck className="h-4 w-4" />}
                                 </Button>
-                                <Button
-                                  variant="outline"
-                                  size="sm"
-                                  onClick={() => handleUserSedeEdit(user)}
-                                  title="Editar sede del usuario"
-                                >
-                                  <Building2 className="h-4 w-4" />
-                                </Button>
-                                <Button
-                                  variant="destructive"
-                                  size="sm"
-                                  onClick={() => handleDeleteUser(user.id, user.display_name, user.nickname)}
-                                  title="Eliminar usuario"
-                                >
-                                  <Trash2 className="h-4 w-4" />
-                                </Button>
+                                {/* Solo admin_global puede cambiar sede de usuarios */}
+                                {user?.role === 'admin_global' && (
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => handleUserSedeEdit(tableUser)}
+                                    title="Editar sede del usuario"
+                                  >
+                                    <Building2 className="h-4 w-4" />
+                                  </Button>
+                                )}
+                                {/* Solo admin_global puede eliminar cualquier usuario, admin_punto solo de su sede */}
+                                {(user?.role === 'admin_global' || (user?.role === 'admin_punto' && tableUser.sede_id === user?.sede_id)) && (
+                                  <Button
+                                    variant="destructive"
+                                    size="sm"
+                                    onClick={() => handleDeleteUser(tableUser.id, tableUser.display_name, tableUser.nickname)}
+                                    title="Eliminar usuario"
+                                  >
+                                    <Trash2 className="h-4 w-4" />
+                                  </Button>
+                                )}
                               </div>
                             </TableCell>
                           </TableRow>
@@ -1947,14 +1957,16 @@ export function AdminPanel({ onBack, onNavigateToTimeMetrics }: AdminPanelProps)
                               >
                                 {repartidor.disponible ? <UserX className="h-4 w-4" /> : <UserCheck className="h-4 w-4" />}
                               </Button>
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() => handleRepartidorSedeEdit(repartidor)}
-                                title="Cambiar sede del repartidor"
-                              >
-                                <Building2 className="h-4 w-4" />
-                              </Button>
+                              {user?.role !== 'admin_punto' && (
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => handleRepartidorSedeEdit(repartidor)}
+                                  title="Cambiar sede del repartidor"
+                                >
+                                  <Building2 className="h-4 w-4" />
+                                </Button>
+                              )}
                               <Button
                                 variant="outline"
                                 size="sm"
@@ -2279,19 +2291,45 @@ export function AdminPanel({ onBack, onNavigateToTimeMetrics }: AdminPanelProps)
                         <div className="grid grid-cols-3 gap-4 p-4 bg-red-50 rounded-lg border border-red-200">
                           <div className="text-center">
                             <div className="text-2xl font-bold text-red-600">
-                              {metricsData.pedidosCancelados?.total || 0}
+                              {(() => {
+                                if (user?.role === 'admin_punto') {
+                                  // Para admin_punto: solo mostrar cancelaciones de su sede
+                                  const sedeData = metricsData.pedidosCancelados?.porSede?.find(sede => sede.sede_id === user?.sede_id);
+                                  return sedeData?.cancelados || 0;
+                                }
+                                // Para admin_global: mostrar total global
+                                return metricsData.pedidosCancelados?.total || 0;
+                              })()}
                             </div>
-                            <div className="text-sm text-red-700">Total Cancelados</div>
+                            <div className="text-sm text-red-700">
+                              {user?.role === 'admin_punto' ? 'Cancelados en tu Sede' : 'Total Cancelados'}
+                            </div>
                           </div>
                           <div className="text-center">
                             <div className="text-2xl font-bold text-red-600">
-                              {metricsData.pedidosCancelados?.porcentaje ? `${metricsData.pedidosCancelados.porcentaje.toFixed(1)}%` : '0.0%'}
+                              {(() => {
+                                if (user?.role === 'admin_punto') {
+                                  // Para admin_punto: calcular porcentaje de su sede vs sus propios pedidos
+                                  const sedeData = metricsData.pedidosCancelados?.porSede?.find(sede => sede.sede_id === user?.sede_id);
+                                  return sedeData?.porcentaje ? `${sedeData.porcentaje.toFixed(1)}%` : '0.0%';
+                                }
+                                // Para admin_global: mostrar porcentaje global
+                                return metricsData.pedidosCancelados?.porcentaje ? `${metricsData.pedidosCancelados.porcentaje.toFixed(1)}%` : '0.0%';
+                              })()}
                             </div>
                             <div className="text-sm text-red-700">Tasa de Cancelación</div>
                           </div>
                           <div className="text-center">
                             <div className="text-2xl font-bold text-red-600">
-                              ${((metricsData.pedidosCancelados?.montoTotal || 0) / 1000).toFixed(0)}k
+                              {(() => {
+                                if (user?.role === 'admin_punto') {
+                                  // Para admin_punto: calcular monto de su sede
+                                  const sedeData = metricsData.pedidosCancelados?.porSede?.find(sede => sede.sede_id === user?.sede_id);
+                                  return `$${((sedeData?.monto || 0) / 1000).toFixed(0)}k`;
+                                }
+                                // Para admin_global: mostrar monto global
+                                return `$${((metricsData.pedidosCancelados?.montoTotal || 0) / 1000).toFixed(0)}k`;
+                              })()}
                             </div>
                             <div className="text-sm text-red-700">Monto Perdido</div>
                           </div>
@@ -2300,8 +2338,12 @@ export function AdminPanel({ onBack, onNavigateToTimeMetrics }: AdminPanelProps)
                         {/* Cancelaciones por sede */}
                         {metricsData.pedidosCancelados?.porSede && metricsData.pedidosCancelados.porSede.length > 0 ? (
                           <div className="space-y-3">
-                            <h4 className="font-semibold text-sm">Cancelaciones por Sede:</h4>
-                            {metricsData.pedidosCancelados.porSede.map((sede, index) => (
+                            <h4 className="font-semibold text-sm">
+                              {user?.role === 'admin_punto' ? 'Cancelaciones en tu Sede:' : 'Cancelaciones por Sede:'}
+                            </h4>
+                            {metricsData.pedidosCancelados.porSede
+                              .filter(sede => user?.role === 'admin_global' || sede.sede_id === user?.sede_id)
+                              .map((sede, index) => (
                               <div 
                                 key={index} 
                                 className="flex items-center justify-between p-3 bg-muted/50 rounded-lg hover:bg-red-100 cursor-pointer transition-colors border-l-4 border-red-500"
@@ -2314,7 +2356,12 @@ export function AdminPanel({ onBack, onNavigateToTimeMetrics }: AdminPanelProps)
                                 </div>
                                 <div className="text-right">
                                   <div className="font-bold text-red-600">{sede.cancelados}</div>
-                                  <div className="text-xs text-muted-foreground">{sede.porcentaje ? `${sede.porcentaje.toFixed(1)}%` : '0%'} del total</div>
+                                  <div className="text-xs text-muted-foreground">
+                                    {user?.role === 'admin_punto'
+                                      ? `${sede.cancelados} cancelaciones`
+                                      : `${sede.porcentaje ? sede.porcentaje.toFixed(1) : '0'}% del total`
+                                    }
+                                  </div>
                                 </div>
                               </div>
                             ))}

@@ -15,14 +15,16 @@ import { ChevronLeft, ChevronRight, XCircle, Calendar, DollarSign, MessageCircle
 
 interface CancelledOrder {
   id: number;
+  id_display?: string;
   created_at: string;
   motivo_cancelacion: string;
-  pagos?: {
-    total_pago: number;
-  } | null;
+  payment_id: number;
   clientes?: {
     nombre: string;
     telefono: string;
+  } | null;
+  pagos?: {
+    total_pago: number;
   } | null;
 }
 
@@ -61,54 +63,89 @@ export const CancelledOrdersModal: React.FC<CancelledOrdersModalProps> = ({
       setLoading(true);
       setError(null);
 
-      // Construir consulta base
-      let query = supabase
+      console.log('🔍 Iniciando carga de cancelaciones para sede:', sedeId);
+
+      // Construir query base - misma estructura que Dashboard
+      let countQuery = supabase
         .from('ordenes')
-        .select(`
-          id,
-          created_at,
-          motivo_cancelacion,
-          pagos!left(total_pago),
-          clientes!left(nombre, telefono)
-        `)
+        .select('*', { count: 'exact', head: true })
         .eq('status', 'Cancelado')
-        .eq('sede_id', sedeId)
-        .order('created_at', { ascending: false });
+        .eq('sede_id', sedeId);
 
       // Aplicar filtros de fecha si están definidos
       if (dateFilters.fecha_inicio && dateFilters.fecha_fin) {
-        // Convertir fechas a rangos UTC correctos para Colombia
         const startDate = new Date(`${dateFilters.fecha_inicio}T00:00:00`);
         const endDate = new Date(`${dateFilters.fecha_fin}T23:59:59`);
-        
+
         const startQuery = formatDateForQuery(startDate, false);
         const endQuery = formatDateForQuery(endDate, true);
-        
-        query = query
+
+        countQuery = countQuery
           .gte('created_at', startQuery)
           .lte('created_at', endQuery);
       }
 
-      // Obtener count total primero
-      const { count, error: countError } = await query
-        .select('*', { count: 'exact', head: true });
+      // Obtener count total
+      const { count, error: countError } = await countQuery;
 
       if (countError) {
         throw new Error(`Error obteniendo conteo: ${countError.message}`);
       }
 
       setTotalCount(count || 0);
+      console.log('📊 Count total de cancelaciones:', count);
 
-      // Ahora obtener los datos paginados
-      const { data, error } = await query
+      // Construir query para datos
+      let dataQuery = supabase
+        .from('ordenes')
+        .select(`
+          id,
+          created_at,
+          motivo_cancelacion,
+          payment_id,
+          clientes!left(nombre, telefono),
+          pagos!left(total_pago)
+        `)
+        .eq('status', 'Cancelado')
+        .eq('sede_id', sedeId)
+        .order('created_at', { ascending: false })
         .range(startIndex, endIndex);
+
+      // Aplicar los mismos filtros de fecha
+      if (dateFilters.fecha_inicio && dateFilters.fecha_fin) {
+        const startDate = new Date(`${dateFilters.fecha_inicio}T00:00:00`);
+        const endDate = new Date(`${dateFilters.fecha_fin}T23:59:59`);
+
+        const startQuery = formatDateForQuery(startDate, false);
+        const endQuery = formatDateForQuery(endDate, true);
+
+        dataQuery = dataQuery
+          .gte('created_at', startQuery)
+          .lte('created_at', endQuery);
+      }
+
+      // Obtener los datos
+      const { data, error } = await dataQuery;
 
       if (error) {
         throw new Error(`Error obteniendo órdenes canceladas: ${error.message}`);
       }
 
-      setOrders(data || []);
-      console.log('✅ Órdenes canceladas cargadas:', data?.length || 0);
+      // Generar id_display para las órdenes
+      const ordersWithDisplay = (data || []).map(order => ({
+        ...order,
+        id_display: `ORD-${order.id.toString().padStart(4, '0')}`
+      }));
+
+      setOrders(ordersWithDisplay);
+      console.log('✅ Órdenes canceladas cargadas:', {
+        count: ordersWithDisplay.length,
+        totalCountFromQuery: count,
+        sampleOrder: ordersWithDisplay[0],
+        rawDataSample: data?.[0],
+        sedeId: sedeId,
+        dateFilters: dateFilters
+      });
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Error desconocido';
       console.error('❌ Error cargando órdenes canceladas:', err);
@@ -221,7 +258,7 @@ export const CancelledOrdersModal: React.FC<CancelledOrdersModalProps> = ({
                     <CardHeader className="pb-3">
                       <div className="flex items-start justify-between">
                         <CardTitle className="text-lg flex items-center gap-2">
-                          <span className="text-red-600">Orden #{order.id}</span>
+                          <span className="text-red-600">Orden {order.id_display || `#${order.id}`}</span>
                           <Badge variant="destructive" className="text-xs">
                             Cancelada
                           </Badge>
@@ -241,10 +278,18 @@ export const CancelledOrdersModal: React.FC<CancelledOrdersModalProps> = ({
                           <h4 className="font-semibold text-sm mb-2 flex items-center gap-1">
                             <span>Cliente:</span>
                           </h4>
-                          {order.clientes ? (
+                          {order.clientes && (order.clientes.nombre || order.clientes.telefono) ? (
                             <div className="text-sm space-y-1">
-                              <div><strong>Nombre:</strong> {order.clientes.nombre}</div>
-                              <div><strong>Teléfono:</strong> {order.clientes.telefono}</div>
+                              {order.clientes.nombre ? (
+                                <div><strong>Nombre:</strong> {order.clientes.nombre}</div>
+                              ) : (
+                                <div className="text-sm text-muted-foreground">Sin nombre</div>
+                              )}
+                              {order.clientes.telefono ? (
+                                <div><strong>Teléfono:</strong> {order.clientes.telefono}</div>
+                              ) : (
+                                <div className="text-sm text-muted-foreground">Sin teléfono</div>
+                              )}
                             </div>
                           ) : (
                             <div className="text-sm text-muted-foreground">Sin información del cliente</div>
@@ -258,9 +303,9 @@ export const CancelledOrdersModal: React.FC<CancelledOrdersModalProps> = ({
                             <span>Monto:</span>
                           </h4>
                           <div className="text-lg font-bold text-red-600">
-                            {order.pagos?.total_pago ? 
-                              formatCurrency(order.pagos.total_pago) : 
-                              'Sin información de pago'
+                            {order.pagos?.total_pago && order.pagos.total_pago > 0 ?
+                              formatCurrency(order.pagos.total_pago) :
+                              <span className="text-sm text-muted-foreground font-normal">Sin información de pago</span>
                             }
                           </div>
                         </div>
@@ -273,7 +318,10 @@ export const CancelledOrdersModal: React.FC<CancelledOrdersModalProps> = ({
                           Motivo de cancelación:
                         </h4>
                         <p className="text-sm text-red-800 leading-relaxed">
-                          {order.motivo_cancelacion || 'Sin motivo especificado'}
+                          {order.motivo_cancelacion?.trim() ?
+                            order.motivo_cancelacion.trim() :
+                            <span className="text-muted-foreground">Sin motivo especificado</span>
+                          }
                         </p>
                       </div>
                     </CardContent>
