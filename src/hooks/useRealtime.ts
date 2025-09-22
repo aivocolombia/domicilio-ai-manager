@@ -78,8 +78,17 @@ export const useRealtime = ({
             console.error(`❌ [${table}] Realtime subscription error:`, err);
             onError?.(new Error(`Realtime subscription failed: ${err.message}`));
           } else {
-            console.warn(`⚠️ [${table}] Realtime connectivity issue (temporary)`);
+            console.debug(`🔄 [${table}] Realtime connectivity issue (will retry automatically)`);
             onError?.(new Error(`Temporary connectivity issue for ${table}`));
+
+            // Reintento automático después de 5 segundos para problemas de conectividad
+            setTimeout(() => {
+              if (!isSubscribedRef.current && enabled) {
+                console.log(`🔄 [${table}] Attempting automatic reconnection...`);
+                unsubscribe();
+                subscribe();
+              }
+            }, 5000);
           }
           isSubscribedRef.current = false;
         } else if (status === REALTIME_SUBSCRIBE_STATES.TIMED_OUT) {
