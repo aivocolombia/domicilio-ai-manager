@@ -197,10 +197,10 @@ class CRMService {
            status,
            cliente_id,
            repartidor_id,
+           address,
            clientes!inner(
              nombre,
-             telefono,
-             direccion
+             telefono
            ),
            repartidores(
              nombre
@@ -237,7 +237,7 @@ class CRMService {
              total_amount: order.pagos?.total_pago || 0,
              cliente_name: order.clientes?.nombre || 'Cliente desconocido',
              cliente_telefono: order.clientes?.telefono || '',
-             cliente_direccion: order.clientes?.direccion || '',
+             cliente_direccion: order.address || 'Sin dirección',
              repartidor_name: order.repartidores?.nombre,
              platos_count: platosCount || 0,
              bebidas_count: bebidasCount || 0

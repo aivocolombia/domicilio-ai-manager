@@ -127,7 +127,8 @@ export class MinutaService {
             created_at,
             observaciones,
             precio_envio,
-            clientes!inner(nombre, telefono, direccion),
+            address,
+            clientes!inner(nombre, telefono),
             pagos!left(type, total_pago),
             repartidores!left(nombre),
             minutas!left(daily_id),
@@ -210,7 +211,7 @@ export class MinutaService {
         
         cliente_nombre: orderData.clientes?.nombre || 'Sin nombre',
         cliente_telefono: orderData.clientes?.telefono || 'Sin teléfono',
-        cliente_direccion: orderData.clientes?.direccion,
+        cliente_direccion: orderData.address || 'Sin dirección',
         
         sede_nombre: orderData.sedes?.name || 'Sede no definida',
         sede_direccion: orderData.sedes?.address || 'Dirección no definida',

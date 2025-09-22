@@ -6,11 +6,12 @@ import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { toast } from '@/hooks/use-toast';
-import { Loader2, Trash2, Plus, Minus } from 'lucide-react';
+import { Loader2, Trash2, Plus, Minus, Navigation } from 'lucide-react';
 import { DashboardOrder } from '@/services/dashboardService';
 import { useMenu } from '@/hooks/useMenu';
 import { addressService } from '@/services/addressService';
 import { supabase } from '@/lib/supabase';
+import { sedeService } from '@/services/sedeService';
 
 interface OrderItem {
   id: string;
@@ -43,6 +44,7 @@ export const EditOrderModal: React.FC<EditOrderModalProps> = ({
   const [newAddress, setNewAddress] = useState('');
   const [deliveryCost, setDeliveryCost] = useState(0);
   const [totalAmount, setTotalAmount] = useState(0);
+  const [sedeAddress, setSedeAddress] = useState<string>('');
   
   const { platos, bebidas, toppings, loadToppings } = useMenu();
 
@@ -126,6 +128,32 @@ export const EditOrderModal: React.FC<EditOrderModalProps> = ({
     return addressService.normalizeAddress(address);
   };
 
+  // Función para abrir Google Maps
+  const openGoogleMaps = () => {
+    if (!newAddress.trim()) {
+      toast({
+        title: "Error",
+        description: "Debe ingresar una dirección para calcular la ruta",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    if (!sedeAddress) {
+      toast({
+        title: "Error",
+        description: "No se pudo obtener la dirección de la sede",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    const orderAddress = newAddress.trim();
+
+    const googleMapsUrl = `https://www.google.com/maps/dir/${encodeURIComponent(sedeAddress)}/${encodeURIComponent(orderAddress)}`;
+    window.open(googleMapsUrl, '_blank');
+  };
+
   // Función para buscar precio de delivery basado en dirección
   const searchDeliveryPrice = useCallback(async (address: string) => {
     if (!address.trim() || address.length < 5 || !order?.sede_id) {
@@ -166,31 +194,83 @@ export const EditOrderModal: React.FC<EditOrderModalProps> = ({
     }
   }, [newAddress, searchDeliveryPrice]);
 
+  // Cargar sede address cuando se abre el modal
+  useEffect(() => {
+    const loadSedeAddress = async () => {
+      if (!isOpen || !order) return;
+
+      try {
+        // Obtener la sede del dashboard order (asumiendo que tiene sede_id o podemos extraerlo)
+        // Como el order viene del dashboard, necesitamos obtener el sede_id de la orden
+        const { data: orderData, error } = await supabase
+          .from('ordenes')
+          .select('sede_id')
+          .eq('id', order.orden_id)
+          .single();
+
+        if (!error && orderData?.sede_id) {
+          const sedeInfo = await sedeService.getSedeById(orderData.sede_id);
+          if (sedeInfo) {
+            setSedeAddress(sedeInfo.address);
+          }
+        }
+      } catch (error) {
+        console.error('Error loading sede address:', error);
+      }
+    };
+
+    loadSedeAddress();
+  }, [isOpen, order]);
+
   // Cargar datos reales de la orden al abrir
   useEffect(() => {
     const loadOrderItems = async () => {
       if (!isOpen || !order || !orderId) return;
-      
+
       try {
         setLoading(true);
         
         // Cargar platos de la orden
-        const { data: platosData } = await supabase
+        const { data: platosData, error: platosError } = await supabase
           .from('ordenes_platos')
-          .select('id, platos_id, platos!platos_id(id, name, pricing)')
+          .select(`
+            id,
+            plato_id,
+            platos!inner(id, name, pricing)
+          `)
           .eq('orden_id', orderId);
 
+        if (platosError) {
+          console.error('❌ Error obteniendo platos:', platosError);
+        }
+
         // Cargar bebidas de la orden
-        const { data: bebidasData } = await supabase
+        const { data: bebidasData, error: bebidasError } = await supabase
           .from('ordenes_bebidas')
-          .select('id, bebidas_id, bebidas!bebidas_id(id, name, pricing)')
+          .select(`
+            id,
+            bebidas_id,
+            bebidas!inner(id, name, pricing)
+          `)
           .eq('orden_id', orderId);
+
+        if (bebidasError) {
+          console.error('❌ Error obteniendo bebidas:', bebidasError);
+        }
         
         // Cargar toppings de la orden
-        const { data: toppingsData } = await supabase
+        const { data: toppingsData, error: toppingsError } = await supabase
           .from('ordenes_toppings')
-          .select('id, topping_id, toppings!topping_id(id, name, pricing)')
+          .select(`
+            id,
+            topping_id,
+            toppings!inner(id, name, pricing)
+          `)
           .eq('orden_id', orderId);
+
+        if (toppingsError) {
+          console.error('❌ Error obteniendo toppings:', toppingsError);
+        }
         
         // Agrupar items por producto para contar cantidades
         const itemsMap = new Map<string, OrderItem>();
@@ -198,7 +278,8 @@ export const EditOrderModal: React.FC<EditOrderModalProps> = ({
         // Procesar platos
         (platosData || []).forEach(item => {
           if (item.platos) {
-            const key = `plato_${item.platos.id}`;
+            const platoId = item.plato_id || item.platos.id;
+            const key = `plato_${platoId}`;
             if (itemsMap.has(key)) {
               const existing = itemsMap.get(key)!;
               existing.cantidad++;
@@ -270,8 +351,26 @@ export const EditOrderModal: React.FC<EditOrderModalProps> = ({
           itemsDetailed: finalItems
         });
 
+        // Debug detallado para troubleshooting
+        console.log('🔍 EditOrderModal: Raw data debug:', {
+          platosRaw: platosData,
+          bebidasRaw: bebidasData,
+          toppingsRaw: toppingsData
+        });
+
+        // Verificar si hay datos y qué estructura tienen
+        if (platosData && platosData.length > 0) {
+          console.log('🍽️ EditOrderModal: Primer plato estructura:', platosData[0]);
+        }
+        if (bebidasData && bebidasData.length > 0) {
+          console.log('🥤 EditOrderModal: Primera bebida estructura:', bebidasData[0]);
+        }
+        if (toppingsData && toppingsData.length > 0) {
+          console.log('🧀 EditOrderModal: Primer topping estructura:', toppingsData[0]);
+        }
+
         setItems(finalItems);
-        setNewAddress(order.direccion || '');
+        setNewAddress(order.address || '');
         setDeliveryCost(order.precio_envio || 0);
         
       } catch (error) {
@@ -301,16 +400,28 @@ export const EditOrderModal: React.FC<EditOrderModalProps> = ({
     try {
       setLoading(true);
       
-      // 1. Actualizar dirección del cliente si cambió
-      if (newAddress.trim() && newAddress !== order.direccion) {
+      // 1. Actualizar dirección del cliente y de la orden si cambió
+      if (newAddress.trim() && newAddress !== order.address) {
+        // Actualizar dirección del cliente para futuras órdenes
         const { error: clientError } = await supabase
           .from('clientes')
           .update({ direccion: newAddress })
           .eq('telefono', order.cliente_telefono);
-        
+
         if (clientError) {
-          console.error('Error actualizando dirección:', clientError);
+          console.error('Error actualizando dirección del cliente:', clientError);
           throw new Error('Error actualizando dirección del cliente');
+        }
+
+        // Actualizar dirección específica de esta orden
+        const { error: orderAddressError } = await supabase
+          .from('ordenes')
+          .update({ address: newAddress })
+          .eq('id', orderId);
+
+        if (orderAddressError) {
+          console.error('Error actualizando dirección de la orden:', orderAddressError);
+          throw new Error('Error actualizando dirección de la orden');
         }
       }
 
@@ -366,7 +477,7 @@ export const EditOrderModal: React.FC<EditOrderModalProps> = ({
         for (let i = 0; i < plato.cantidad; i++) {
           await supabase
             .from('ordenes_platos')
-            .insert({ orden_id: orderId, platos_id: plato.producto_id });
+            .insert({ orden_id: orderId, plato_id: plato.producto_id });
         }
       }
 
@@ -435,13 +546,24 @@ export const EditOrderModal: React.FC<EditOrderModalProps> = ({
               </div>
               
               <div>
-                <Label>Dirección de Entrega *</Label>
+                <Label>Dirección de Entrega (opcional)</Label>
                 <div className="flex gap-2">
-                  <Input 
+                  <Input
                     value={newAddress}
                     onChange={(e) => setNewAddress(e.target.value)}
                     placeholder="Ingresa la nueva dirección"
+                    className="flex-1"
                   />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="icon"
+                    onClick={openGoogleMaps}
+                    disabled={!newAddress.trim()}
+                    title="Abrir en Google Maps para calcular ruta"
+                  >
+                    <Navigation className="h-4 w-4" />
+                  </Button>
                   {searchingPrice && (
                     <div className="flex items-center">
                       <Loader2 className="h-4 w-4 animate-spin" />
@@ -641,7 +763,7 @@ export const EditOrderModal: React.FC<EditOrderModalProps> = ({
             </Button>
             <Button
               onClick={handleSaveChanges}
-              disabled={loading || !newAddress.trim()}
+              disabled={loading}
               className="flex-1"
             >
               {loading ? (

@@ -77,7 +77,8 @@ export const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({
           created_at,
           hora_entrega,
           observaciones,
-          clientes!inner(nombre, telefono, direccion),
+          address,
+          clientes!inner(nombre, telefono),
           pagos!left(total_pago)
         `)
         .eq('id', id)
@@ -211,7 +212,7 @@ export const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({
         id_display: `ORD-${orderData.id.toString().padStart(4, '0')}`,
         cliente_nombre: orderData.clientes?.nombre || 'Sin nombre',
         cliente_telefono: orderData.clientes?.telefono || 'Sin teléfono',
-        direccion: orderData.clientes?.direccion || 'Sin dirección',
+        direccion: orderData.address || 'Sin dirección',
         estado: orderData.status || 'Desconocido',
         total: orderData.pagos?.total_pago || 0,
         created_at: orderData.created_at,

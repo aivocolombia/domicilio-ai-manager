@@ -346,6 +346,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
     setIsEditModalOpen(true);
   };
 
+
   // Función para confirmar cancelación de pedido
   const handleConfirmCancel = async () => {
     if (!cancelOrderId || !cancelReason.trim()) {
@@ -523,7 +524,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
       'ID Interno': order.orden_id || '',
       'Cliente': order.cliente_nombre || '',
       'Teléfono': order.cliente_telefono || '',
-      'Dirección': order.direccion || '',
+      'Dirección': order.address || '',
       'Sede': order.sede || '',
       'Estado': getDisplayStatus(order.estado || '', order.type_order),
       'Total': order.total ? `$${order.total.toLocaleString()}` : '$0',
@@ -620,7 +621,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
         realOrder.cliente_nombre.toLowerCase().includes(searchLower) ||
         realOrder.cliente_telefono.includes(searchTerm) ||
         realOrder.id_display.toLowerCase().includes(searchLower) ||
-        realOrder.direccion.toLowerCase().includes(searchLower)
+        realOrder.address.toLowerCase().includes(searchLower)
       );
       
       // Filtro de estado mejorado
@@ -1182,10 +1183,10 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
   // Handler para eliminar orden (solo admin)
   const handleDeleteOrder = async (orderId: number, orderDisplay: string) => {
-    if (!profile || profile.role !== 'admin') {
+    if (!profile || profile.role !== 'admin_global') {
       toast({
         title: "Acceso denegado",
-        description: "Solo los administradores pueden eliminar órdenes",
+        description: "Solo los administradores globales pueden eliminar órdenes",
         variant: "destructive"
       });
       return;
@@ -1369,7 +1370,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
       const orderData: CreateOrderData = {
         cliente_nombre: customerData.name,
         cliente_telefono: customerData.phone,
-        direccion: finalAddress,
+        address: finalAddress, // Guardar la dirección específica de esta orden
         tipo_entrega: newOrder.deliveryType,
         sede_recogida: newOrder.deliveryType === 'pickup' ? currentSedeName : undefined,
         pago_tipo: newOrder.paymentMethod === 'cash' ? 'efectivo' :
@@ -1825,8 +1826,8 @@ export const Dashboard: React.FC<DashboardProps> = ({
                   <th className="text-left p-2 cursor-pointer hover:bg-gray-100" onClick={() => handleSort('cliente_nombre')}>
                     Cliente {getSortIcon('cliente_nombre')}
                   </th>
-                  <th className="text-left p-2 cursor-pointer hover:bg-gray-100" onClick={() => handleSort('direccion')}>
-                    Dirección {getSortIcon('direccion')}
+                  <th className="text-left p-2 cursor-pointer hover:bg-gray-100" onClick={() => handleSort('address')}>
+                    Dirección {getSortIcon('address')}
                   </th>
                   <th className="text-left p-2 cursor-pointer hover:bg-gray-100" onClick={() => handleSort('sede')}>
                     Sede {getSortIcon('sede')}
@@ -1909,8 +1910,8 @@ export const Dashboard: React.FC<DashboardProps> = ({
                           </div>
                         </td>
                         <td className="p-2">
-                          <div className="text-sm max-w-32 truncate" title={realOrder.direccion}>
-                            {realOrder.direccion}
+                          <div className="text-sm max-w-32 truncate" title={realOrder.address}>
+                            {realOrder.address}
                           </div>
                         </td>
                         <td className="p-2">
@@ -2016,8 +2017,8 @@ export const Dashboard: React.FC<DashboardProps> = ({
                               </Button>
                             )}
                             
-                            {/* Botón de eliminar - solo para admins */}
-                            {profile?.role === 'admin' && (
+                            {/* Botón de eliminar - solo para admin_global */}
+                            {profile?.role === 'admin_global' && (
                               <Button
                                 variant="destructive"
                                 size="sm"

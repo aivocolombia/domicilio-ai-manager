@@ -39,7 +39,7 @@ export interface CustomerData {
 export interface CreateOrderData {
   cliente_nombre: string;
   cliente_telefono: string;
-  direccion: string;
+  address: string; // Dirección específica para esta orden
   tipo_entrega: 'delivery' | 'pickup';
   sede_recogida?: string;
   pago_tipo: 'efectivo' | 'tarjeta' | 'nequi' | 'transferencia';
@@ -493,7 +493,7 @@ class SedeOrdersService {
           .insert({
             nombre: orderData.cliente_nombre,
             telefono: orderData.cliente_telefono,
-            direccion: orderData.direccion
+            direccion: orderData.address
           })
           .select('id')
           .single();
@@ -545,6 +545,7 @@ class SedeOrdersService {
           status: 'Recibidos',
           sede_id: orderData.sede_id,
           observaciones: orderData.instrucciones,
+          address: orderData.address, // Dirección específica de esta orden
           hora_entrega: horaEntrega.toISOString(),
           // Para pedidos de pickup, repartidor_id debe ser null (no necesitan repartidor)
           repartidor_id: orderData.tipo_entrega === 'pickup' ? null : undefined, // undefined permite auto-asignación para delivery

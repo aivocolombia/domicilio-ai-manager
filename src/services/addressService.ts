@@ -80,9 +80,9 @@ export const addressService = {
         .from('ordenes')
         .select(`
           id,
-          precio_envio, 
-          created_at, 
-          clientes!inner(direccion)
+          precio_envio,
+          created_at,
+          address
         `)
         .eq('sede_id', sedeId)
         .not('precio_envio', 'is', null)
@@ -94,7 +94,7 @@ export const addressService = {
         sedeId, 
         addresses: allAddresses?.map(order => ({
           id: order.id,
-          direccion: order.clientes?.direccion,
+          direccion: order.address,
           precio: order.precio_envio,
           fecha: order.created_at
         })),
@@ -260,14 +260,14 @@ export const addressService = {
       const { data, error } = await supabase
         .from('ordenes')
         .select(`
-          precio_envio, 
+          precio_envio,
           created_at,
-          clientes!inner(direccion)
+          address
         `)
         .eq('sede_id', sedeId)
         .not('precio_envio', 'is', null)
         .gt('precio_envio', 0)
-        .ilike('clientes.direccion', `%${normalizedAddress}%`)
+        .ilike('address', `%${normalizedAddress}%`)
         .order('created_at', { ascending: false })
         .limit(limit * 2); // Buscar más para filtrar duplicados
 
@@ -280,8 +280,8 @@ export const addressService = {
       const uniqueAddresses: { [key: string]: AddressHistory } = {};
       
       data?.forEach(order => {
-        const direccion = order.clientes?.direccion;
-        if (direccion && (!uniqueAddresses[direccion] || 
+        const direccion = order.address;
+        if (direccion && (!uniqueAddresses[direccion] ||
             new Date(order.created_at) > new Date(uniqueAddresses[direccion].created_at))) {
           uniqueAddresses[direccion] = {
             address: direccion,

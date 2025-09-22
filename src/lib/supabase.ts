@@ -264,6 +264,8 @@ export interface Database {
           cliente_id: number | null; // bigint
           sede_id: string | null; // uuid
           precio_envio: number | null; // integer
+          address: string | null; // Dirección específica de esta orden
+          motivo_cancelacion: string | null; // Motivo de cancelación
         };
         Insert: {
           id?: number;
@@ -280,6 +282,8 @@ export interface Database {
           cliente_id?: number | null;
           sede_id?: string | null;
           precio_envio?: number | null;
+          address?: string | null;
+          motivo_cancelacion?: string | null;
         };
         Update: {
           id?: number;
@@ -296,6 +300,8 @@ export interface Database {
           cliente_id?: number | null;
           sede_id?: string | null;
           precio_envio?: number | null;
+          address?: string | null;
+          motivo_cancelacion?: string | null;
         };
       };
       clientes: {
