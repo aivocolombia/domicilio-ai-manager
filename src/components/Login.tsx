@@ -127,18 +127,7 @@ export function Login() {
         </Card>
 
         {/* Demo accounts info */}
-        <Card className="bg-muted/30 border border-muted">
-          <CardContent className="pt-6">
-            <div className="text-center text-sm text-muted-foreground">
-              <p className="font-medium mb-2">Cuentas de prueba:</p>
-              <div className="space-y-1">
-                <p><strong>Admin Global:</strong> admin_global / admin123</p>
-                <p><strong>Admin Punto:</strong> admin_punto / admin123</p>
-                <p><strong>Agente:</strong> agente / agente123</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+       
       </div>
     </div>
   )
