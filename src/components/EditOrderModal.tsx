@@ -45,21 +45,22 @@ export const EditOrderModal: React.FC<EditOrderModalProps> = ({
   const [deliveryCost, setDeliveryCost] = useState(0);
   const [totalAmount, setTotalAmount] = useState(0);
   const [sedeAddress, setSedeAddress] = useState<string>('');
-  
-  const { platos, bebidas, toppings, loadToppings } = useMenu();
+  const [sedeId, setSedeId] = useState<string>('');
 
-  // Forzar carga de toppings al abrir el modal
-  useEffect(() => {
-    if (isOpen && toppings.length === 0) {
-      console.log('🔍 EditOrderModal: Cargando toppings...');
-      loadToppings();
-    }
-  }, [isOpen, toppings.length, loadToppings]);
+  // Estado para productos específicos de sede (disponibles)
+  const [sedeProducts, setSedeProducts] = useState({
+    platos: [] as any[],
+    bebidas: [] as any[],
+    toppings: [] as any[]
+  });
+  const [loadingSedeProducts, setLoadingSedeProducts] = useState(false);
 
-  // Debug de toppings
+  const { platos, bebidas, toppings } = useMenu();
+
+  // Debug de productos de sede
   useEffect(() => {
-    console.log('🔍 EditOrderModal: Toppings cargados:', toppings);
-  }, [toppings]);
+    console.log('🔍 EditOrderModal: Productos de sede cargados:', sedeProducts);
+  }, [sedeProducts]);
 
   // Funciones para agregar productos
   const handleAddPlato = (plato: { id: number; name: string; pricing?: number }) => {
@@ -194,14 +195,13 @@ export const EditOrderModal: React.FC<EditOrderModalProps> = ({
     }
   }, [newAddress, searchDeliveryPrice]);
 
-  // Cargar sede address cuando se abre el modal
+  // Cargar sede info y productos cuando se abre el modal
   useEffect(() => {
-    const loadSedeAddress = async () => {
+    const loadSedeInfo = async () => {
       if (!isOpen || !order) return;
 
       try {
-        // Obtener la sede del dashboard order (asumiendo que tiene sede_id o podemos extraerlo)
-        // Como el order viene del dashboard, necesitamos obtener el sede_id de la orden
+        // Obtener la sede del dashboard order
         const { data: orderData, error } = await supabase
           .from('ordenes')
           .select('sede_id')
@@ -209,18 +209,59 @@ export const EditOrderModal: React.FC<EditOrderModalProps> = ({
           .single();
 
         if (!error && orderData?.sede_id) {
+          setSedeId(orderData.sede_id);
+
           const sedeInfo = await sedeService.getSedeById(orderData.sede_id);
           if (sedeInfo) {
             setSedeAddress(sedeInfo.address);
           }
+
+          // Cargar productos específicos de sede
+          await loadSedeProducts(orderData.sede_id);
         }
       } catch (error) {
-        console.error('Error loading sede address:', error);
+        console.error('Error loading sede info:', error);
       }
     };
 
-    loadSedeAddress();
+    loadSedeInfo();
   }, [isOpen, order]);
+
+  // Función para cargar productos específicos de sede
+  const loadSedeProducts = async (sedeId: string) => {
+    setLoadingSedeProducts(true);
+    try {
+      console.log('🏢 EditOrderModal: Cargando productos para sede:', sedeId);
+
+      const { platos, bebidas, toppings } = await sedeService.getSedeCompleteInfo(sedeId, true);
+
+      // Filtrar solo productos disponibles en la sede
+      const availablePlatos = platos.filter(p => p.is_available);
+      const availableBebidas = bebidas.filter(b => b.is_available);
+      const availableToppings = toppings.filter(t => t.is_available);
+
+      setSedeProducts({
+        platos: availablePlatos,
+        bebidas: availableBebidas,
+        toppings: availableToppings
+      });
+
+      console.log('✅ EditOrderModal: Productos de sede cargados:', {
+        platos: availablePlatos.length,
+        bebidas: availableBebidas.length,
+        toppings: availableToppings.length
+      });
+    } catch (error) {
+      console.error('❌ EditOrderModal: Error cargando productos de sede:', error);
+      toast({
+        title: "Error",
+        description: "No se pudieron cargar los productos disponibles para esta sede.",
+        variant: "destructive"
+      });
+    } finally {
+      setLoadingSedeProducts(false);
+    }
+  };
 
   // Cargar datos reales de la orden al abrir
   useEffect(() => {
@@ -653,10 +694,13 @@ export const EditOrderModal: React.FC<EditOrderModalProps> = ({
           <Card>
             <CardHeader>
               <CardTitle className="text-lg">🍽️ Agregar Platos</CardTitle>
+              {loadingSedeProducts && (
+                <div className="text-sm text-gray-500">Cargando platos disponibles...</div>
+              )}
             </CardHeader>
             <CardContent>
               <div className="grid grid-cols-2 md:grid-cols-3 gap-3 max-h-60 overflow-y-auto">
-                {platos.map((plato) => (
+                {sedeProducts.platos.map((plato) => (
                   <div key={plato.id} className="border rounded-lg p-3">
                     <div className="font-medium text-sm">{plato.name}</div>
                     <div className="text-xs text-gray-600 mb-2">
@@ -666,12 +710,18 @@ export const EditOrderModal: React.FC<EditOrderModalProps> = ({
                       size="sm"
                       onClick={() => handleAddPlato(plato)}
                       className="w-full"
+                      disabled={loadingSedeProducts}
                     >
                       <Plus className="h-4 w-4 mr-1" />
                       Agregar
                     </Button>
                   </div>
                 ))}
+                {sedeProducts.platos.length === 0 && !loadingSedeProducts && (
+                  <div className="col-span-full text-center py-4 text-gray-500">
+                    No hay platos disponibles para esta sede
+                  </div>
+                )}
               </div>
             </CardContent>
           </Card>
@@ -680,10 +730,13 @@ export const EditOrderModal: React.FC<EditOrderModalProps> = ({
           <Card>
             <CardHeader>
               <CardTitle className="text-lg">🥤 Agregar Bebidas</CardTitle>
+              {loadingSedeProducts && (
+                <div className="text-sm text-gray-500">Cargando bebidas disponibles...</div>
+              )}
             </CardHeader>
             <CardContent>
               <div className="grid grid-cols-2 md:grid-cols-3 gap-3 max-h-60 overflow-y-auto">
-                {bebidas.map((bebida) => (
+                {sedeProducts.bebidas.map((bebida) => (
                   <div key={bebida.id} className="border rounded-lg p-3">
                     <div className="font-medium text-sm">{bebida.name}</div>
                     <div className="text-xs text-gray-600 mb-2">
@@ -693,12 +746,18 @@ export const EditOrderModal: React.FC<EditOrderModalProps> = ({
                       size="sm"
                       onClick={() => handleAddBebida(bebida)}
                       className="w-full"
+                      disabled={loadingSedeProducts}
                     >
                       <Plus className="h-4 w-4 mr-1" />
                       Agregar
                     </Button>
                   </div>
                 ))}
+                {sedeProducts.bebidas.length === 0 && !loadingSedeProducts && (
+                  <div className="col-span-full text-center py-4 text-gray-500">
+                    No hay bebidas disponibles para esta sede
+                  </div>
+                )}
               </div>
             </CardContent>
           </Card>
@@ -707,10 +766,13 @@ export const EditOrderModal: React.FC<EditOrderModalProps> = ({
           <Card>
             <CardHeader>
               <CardTitle className="text-lg text-orange-600">🧀 Agregar Toppings Extra</CardTitle>
+              {loadingSedeProducts && (
+                <div className="text-sm text-gray-500">Cargando toppings disponibles...</div>
+              )}
             </CardHeader>
             <CardContent>
               <div className="grid grid-cols-2 md:grid-cols-3 gap-3 max-h-60 overflow-y-auto">
-                {toppings.map((topping) => (
+                {sedeProducts.toppings.map((topping) => (
                   <div key={topping.id} className="border border-orange-200 rounded-lg p-3">
                     <div className="font-medium text-sm">{topping.name}</div>
                     <div className="text-xs text-orange-600 mb-2">
@@ -720,12 +782,18 @@ export const EditOrderModal: React.FC<EditOrderModalProps> = ({
                       size="sm"
                       onClick={() => handleAddTopping(topping)}
                       className="w-full bg-orange-600 hover:bg-orange-700"
+                      disabled={loadingSedeProducts}
                     >
                       <Plus className="h-4 w-4 mr-1" />
                       Agregar
                     </Button>
                   </div>
                 ))}
+                {sedeProducts.toppings.length === 0 && !loadingSedeProducts && (
+                  <div className="col-span-full text-center py-4 text-gray-500">
+                    No hay toppings disponibles para esta sede
+                  </div>
+                )}
               </div>
             </CardContent>
           </Card>
