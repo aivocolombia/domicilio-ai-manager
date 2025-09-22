@@ -177,19 +177,19 @@ export const EditOrderModal: React.FC<EditOrderModalProps> = ({
         // Cargar platos de la orden
         const { data: platosData } = await supabase
           .from('ordenes_platos')
-          .select('id, platos!inner(id, name, pricing)')
+          .select('id, platos_id, platos!platos_id(id, name, pricing)')
           .eq('orden_id', orderId);
-        
+
         // Cargar bebidas de la orden
         const { data: bebidasData } = await supabase
           .from('ordenes_bebidas')
-          .select('id, bebidas!inner(id, name, pricing)')
+          .select('id, bebidas_id, bebidas!bebidas_id(id, name, pricing)')
           .eq('orden_id', orderId);
         
         // Cargar toppings de la orden
         const { data: toppingsData } = await supabase
           .from('ordenes_toppings')
-          .select('id, toppings!inner(id, name, pricing)')
+          .select('id, topping_id, toppings!topping_id(id, name, pricing)')
           .eq('orden_id', orderId);
         
         // Agrupar items por producto para contar cantidades
@@ -197,65 +197,80 @@ export const EditOrderModal: React.FC<EditOrderModalProps> = ({
         
         // Procesar platos
         (platosData || []).forEach(item => {
-          const key = `plato_${item.platos.id}`;
-          if (itemsMap.has(key)) {
-            const existing = itemsMap.get(key)!;
-            existing.cantidad++;
-            existing.precio_total = existing.precio_unitario * existing.cantidad;
-          } else {
-            itemsMap.set(key, {
-              id: key,
-              tipo: 'plato',
-              nombre: item.platos.name,
-              cantidad: 1,
-              precio_unitario: item.platos.pricing || 0,
-              precio_total: item.platos.pricing || 0,
-              producto_id: item.platos.id
-            });
+          if (item.platos) {
+            const key = `plato_${item.platos.id}`;
+            if (itemsMap.has(key)) {
+              const existing = itemsMap.get(key)!;
+              existing.cantidad++;
+              existing.precio_total = existing.precio_unitario * existing.cantidad;
+            } else {
+              itemsMap.set(key, {
+                id: key,
+                tipo: 'plato',
+                nombre: item.platos.name,
+                cantidad: 1,
+                precio_unitario: item.platos.pricing || 0,
+                precio_total: item.platos.pricing || 0,
+                producto_id: item.platos.id
+              });
+            }
           }
         });
-        
+
         // Procesar bebidas
         (bebidasData || []).forEach(item => {
-          const key = `bebida_${item.bebidas.id}`;
-          if (itemsMap.has(key)) {
-            const existing = itemsMap.get(key)!;
-            existing.cantidad++;
-            existing.precio_total = existing.precio_unitario * existing.cantidad;
-          } else {
-            itemsMap.set(key, {
-              id: key,
-              tipo: 'bebida',
-              nombre: item.bebidas.name,
-              cantidad: 1,
-              precio_unitario: item.bebidas.pricing || 0,
-              precio_total: item.bebidas.pricing || 0,
-              producto_id: item.bebidas.id
-            });
+          if (item.bebidas) {
+            const key = `bebida_${item.bebidas.id}`;
+            if (itemsMap.has(key)) {
+              const existing = itemsMap.get(key)!;
+              existing.cantidad++;
+              existing.precio_total = existing.precio_unitario * existing.cantidad;
+            } else {
+              itemsMap.set(key, {
+                id: key,
+                tipo: 'bebida',
+                nombre: item.bebidas.name,
+                cantidad: 1,
+                precio_unitario: item.bebidas.pricing || 0,
+                precio_total: item.bebidas.pricing || 0,
+                producto_id: item.bebidas.id
+              });
+            }
           }
         });
         
         // Procesar toppings
         (toppingsData || []).forEach(item => {
-          const key = `topping_${item.toppings.id}`;
-          if (itemsMap.has(key)) {
-            const existing = itemsMap.get(key)!;
-            existing.cantidad++;
-            existing.precio_total = existing.precio_unitario * existing.cantidad;
-          } else {
-            itemsMap.set(key, {
-              id: key,
-              tipo: 'topping',
-              nombre: item.toppings.name,
-              cantidad: 1,
-              precio_unitario: item.toppings.pricing || 0,
-              precio_total: item.toppings.pricing || 0,
-              producto_id: item.toppings.id
-            });
+          if (item.toppings) {
+            const key = `topping_${item.toppings.id}`;
+            if (itemsMap.has(key)) {
+              const existing = itemsMap.get(key)!;
+              existing.cantidad++;
+              existing.precio_total = existing.precio_unitario * existing.cantidad;
+            } else {
+              itemsMap.set(key, {
+                id: key,
+                tipo: 'topping',
+                nombre: item.toppings.name,
+                cantidad: 1,
+                precio_unitario: item.toppings.pricing || 0,
+                precio_total: item.toppings.pricing || 0,
+                producto_id: item.toppings.id
+              });
+            }
           }
         });
         
-        setItems(Array.from(itemsMap.values()));
+        const finalItems = Array.from(itemsMap.values());
+        console.log('🔍 EditOrderModal: Items procesados:', {
+          platosData: platosData?.length || 0,
+          bebidasData: bebidasData?.length || 0,
+          toppingsData: toppingsData?.length || 0,
+          finalItems: finalItems.length,
+          itemsDetailed: finalItems
+        });
+
+        setItems(finalItems);
         setNewAddress(order.direccion || '');
         setDeliveryCost(order.precio_envio || 0);
         

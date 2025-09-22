@@ -28,7 +28,40 @@ export class CustomAuthService {
       
       console.log('🔐 Intentando autenticar usuario:', cleanNickname);
 
-      // Buscar usuario por nickname y verificar contraseña usando PostgreSQL crypt
+      // Primero verificar si el usuario existe sin la relación de sede
+      const { data: userCheck, error: userCheckError } = await supabase
+        .from('profiles')
+        .select('id, nickname, role, sede_id, is_active')
+        .eq('nickname', cleanNickname);
+
+      // Si no encontramos el usuario exacto, buscar todos los usuarios similares para debug
+      if (!userCheck || userCheck.length === 0) {
+        console.log('🔍 Buscando usuarios similares para debug...');
+        const { data: allUsers } = await supabase
+          .from('profiles')
+          .select('nickname, role, is_active')
+          .limit(10);
+        console.log('📋 Usuarios disponibles en la base de datos:', allUsers);
+      }
+
+      console.log('🔍 Verificación inicial del usuario:', {
+        nickname: cleanNickname,
+        userFound: userCheck?.length || 0,
+        users: userCheck,
+        error: userCheckError
+      });
+
+      if (userCheckError) {
+        console.error('❌ Error en verificación inicial:', userCheckError);
+        return { error: 'Error de conexión: ' + userCheckError.message };
+      }
+
+      if (!userCheck || userCheck.length === 0) {
+        console.log('❌ Usuario no existe en la base de datos:', cleanNickname);
+        return { error: 'Nickname o contraseña incorrectos' };
+      }
+
+      // Buscar usuario por nickname sin la relación de sede primero
       const { data, error } = await supabase
         .from('profiles')
         .select(`
@@ -38,8 +71,7 @@ export class CustomAuthService {
           role,
           sede_id,
           password_hash,
-          is_active,
-          sedes!inner(name)
+          is_active
         `)
         .eq('nickname', cleanNickname)
         .eq('is_active', true)
@@ -85,6 +117,21 @@ export class CustomAuthService {
         return { error: 'Nickname o contraseña incorrectos' };
       }
 
+      // Obtener nombre de la sede por separado
+      let sedeNames = 'Sede Desconocida';
+      if (data.sede_id) {
+        try {
+          const { data: sedeData } = await supabase
+            .from('sedes')
+            .select('name')
+            .eq('id', data.sede_id)
+            .single();
+          sedeNames = sedeData?.name || 'Sede Desconocida';
+        } catch (sedeError) {
+          console.warn('⚠️ No se pudo cargar el nombre de la sede:', sedeError);
+        }
+      }
+
       // Usuario autenticado exitosamente
       const user: AuthUser = {
         id: data.id,
@@ -92,7 +139,7 @@ export class CustomAuthService {
         display_name: data.display_name,
         role: data.role,
         sede_id: data.sede_id,
-        sede_name: data.sedes?.name || 'Sede Desconocida',
+        sede_name: sedeNames,
         is_active: data.is_active ?? true
       };
 

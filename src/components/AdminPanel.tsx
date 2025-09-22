@@ -99,7 +99,7 @@ export function AdminPanel({ onBack, onNavigateToTimeMetrics }: AdminPanelProps)
     name: '',
     nickname: '',
     password: '',
-    role: 'agent' as 'admin' | 'agent',
+    role: 'agent' as 'admin' | 'agent' | 'admin_punto' | 'admin_global',
     sede_id: '',
     is_active: true
   })
@@ -332,6 +332,17 @@ export function AdminPanel({ onBack, onNavigateToTimeMetrics }: AdminPanelProps)
         toast({
           title: "Error",
           description: "Debes seleccionar una sede para el usuario.",
+          variant: "destructive"
+        });
+        setIsCreatingUser(false);
+        return;
+      }
+
+      // Validar permisos de creación según rol del usuario actual
+      if (user?.role === 'admin_punto' && formData.role !== 'agent') {
+        toast({
+          title: "Error de permisos",
+          description: "Como Admin de Punto solo puedes crear usuarios con rol Agente.",
           variant: "destructive"
         });
         setIsCreatingUser(false);
@@ -1035,6 +1046,10 @@ export function AdminPanel({ onBack, onNavigateToTimeMetrics }: AdminPanelProps)
     switch (role) {
       case 'admin':
         return <Badge variant="destructive">Administrador</Badge>;
+      case 'admin_global':
+        return <Badge variant="destructive">Admin Global</Badge>;
+      case 'admin_punto':
+        return <Badge variant="default">Admin de Punto</Badge>;
       case 'agent':
         return <Badge variant="secondary">Agente</Badge>;
       default:
@@ -1261,13 +1276,13 @@ export function AdminPanel({ onBack, onNavigateToTimeMetrics }: AdminPanelProps)
                 </CardHeader>
                 <CardContent>
                   <div className="text-2xl font-bold">
-                    {user?.role === 'admin_punto' 
+                    {user?.role === 'admin_punto'
                       ? filteredUsers.filter(u => (u.role === 'admin_global' || u.role === 'admin_punto') && u.is_active).length
-                      : users.filter(u => u.role === 'admin' && u.is_active).length
+                      : users.filter(u => (u.role === 'admin' || u.role === 'admin_global' || u.role === 'admin_punto') && u.is_active).length
                     }
                   </div>
                   <p className="text-xs text-muted-foreground">
-                    {user?.role === 'admin_punto' 
+                    {user?.role === 'admin_punto'
                       ? 'Administradores en tu sede'
                       : 'Usuarios con permisos de administrador'
                     }
@@ -1368,14 +1383,20 @@ export function AdminPanel({ onBack, onNavigateToTimeMetrics }: AdminPanelProps)
                             <Label htmlFor="role">Rol</Label>
                             <Select
                               value={formData.role}
-                              onValueChange={(value: 'admin' | 'agent') => setFormData({ ...formData, role: value })}
+                              onValueChange={(value: 'admin' | 'agent' | 'admin_punto' | 'admin_global') => setFormData({ ...formData, role: value })}
                             >
                               <SelectTrigger>
                                 <SelectValue />
                               </SelectTrigger>
                               <SelectContent>
                                 <SelectItem value="agent">Agente</SelectItem>
-                                <SelectItem value="admin">Administrador</SelectItem>
+                                {/* admin_punto solo puede crear agentes */}
+                                {user?.role === 'admin_global' && (
+                                  <>
+                                    <SelectItem value="admin_punto">Admin de Punto</SelectItem>
+                                    <SelectItem value="admin_global">Admin Global</SelectItem>
+                                  </>
+                                )}
                               </SelectContent>
                             </Select>
                           </div>
