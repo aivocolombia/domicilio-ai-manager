@@ -46,6 +46,7 @@ export const EditOrderModal: React.FC<EditOrderModalProps> = ({
   const [totalAmount, setTotalAmount] = useState(0);
   const [sedeAddress, setSedeAddress] = useState<string>('');
   const [sedeId, setSedeId] = useState<string>('');
+  const [cutleryCount, setCutleryCount] = useState<number>(0);
 
   // Estado para productos específicos de sede (disponibles)
   const [sedeProducts, setSedeProducts] = useState({
@@ -270,6 +271,17 @@ export const EditOrderModal: React.FC<EditOrderModalProps> = ({
 
       try {
         setLoading(true);
+        // Cargar campos adicionales de orden (cubiertos, address, precio_envio)
+        const { data: baseOrder, error: baseOrderErr } = await supabase
+          .from('ordenes')
+          .select('cubiertos, address, precio_envio')
+          .eq('id', orderId)
+          .single();
+        if (!baseOrderErr && baseOrder) {
+          setCutleryCount(typeof baseOrder.cubiertos === 'number' ? baseOrder.cubiertos : (baseOrder.cubiertos ? Number(baseOrder.cubiertos) : 0));
+          setNewAddress(baseOrder.address || order.address || '');
+          setDeliveryCost(typeof baseOrder.precio_envio === 'number' ? baseOrder.precio_envio : (baseOrder.precio_envio ? Number(baseOrder.precio_envio) : 0));
+        }
         
         // Cargar platos de la orden
         const { data: platosData, error: platosError } = await supabase
@@ -411,8 +423,10 @@ export const EditOrderModal: React.FC<EditOrderModalProps> = ({
         }
 
         setItems(finalItems);
-        setNewAddress(order.address || '');
-        setDeliveryCost(order.precio_envio || 0);
+        if (!baseOrder) {
+          setNewAddress(order.address || '');
+          setDeliveryCost(order.precio_envio || 0);
+        }
         
       } catch (error) {
         console.error('Error cargando items de la orden:', error);
@@ -466,16 +480,22 @@ export const EditOrderModal: React.FC<EditOrderModalProps> = ({
         }
       }
 
-      // 2. Actualizar precio de envío si cambió
+      // 2. Actualizar precio de envío o cubiertos si cambiaron
+      const updates: Record<string, any> = {};
       if (deliveryCost !== order.precio_envio) {
+        updates.precio_envio = deliveryCost;
+      }
+      updates.cubiertos = cutleryCount; // siempre actualizar (puede ser 0)
+
+      if (Object.keys(updates).length > 0) {
         const { error: orderError } = await supabase
           .from('ordenes')
-          .update({ precio_envio: deliveryCost })
+          .update(updates)
           .eq('id', orderId);
         
         if (orderError) {
-          console.error('Error actualizando precio de envío:', orderError);
-          throw new Error('Error actualizando precio de envío');
+          console.error('Error actualizando orden (envío/cubiertos):', orderError);
+          throw new Error('Error actualizando datos de la orden');
         }
       }
 
@@ -623,6 +643,35 @@ export const EditOrderModal: React.FC<EditOrderModalProps> = ({
               </div>
             </CardContent>
           </Card>
+
+    {/* Cubiertos */}
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-lg">🍴 Cubiertos</CardTitle>
+      </CardHeader>
+      <CardContent>
+        <div className="flex items-center justify-between">
+          <div className="text-sm text-gray-600">Cantidad de cubiertos enviados con el pedido</div>
+          <div className="flex items-center gap-2">
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => setCutleryCount(c => Math.max(0, c - 1))}
+            >
+              <Minus className="h-4 w-4" />
+            </Button>
+            <span className="w-8 text-center font-mono">{cutleryCount}</span>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => setCutleryCount(c => c + 1)}
+            >
+              <Plus className="h-4 w-4" />
+            </Button>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
 
           {/* Items de la orden */}
           <Card>

@@ -156,7 +156,9 @@ export const Dashboard: React.FC<DashboardProps> = ({
     deliveryType: 'delivery' as 'delivery' | 'pickup',
     pickupSede: '',
     deliveryTimeMinutes: 90,
-    deliveryCost: 0
+    deliveryCost: 0,
+    cutleryCount: 0,
+    cutleryManuallyAdjusted: false
   });
   const [searchingPrice, setSearchingPrice] = useState(false);
   const [sedeProducts, setSedeProducts] = useState({
@@ -1252,6 +1254,11 @@ export const Dashboard: React.FC<DashboardProps> = ({
             ? { ...item, quantity: item.quantity + 1 }
             : item
         )
+      ,
+        // Si no se ha ajustado manualmente, sincronizar cubiertos con platos principales
+        ...(productType === 'plato' && !newOrder.cutleryManuallyAdjusted
+          ? { cutleryCount: newOrder.cutleryCount + 1 }
+          : {})
       });
     } else {
       setNewOrder({
@@ -1261,6 +1268,11 @@ export const Dashboard: React.FC<DashboardProps> = ({
           quantity: 1,
           toppings: []
         }]
+      ,
+        // Si no se ha ajustado manualmente, incrementar cubiertos al añadir primer plato
+        ...(productType === 'plato' && !newOrder.cutleryManuallyAdjusted
+          ? { cutleryCount: newOrder.cutleryCount + 1 }
+          : {})
       });
     }
   };
@@ -1293,9 +1305,17 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
   // Función para remover item del pedido
   const removeItemFromOrder = (productId: string) => {
+    const [productType] = productId.split('_');
+    const removedItem = newOrder.items.find(i => i.productId === productId);
+    const removedQty = removedItem?.quantity || 0;
+
     setNewOrder({
       ...newOrder,
-      items: newOrder.items.filter(item => item.productId !== productId)
+      items: newOrder.items.filter(item => item.productId !== productId),
+      // Si se elimina un plato y no hubo ajuste manual, reducir cubiertos
+      ...(productType === 'plato' && !newOrder.cutleryManuallyAdjusted
+        ? { cutleryCount: Math.max(0, newOrder.cutleryCount - removedQty) }
+        : {})
     });
   };
 
@@ -1377,6 +1397,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                    newOrder.paymentMethod === 'card' ? 'tarjeta' :
                    newOrder.paymentMethod === 'nequi' ? 'nequi' : 'transferencia',
         instrucciones: newOrder.specialInstructions || undefined,
+        cubiertos: newOrder.cutleryCount,
         delivery_time_minutes: newOrder.deliveryTimeMinutes,
         delivery_cost: newOrder.deliveryType === 'delivery' ? newOrder.deliveryCost : undefined,
         items: newOrder.items.map(item => {
@@ -1432,7 +1453,9 @@ export const Dashboard: React.FC<DashboardProps> = ({
         deliveryType: 'delivery',
         pickupSede: '',
         deliveryTimeMinutes: 90,
-        deliveryCost: 0
+        deliveryCost: 0,
+        cutleryCount: 0,
+        cutleryManuallyAdjusted: false
       });
       setCustomerData({
         name: '',
@@ -2425,7 +2448,9 @@ export const Dashboard: React.FC<DashboardProps> = ({
             deliveryType: 'delivery',
             pickupSede: '',
             deliveryTimeMinutes: 90,
-            deliveryCost: 0
+            deliveryCost: 0,
+            cutleryCount: 0,
+            cutleryManuallyAdjusted: false
           });
           setCustomerData({
             name: '',
@@ -2742,6 +2767,9 @@ export const Dashboard: React.FC<DashboardProps> = ({
                           <p className={`text-sm ${itemTextColor}`}>
                             Cantidad: {item.quantity} × ${(product?.pricing ?? 0).toLocaleString()}
                           </p>
+                          {productType === 'plato' && (
+                            <p className="text-xs text-muted-foreground">Incluye cubiertos por defecto</p>
+                          )}
                         </div>
                         <Button
                           size="sm"
@@ -2754,6 +2782,38 @@ export const Dashboard: React.FC<DashboardProps> = ({
                     );
                   })}
                   <div className="border-t pt-2">
+                    {/* Cubiertos control */}
+                    <div className="flex items-center justify-between mb-2">
+                      <div>
+                        <p className="font-medium">Cubiertos</p>
+                        <p className="text-xs text-muted-foreground">1 por plato principal. Ajusta si es necesario.</p>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Button
+                          size="icon"
+                          variant="outline"
+                          onClick={() => setNewOrder(prev => ({
+                            ...prev,
+                            cutleryCount: Math.max(0, prev.cutleryCount - 1),
+                            cutleryManuallyAdjusted: true
+                          }))}
+                        >
+                          −
+                        </Button>
+                        <span className="w-8 text-center font-mono">{newOrder.cutleryCount}</span>
+                        <Button
+                          size="icon"
+                          variant="outline"
+                          onClick={() => setNewOrder(prev => ({
+                            ...prev,
+                            cutleryCount: prev.cutleryCount + 1,
+                            cutleryManuallyAdjusted: true
+                          }))}
+                        >
+                          +
+                        </Button>
+                      </div>
+                    </div>
                     {newOrder.deliveryType === 'delivery' && newOrder.deliveryCost > 0 && (
                       <div className="text-sm text-gray-600 mb-1">
                         Subtotal productos: ${(calculateTotal() - newOrder.deliveryCost).toLocaleString()}
