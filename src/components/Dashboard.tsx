@@ -1951,7 +1951,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                             <span className="text-sm">{realOrder.repartidor}</span>
                           </div>
                         </td>
-                        <td className="p-2 font-medium">${realOrder.total.toLocaleString()}</td>
+                        <td className="p-2 font-medium">${(realOrder.total ?? 0).toLocaleString()}</td>
                         <td className="p-2">
                           <div className="text-sm">
                             {realOrder.entrega_hora}
@@ -2636,7 +2636,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                       <div key={`plato-${item.id}`} className="flex items-center justify-between p-2 border rounded bg-green-50">
                         <div>
                           <p className="font-medium">{item.name}</p>
-                          <p className="text-sm text-gray-600">${item.pricing.toLocaleString()}</p>
+                          <p className="text-sm text-gray-600">${(item.pricing ?? 0).toLocaleString()}</p>
                           <span className="text-xs bg-green-100 text-green-800 px-1 rounded">Disponible</span>
                         </div>
                         <Button
@@ -2652,7 +2652,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                       <div key={`bebida-${item.id}`} className="flex items-center justify-between p-2 border rounded bg-blue-50">
                         <div>
                           <p className="font-medium">{item.name}</p>
-                          <p className="text-sm text-gray-600">${item.pricing.toLocaleString()}</p>
+                          <p className="text-sm text-gray-600">${(item.pricing ?? 0).toLocaleString()}</p>
                           <span className="text-xs bg-blue-100 text-blue-800 px-1 rounded">Disponible</span>
                         </div>
                         <Button
@@ -2693,7 +2693,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                       <div key={`topping-${item.id}`} className="flex items-center justify-between p-2 border rounded bg-orange-50">
                         <div>
                           <p className="font-medium text-orange-800">{item.name}</p>
-                          <p className="text-sm text-orange-600">${item.pricing.toLocaleString()}</p>
+                          <p className="text-sm text-orange-600">${(item.pricing ?? 0).toLocaleString()}</p>
                           <span className="text-xs bg-orange-100 text-orange-800 px-1 rounded">Disponible</span>
                         </div>
                         <Button
@@ -2740,7 +2740,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                             )}
                           </p>
                           <p className={`text-sm ${itemTextColor}`}>
-                            Cantidad: {item.quantity} × ${product?.pricing.toLocaleString()}
+                            Cantidad: {item.quantity} × ${(product?.pricing ?? 0).toLocaleString()}
                           </p>
                         </div>
                         <Button
