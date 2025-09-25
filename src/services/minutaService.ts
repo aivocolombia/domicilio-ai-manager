@@ -29,6 +29,7 @@ export interface MinutaOrderDetails {
   created_at: string;
   status: string;
   observaciones?: string;
+  cubiertos?: number;
   
   // Cliente
   cliente_nombre: string;
@@ -126,6 +127,7 @@ export class MinutaService {
             status,
             created_at,
             observaciones,
+            cubiertos,
             precio_envio,
             address,
             clientes!inner(nombre, telefono),
@@ -208,6 +210,7 @@ export class MinutaService {
         created_at: orderData.created_at,
         status: orderData.status || 'Desconocido',
         observaciones: orderData.observaciones,
+        cubiertos: typeof orderData.cubiertos === 'number' ? orderData.cubiertos : (orderData.cubiertos ? Number(orderData.cubiertos) : 0),
         
         cliente_nombre: orderData.clientes?.nombre || 'Sin nombre',
         cliente_telefono: orderData.clientes?.telefono || 'Sin teléfono',

@@ -10,6 +10,7 @@ import { DashboardOrder } from '@/services/dashboardService';
 import { orderStatusService, OrderStatusUpdate } from '@/services/orderStatusService';
 import { toast } from '@/hooks/use-toast';
 import { Loader2 } from 'lucide-react';
+import { useAuth } from '@/hooks/useAuth';
 
 interface OrderConfigModalProps {
   isOpen: boolean;
@@ -51,6 +52,8 @@ export const OrderConfigModal: React.FC<OrderConfigModalProps> = ({
   const [isUpdating, setIsUpdating] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [hasMixedStates, setHasMixedStates] = useState(false);
+  const { profile } = useAuth();
+  const isAdmin = profile?.role === 'admin_global' || profile?.role === 'admin_punto';
 
   // Cargar datos cuando se abre el modal o cambia la sede
   useEffect(() => {
@@ -141,8 +144,8 @@ export const OrderConfigModal: React.FC<OrderConfigModalProps> = ({
         return (currentStatus === 'Camino' || currentStatus === 'En Camino') && orderType === 'delivery';
       });
 
-      // Si se intenta asignar repartidor a órdenes de delivery en camino, bloquear
-      if (assignedDeliveryPersonId && deliveryOrdersInTransit.length > 0) {
+      // Si se intenta asignar repartidor a órdenes de delivery en camino, bloquear (excepto administradores)
+      if (!isAdmin && assignedDeliveryPersonId && deliveryOrdersInTransit.length > 0) {
         toast({
           title: "Operación bloqueada",
           description: `No se puede cambiar el repartidor de ${deliveryOrdersInTransit.length} pedido(s) que están "En Camino".`,
@@ -505,7 +508,7 @@ export const OrderConfigModal: React.FC<OrderConfigModalProps> = ({
                 return (currentStatus === 'Camino' || currentStatus === 'En Camino') && orderType === 'delivery';
               });
 
-              if (hasDeliveryOrdersInTransit) {
+              if (hasDeliveryOrdersInTransit && !isAdmin) {
                 return (
                   <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg">
                     <div className="flex items-center gap-2 text-amber-800">

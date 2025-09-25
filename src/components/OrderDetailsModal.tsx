@@ -41,6 +41,7 @@ interface OrderDetails {
   created_at: string;
   hora_entrega?: string;
   observaciones?: string;
+  cubiertos?: number;
   items: OrderItem[];
 }
 
@@ -77,6 +78,7 @@ export const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({
           created_at,
           hora_entrega,
           observaciones,
+          cubiertos,
           address,
           clientes!inner(nombre, telefono),
           pagos!left(total_pago)
@@ -218,6 +220,7 @@ export const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({
         created_at: orderData.created_at,
         hora_entrega: orderData.hora_entrega || undefined,
         observaciones: orderData.observaciones || undefined,
+        cubiertos: typeof orderData.cubiertos === 'number' ? orderData.cubiertos : (orderData.cubiertos ? Number(orderData.cubiertos) : 0),
         items
       };
 
@@ -367,6 +370,11 @@ export const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({
                 <Package className="h-5 w-5" />
                 Productos ({orderDetails.items.length})
               </h3>
+
+              {/* Cubiertos */}
+              <div className="text-sm text-gray-700">
+                <strong>🍴 Cubiertos:</strong> {orderDetails.cubiertos ?? 0}
+              </div>
 
               {orderDetails.items.length === 0 ? (
                 <div className="text-center py-6 text-gray-500">
