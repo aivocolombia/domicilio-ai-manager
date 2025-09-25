@@ -122,54 +122,69 @@ export const StatusBar: React.FC<StatusBarProps> = ({ orders, currentSede = 'Niz
     }
   }, [isOpen]);
 
-  // Real-time para sede_platos
+  // Real-time para sede_platos - mejorado con manejo de errores
   useRealtime({
     table: 'sede_platos',
     enabled: !!sedeToUse,
     onPayload: (payload) => {
-      console.log('🔔 StatusBar: sede_platos actualizado:', payload);
-      console.log('🔍 StatusBar: Recargando inventario por cambio en platos...');
+      console.log('🔔 StatusBar: sede_platos actualizado:', payload.eventType);
       loadInventoryConSede();
     },
     onError: (error) => {
-      console.warn('⚠️ StatusBar: Advertencia en realtime sede_platos:', error.message);
-      // No es un error crítico, solo un problema de conectividad temporal
+      // Solo logear errores que no sean problemas temporales de conectividad
+      if (!error.message.includes('Temporary connectivity') && !error.message.includes('connectivity issue')) {
+        console.error('❌ StatusBar: Error crítico en realtime sede_platos:', error.message);
+      }
+      // Para errores temporales, usar logDebug en lugar de warn
+      else {
+        console.debug('🔄 StatusBar: Problema temporal de conectividad sede_platos, reintentando...');
+      }
     },
     onSubscribed: () => {
       console.log('✅ StatusBar: Suscrito a cambios en sede_platos');
     }
   });
 
-  // Real-time para sede_bebidas
+  // Real-time para sede_bebidas - mejorado con manejo de errores
   useRealtime({
     table: 'sede_bebidas',
     enabled: !!sedeToUse,
     onPayload: (payload) => {
-      console.log('🔔 StatusBar: sede_bebidas actualizado:', payload);
-      console.log('🔍 StatusBar: Recargando inventario por cambio en bebidas...');
+      console.log('🔔 StatusBar: sede_bebidas actualizado:', payload.eventType);
       loadInventoryConSede();
     },
     onError: (error) => {
-      console.warn('⚠️ StatusBar: Advertencia en realtime sede_bebidas:', error.message);
-      // No es un error crítico, solo un problema de conectividad temporal
+      // Solo logear errores que no sean problemas temporales de conectividad
+      if (!error.message.includes('Temporary connectivity') && !error.message.includes('connectivity issue')) {
+        console.error('❌ StatusBar: Error crítico en realtime sede_bebidas:', error.message);
+      }
+      // Para errores temporales, usar logDebug en lugar de warn
+      else {
+        console.debug('🔄 StatusBar: Problema temporal de conectividad sede_bebidas, reintentando...');
+      }
     },
     onSubscribed: () => {
       console.log('✅ StatusBar: Suscrito a cambios en sede_bebidas');
     }
   });
 
-  // Real-time para sede_toppings
+  // Real-time para sede_toppings - mejorado con manejo de errores
   useRealtime({
     table: 'sede_toppings',
     enabled: !!sedeToUse,
     onPayload: (payload) => {
-      console.log('🔔 StatusBar: sede_toppings actualizado:', payload);
-      console.log('🔍 StatusBar: Recargando inventario por cambio en toppings...');
+      console.log('🔔 StatusBar: sede_toppings actualizado:', payload.eventType);
       loadInventoryConSede();
     },
     onError: (error) => {
-      console.warn('⚠️ StatusBar: Advertencia en realtime sede_toppings:', error.message);
-      // No es un error crítico, solo un problema de conectividad temporal
+      // Solo logear errores que no sean problemas temporales de conectividad
+      if (!error.message.includes('Temporary connectivity') && !error.message.includes('connectivity issue')) {
+        console.error('❌ StatusBar: Error crítico en realtime sede_toppings:', error.message);
+      }
+      // Para errores temporales, usar logDebug en lugar de warn
+      else {
+        console.debug('🔄 StatusBar: Problema temporal de conectividad sede_toppings, reintentando...');
+      }
     },
     onSubscribed: () => {
       console.log('✅ StatusBar: Suscrito a cambios en sede_toppings');

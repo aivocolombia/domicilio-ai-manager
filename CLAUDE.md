@@ -17,9 +17,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ### Code Quality & Performance
 - Lazy loading implemented for heavy components (AdminPanel, TimeMetricsPage)
-- Custom logging system available via `@/utils/logger.ts`
+- Custom logging system available via `@/utils/logger.ts` with configurable levels
 - Optimized async state management via `@/hooks/useAsyncState.ts`
 - Bundle optimization: removed unused UI components (breadcrumb, carousel, command, drawer, pagination, sidebar)
+- Error boundaries for robust error handling (`ErrorBoundary.tsx`)
+- Performance monitoring with `PerformanceMonitor.tsx`
 
 ## Architecture Overview
 
@@ -28,7 +30,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - **UI Framework**: shadcn/ui (Radix UI + Tailwind CSS)
 - **Database**: Supabase (PostgreSQL)
 - **State Management**: React Query + Context API
-- **Authentication**: Supabase Auth
+- **Authentication**: Custom nickname-based authentication (profiles table)
 - **Routing**: React Router v6
 
 ### Project Structure
@@ -54,10 +56,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - `Loading.tsx` - Reusable loading component for lazy loaded modules
 
 #### Authentication System
-- `useAuth.tsx:1-204` - Authentication context and hooks
-- Role-based access: `admin` and `agent` roles
-- Profile management with automatic fallbacks
-- Demo accounts: admin@ajiaco.com/admin123, agente@ajiaco.com/agente123
+- `useAuth.tsx:1-146` - Authentication context and hooks
+- `customAuthService.ts` - Core authentication service with nickname-based login
+- Role-based access: `agent`, `admin_punto`, and `admin_global` roles
+- Profile management with local session storage
+- Demo accounts: Various nickname-based accounts (see profiles table)
 
 ### Database Architecture
 
@@ -92,10 +95,11 @@ The system supports multi-location inventory management:
 - Complex joins for dish-topping relationships
 
 #### Authentication Flow
-1. User login via `signIn()` in `useAuth.tsx:150-178`
-2. Profile fetch with timeout/fallback in `useAuth.tsx:24-105`
-3. Route protection in `ProtectedRoute.tsx:12-76`
-4. Role-based access control throughout app
+1. User login via `signIn()` in `useAuth.tsx:33-58` using nickname/password
+2. Custom authentication service validates credentials against `profiles` table
+3. Session stored locally with `customAuthService.ts`
+4. Route protection in `ProtectedRoute.tsx` with role-based access
+5. Role-based permissions throughout app via `usePermissions.ts`
 
 ### Key Features
 
@@ -107,8 +111,8 @@ The system supports multi-location inventory management:
 
 #### User Management
 - Admin users can create user profiles via `AdminPanel`
-- Users must manually register with Supabase Auth after profile creation
-- Role-based permissions: admin (full access) vs agent (limited access)
+- Custom user management without requiring external auth registration
+- Role-based permissions: `admin_global` (full access), `admin_punto` (sede-specific admin), `agent` (limited access)
 
 #### Order Management System
 - Complete order lifecycle from creation to delivery
@@ -141,8 +145,10 @@ SUPABASE_SERVICE_ROLE_KEY=your_service_role_key
 
 #### Authentication Testing
 - Use provided demo accounts for testing different roles
-- Admin role required for user management functions
-- Agent role has limited access to inventory management only
+- Check `profiles` table for available nicknames and roles
+- `admin_global` role required for user management functions
+- `agent` role has limited access to inventory management only
+- Authentication is nickname-based, no external auth provider needed
 
 #### Database Patterns
 - Use service classes for database operations
@@ -159,9 +165,9 @@ SUPABASE_SERVICE_ROLE_KEY=your_service_role_key
 
 #### User Management
 1. Admin creates profile via `AdminPanel`
-2. Profile stored in `profiles` table without auth user
-3. User registers manually with same email
-4. System associates existing profile with new auth user
+2. Profile stored in `profiles` table with nickname, password hash, and role
+3. User can immediately login with assigned nickname and password
+4. No external auth registration required
 
 #### Order Processing
 1. Orders created through `CallCenter` component
@@ -223,6 +229,77 @@ SUPABASE_SERVICE_ROLE_KEY=your_service_role_key
 
 #### Quality Assurance
 - Bundle optimization: Check for unused imports and components regularly
-- Audit console.log statements in production builds
-- Validate async state patterns are consistent across components
+- Use centralized logger instead of console.log statements
+- Validate async state patterns are consistent across components using `useAsyncState`
 - Test lazy loading boundaries with slow network conditions
+- Monitor performance using built-in `PerformanceMonitor` component
+
+### Current Authentication Architecture (IMPORTANT)
+
+#### Custom Authentication System
+The application now uses a **custom nickname-based authentication system** instead of Supabase Auth:
+
+- **Authentication Service**: `src/services/customAuthService.ts`
+  - Handles login/logout via nickname and password
+  - Validates credentials against `profiles` table directly
+  - Manages local session storage
+  - Provides role-based permission checks
+
+- **User Profiles Table Schema**:
+  ```typescript
+  interface Profile {
+    id: string // uuid
+    nickname: string // unique login identifier
+    display_name: string // full name
+    password_hash: string // bcrypt hashed password
+    role: 'agent' | 'admin_punto' | 'admin_global'
+    sede_id: string // uuid - required for all users
+    is_active: boolean
+  }
+  ```
+
+- **Role Hierarchy**:
+  - `agent`: Basic access, sede-specific operations only
+  - `admin_punto`: Administrative access for specific sede
+  - `admin_global`: Full system access, can manage all sedes
+
+#### Authentication Flow Details
+1. User enters nickname/password in login form
+2. `customAuthService.signIn()` validates against `profiles` table
+3. Password verification using stored hash
+4. On success, user data stored in memory and localStorage
+5. `useAuth` hook provides authentication state throughout app
+6. `ProtectedRoute` validates authentication and role permissions
+
+### Modern Development Patterns
+
+#### Async State Management
+- **Hook**: `useAsyncState<T>()` - Standardized async operation handling
+- **Pattern**: Consistent loading/error/data states across components
+- **Usage**: Replace manual useState patterns for async operations
+
+#### Logging System
+- **Centralized Logger**: `@/utils/logger.ts`
+- **Environment-aware**: Debug level in development, warn+ in production
+- **Categories**: Structured logging with category prefixes
+- **Usage**: `logDebug('category', 'message', optionalData)`
+
+#### Performance Optimizations
+- **Lazy Loading**: Critical for heavy components (AdminPanel, TimeMetricsPage)
+- **Query Optimization**: React Query with optimized cache settings
+- **Bundle Analysis**: Regular cleanup of unused UI components
+- **Error Boundaries**: Prevent crashes from component failures
+
+### Security Considerations
+
+#### Authentication Security
+- Passwords stored as bcrypt hashes in database
+- Session tokens managed in memory (cleared on logout/refresh)
+- Role-based access control enforced at component and API level
+- No sensitive data in localStorage (only user metadata)
+
+#### Database Security
+- Row Level Security (RLS) policies on Supabase tables
+- Sede-based data isolation for multi-tenant architecture
+- Sensitive operations restricted by role permissions
+- SQL injection protection via parameterized queries
