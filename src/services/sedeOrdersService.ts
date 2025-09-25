@@ -44,6 +44,7 @@ export interface CreateOrderData {
   sede_recogida?: string;
   pago_tipo: 'efectivo' | 'tarjeta' | 'nequi' | 'transferencia';
   instrucciones?: string;
+  cubiertos?: number;
   items: {
     producto_tipo: 'plato' | 'bebida' | 'topping';
     producto_id: number;
@@ -547,6 +548,7 @@ class SedeOrdersService {
           observaciones: orderData.instrucciones,
           address: orderData.address, // Dirección específica de esta orden
           hora_entrega: horaEntrega.toISOString(),
+          cubiertos: orderData.cubiertos,
           // Para pedidos de pickup, repartidor_id debe ser null (no necesitan repartidor)
           repartidor_id: orderData.tipo_entrega === 'pickup' ? null : undefined, // undefined permite auto-asignación para delivery
           // CRÍTICO: Guardar el precio de envío para el auto-complete

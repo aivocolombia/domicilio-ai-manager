@@ -95,9 +95,9 @@ class DeliveryService {
         .select('*')
         .order('created_at', { ascending: false });
 
-      // Filtrar por sede si se proporciona
+      // Filtrar por sede si se proporciona, pero incluir siempre el repartidor especial id=1
       if (sedeId) {
-        query = query.eq('sede_id', sedeId);
+        query = query.or(`sede_id.eq.${sedeId},id.eq.1`);
       }
 
       const { data: repartidores, error: errorRepartidores } = await query;
@@ -115,6 +115,18 @@ class DeliveryService {
       // Para cada repartidor, obtenemos sus estadísticas usando SQL directo
       const repartidoresConStats = await Promise.all(
         repartidores.map(async (repartidor) => {
+          // Para el repartidor especial id=1, no calcular estadísticas
+          if (repartidor.id === 1) {
+            return {
+              ...repartidor,
+              pedidos_activos: 0,
+              entregados: 0,
+              total_asignados: 0,
+              total_entregado: 0,
+              entregado_efectivo: 0,
+              entregado_otros: 0
+            } as RepartidorConEstadisticas;
+          }
           try {
             console.log(`📊 Obteniendo estadísticas para repartidor ${repartidor.id}...`);
             
