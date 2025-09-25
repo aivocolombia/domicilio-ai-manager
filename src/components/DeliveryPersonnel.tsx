@@ -326,7 +326,8 @@ export const DeliveryPersonnel: React.FC<DeliveryPersonnelProps> = ({
                 <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
                   <Switch
                     checked={person.disponible}
-                    onCheckedChange={() => togglePersonActive(person.id)}
+                    onCheckedChange={() => person.id !== 1 && togglePersonActive(person.id)}
+                    disabled={person.id === 1}
                   />
                 </div>
               </div>
@@ -339,40 +340,48 @@ export const DeliveryPersonnel: React.FC<DeliveryPersonnelProps> = ({
             
             <CardContent>
               <div className="space-y-2">
-                <div className="flex justify-between">
-                  <span className="text-sm text-muted-foreground">Pedidos activos:</span>
-                  <span className="font-medium">{person.pedidos_activos || 0}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-sm text-muted-foreground">Entregados:</span>
-                  <span className="font-medium">{person.entregados || 0}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-sm text-muted-foreground">Total asignados:</span>
-                  <span className="font-medium">{person.total_asignados || 0}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-sm text-muted-foreground">Total entregado (hoy):</span>
-                  <span className="font-medium text-green-600">${(person.total_entregado || 0).toLocaleString()}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-sm text-muted-foreground">Efectivo (hoy):</span>
-                  <span className="font-medium text-green-600">${(person.entregado_efectivo || 0).toLocaleString()}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-sm text-muted-foreground">Otros métodos (hoy):</span>
-                  <span className="font-medium text-blue-600">${(person.entregado_otros || 0).toLocaleString()}</span>
-                </div>
+                {person.id !== 1 ? (
+                  <>
+                    <div className="flex justify-between">
+                      <span className="text-sm text-muted-foreground">Pedidos activos:</span>
+                      <span className="font-medium">{person.pedidos_activos || 0}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-sm text-muted-foreground">Entregados:</span>
+                      <span className="font-medium">{person.entregados || 0}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-sm text-muted-foreground">Total asignados:</span>
+                      <span className="font-medium">{person.total_asignados || 0}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-sm text-muted-foreground">Total entregado (hoy):</span>
+                      <span className="font-medium text-green-600">${(person.total_entregado || 0).toLocaleString()}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-sm text-muted-foreground">Efectivo (hoy):</span>
+                      <span className="font-medium text-green-600">${(person.entregado_efectivo || 0).toLocaleString()}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-sm text-muted-foreground">Otros métodos (hoy):</span>
+                      <span className="font-medium text-blue-600">${(person.entregado_otros || 0).toLocaleString()}</span>
+                    </div>
+                  </>
+                ) : (
+                  <div className="text-sm text-muted-foreground">Repartidor pedido por el usuario</div>
+                )}
                 {person.placas && (
                   <div className="flex justify-between">
                     <span className="text-sm text-muted-foreground">Placas:</span>
                     <span className="text-sm font-medium">{person.placas}</span>
                   </div>
                 )}
-                <div className="flex justify-between">
-                  <span className="text-sm text-muted-foreground">Desde:</span>
-                  <span className="text-sm">{new Date(person.created_at).toLocaleDateString()}</span>
-                </div>
+                {person.id !== 1 && (
+                  <div className="flex justify-between">
+                    <span className="text-sm text-muted-foreground">Desde:</span>
+                    <span className="text-sm">{new Date(person.created_at).toLocaleDateString()}</span>
+                  </div>
+                )}
               </div>
             </CardContent>
           </Card>

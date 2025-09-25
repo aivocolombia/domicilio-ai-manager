@@ -204,7 +204,9 @@ export class OrderStatusService {
 
       // Si se proporciona sede_id, filtrar por sede
       if (sede_id) {
-        query = query.eq('sede_id', sede_id);
+        // Incluir siempre el repartidor especial id=1 en cualquier sede
+        // Nota: .or aplica condiciones OR entre paréntesis lógicos
+        query = query.or(`sede_id.eq.${sede_id},id.eq.1`);
         console.log('🏢 Filtrando repartidores por sede:', sede_id);
       }
 

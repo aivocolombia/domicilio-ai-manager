@@ -330,6 +330,9 @@ export const MinutaModal: React.FC<MinutaModalProps> = ({
     <!-- Productos -->
     <div class="info-section">
         <div class="info-header">🍽️ Productos</div>
+      ${typeof details.cubiertos === 'number' ? `
+      <div style="margin: 5px 0;"><strong>🍴 Cubiertos:</strong> ${details.cubiertos}</div>
+      ` : ''}
         
         ${details.platos.length > 0 ? `
         <div style="margin: 5px 0;"><strong>Platos:</strong></div>
@@ -469,6 +472,9 @@ export const MinutaModal: React.FC<MinutaModalProps> = ({
 
                 <div className="border p-2 bg-white rounded">
                   <strong>🍽️ Productos</strong>
+                  <div className="mt-2 text-sm">
+                    <span className="font-medium">🍴 Cubiertos:</span> {typeof orderDetails.cubiertos === 'number' ? orderDetails.cubiertos : 0}
+                  </div>
                   {orderDetails.platos.length > 0 && (
                     <div className="mt-2">
                       <div className="font-medium">Platos:</div>
