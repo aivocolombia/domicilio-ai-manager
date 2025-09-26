@@ -440,7 +440,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
     }
 
     // admin_punto solo puede aplicar descuentos en su sede
-    if (user.role === 'admin_punto' && user.sede_id !== currentSedeId) {
+    if (user.role === 'admin_punto' && user.sede_id !== order.sede) {
       return false;
     }
 

@@ -106,6 +106,14 @@ export const useRealtimeOrders = ({
     // Log antes de crear el canal
     console.log('🚀 [ORDERS] Iniciando suscripción a tabla ordenes...');
 
+    // Test 1: Verificar que supabase.realtime esté disponible
+    console.log('🔍 [ORDERS] Verificando Supabase realtime:', {
+      hasRealtime: !!supabase.realtime,
+      realtimeConfig: supabase.realtime?.accessToken ? 'HAS_TOKEN' : 'NO_TOKEN',
+      isConnected: supabase.realtime?.isConnected?.(),
+      settings: supabase.realtime?.channels?.length || 0
+    });
+
     const ordersChannel = supabase
       .channel(`orders_${sedeId}`)
       .on(
