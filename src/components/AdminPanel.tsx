@@ -32,6 +32,7 @@ import { CancelledOrdersModal } from '@/components/CancelledOrdersModal'
 import { useRealtimeMetrics } from '@/hooks/useRealtimeMetrics'
 import { DeliveryPersonMetrics } from '@/components/DeliveryPersonMetrics'
 import { CRM } from '@/components/CRM'
+import { DiscountMetrics } from '@/components/DiscountMetrics'
 
 type Profile = User
 
@@ -2388,6 +2389,13 @@ export function AdminPanel({ onBack, onNavigateToTimeMetrics }: AdminPanelProps)
                 sede_id: selectedSedeFilter === 'all' ? undefined : selectedSedeFilter
               }}
               onNavigateToTimeMetrics={onNavigateToTimeMetrics}
+            />
+
+            {/* Métricas de Descuentos */}
+            <DiscountMetrics
+              sedeId={selectedSedeFilter === 'all' ? undefined : selectedSedeFilter}
+              startDate={format(dateRange.from, 'yyyy-MM-dd')}
+              endDate={format(dateRange.to, 'yyyy-MM-dd')}
             />
           </div>
         )}

@@ -90,70 +90,101 @@ export const useRealtimeOrders = ({
       return;
     }
 
-    // Debug: Log de configuración
-    console.log('🔍 Realtime Debug:', {
+    // Debug: Log de configuración más agresivo
+    console.log('🔍 [ORDERS] Realtime Debug:', {
       supabaseUrl: import.meta.env.VITE_SUPABASE_URL,
       sedeId,
       hasSupabase: !!supabase,
-      channel: `orders_${sedeId}`
+      channel: `orders_${sedeId}`,
+      timestamp: new Date().toISOString()
     });
 
-    // Suscripción a cambios en órdenes (primero sin filtro para probar)
-    console.log('🔄 Creando canal de suscripción:', `orders_${sedeId}`);
-    
+    // Suscripción a cambios en órdenes con filtro directo por sede
+    console.log('🔄 [ORDERS] Creando canal de suscripción:', `orders_${sedeId}`);
+    console.log('🔍 [ORDERS] Debug - Sede ID para filtro:', sedeId, typeof sedeId);
+
+    // Log antes de crear el canal
+    console.log('🚀 [ORDERS] Iniciando suscripción a tabla ordenes...');
+
     const ordersChannel = supabase
       .channel(`orders_${sedeId}`)
       .on(
         'postgres_changes',
-        { 
-          event: '*', 
-          schema: 'public', 
+        {
+          event: '*',
+          schema: 'public',
           table: 'ordenes'
-          // Temporalmente sin filtro para diagnosticar: filter: `sede_id=eq.${sedeId}`
+          // Temporalmente sin filtro para testing
+          // filter: `sede_id=eq.${sedeId}`
         },
         (payload) => {
-          console.log('📨 Realtime payload recibido:', payload);
-          // Filtrar manualmente por sede si es necesario
+          console.log('📨 [ORDERS] Realtime payload recibido (SIN FILTRO - testing):', {
+            event: payload.eventType,
+            orderId: payload.new?.id || payload.old?.id,
+            sedeId: payload.new?.sede_id || payload.old?.sede_id,
+            timestamp: new Date().toISOString()
+          });
+
+          // Filtrar manualmente por sede (temporalmente)
           const order = payload.new || payload.old;
           if (order && order.sede_id === sedeId) {
-            console.log('✅ Orden pertenece a la sede, procesando...', { orderId: order.id, sedeId });
+            console.log('✅ [ORDERS] Orden pertenece a la sede, procesando...', { orderId: order.id, sedeId });
             handleOrderChange(payload);
           } else {
-            console.log('🚫 Orden filtrada (no pertenece a la sede)', { 
-              orderSedeId: order?.sede_id, 
-              expectedSedeId: sedeId 
+            console.log('🚫 [ORDERS] Orden filtrada (no pertenece a la sede)', {
+              orderSedeId: order?.sede_id,
+              expectedSedeId: sedeId
             });
           }
         }
       )
-      .subscribe((status) => {
-        console.log('🔍 Realtime Status Changed:', { status, sedeId, channel: `orders_${sedeId}` });
-        
+      .subscribe((status, err) => {
+        console.log('🔍 [ORDERS] Realtime Status Changed:', {
+          status,
+          sedeId,
+          channel: `orders_${sedeId}`,
+          error: err,
+          timestamp: new Date().toISOString()
+        });
+
         if (status === 'SUBSCRIBED') {
-          console.log('✅ Realtime conectado exitosamente');
-          logDebug('Realtime', 'Realtime conectado exitosamente', { sedeId, channel: `orders_${sedeId}` });
+          console.log('✅ [ORDERS] Realtime conectado exitosamente para sede:', sedeId);
+          logDebug('Realtime', '[ORDERS] Realtime conectado exitosamente', {
+            sedeId,
+            channel: `orders_${sedeId}`,
+            filter: `sede_id=eq.${sedeId}`
+          });
           isConnectedRef.current = true;
           setConnectionStatus('connected');
         } else if (status === 'CHANNEL_ERROR') {
-          console.error('❌ Error en conexión realtime:', status);
-          logError('Realtime', 'Error en conexión realtime', { 
-            sedeId, 
+          console.error('❌ [ORDERS] Error en conexión realtime:', { status, error: err, sedeId });
+          logError('Realtime', '[ORDERS] Error en conexión realtime', {
+            sedeId,
             status,
-            possibleCauses: ['Realtime no habilitado en Supabase', 'RLS bloqueando suscripción', 'API keys incorrectas', 'Filtro de sede inválido'] 
+            error: err,
+            filter: `sede_id=eq.${sedeId}`,
+            possibleCauses: [
+              'Realtime no habilitado en Supabase',
+              'RLS bloqueando suscripción para tabla ordenes',
+              'API keys incorrectas',
+              'Filtro de sede inválido',
+              'Sede ID formato incorrecto',
+              'Tabla ordenes no tiene permisos de SELECT'
+            ]
           });
           isConnectedRef.current = false;
           setConnectionStatus('error');
         } else if (status === 'CLOSED') {
-          console.warn('⚠️ Conexión realtime cerrada');
+          console.warn('⚠️ Conexión realtime cerrada para sede:', sedeId);
           logDebug('Realtime', 'Conexión realtime cerrada', { sedeId });
           isConnectedRef.current = false;
           setConnectionStatus('disconnected');
         } else if (status === 'TIMED_OUT') {
-          console.error('⏰ Conexión realtime timeout');
+          console.error('⏰ Conexión realtime timeout para sede:', sedeId);
           isConnectedRef.current = false;
           setConnectionStatus('error');
         } else {
-          console.warn('🔄 Estado realtime desconocido:', status);
+          console.warn('🔄 Estado realtime desconocido:', { status, sedeId });
           setConnectionStatus('connecting');
         }
       });

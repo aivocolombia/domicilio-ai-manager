@@ -102,8 +102,8 @@ export const useOptimizedDashboard = (sedeId?: string): UseOptimizedDashboardRes
         observaciones,
         precio_envio,
         address,
-        clientes!inner(nombre, telefono),
-        pagos!left(type, total_pago),
+        clientes!cliente_id(nombre, telefono),
+        pagos!payment_id(type, total_pago),
         repartidores!left(nombre),
         minutas!left(daily_id),
         sedes!inner(name)

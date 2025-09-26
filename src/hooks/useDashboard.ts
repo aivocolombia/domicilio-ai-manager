@@ -190,8 +190,17 @@ export const useDashboard = (sede_id?: string | number) => {
     [loadDashboardOrders]
   );
 
+  // Debug: Log sede_id antes de pasar al hook de realtime
+  const currentSedeId = sedeIdRef.current?.toString();
+  console.log('🔍 [DASHBOARD] useDashboard - sedeId para realtime:', {
+    originalSedeId: sede_id,
+    sedeIdRef: sedeIdRef.current,
+    stringifiedSedeId: currentSedeId,
+    timestamp: new Date().toISOString()
+  });
+
   const realtimeStatus = useRealtimeOrders({
-    sedeId: sedeIdRef.current?.toString(),
+    sedeId: currentSedeId,
     onOrderUpdated: () => {
       console.log('🔄 Dashboard: Orden actualizada, forzando recarga inmediata...');
       // Usar recarga inmediata para cualquier cambio

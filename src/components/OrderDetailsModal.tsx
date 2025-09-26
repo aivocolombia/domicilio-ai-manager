@@ -80,8 +80,8 @@ export const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({
           observaciones,
           cubiertos,
           address,
-          clientes!inner(nombre, telefono),
-          pagos!left(total_pago)
+          clientes!cliente_id(nombre, telefono),
+          pagos!payment_id(total_pago)
         `)
         .eq('id', id)
         .single();
@@ -101,7 +101,7 @@ export const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({
         .select(`
           id,
           plato_id,
-          platos!inner(id, name, pricing)
+          platos!plato_id(id, name, pricing)
         `)
         .eq('orden_id', id);
 
@@ -115,7 +115,7 @@ export const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({
         .select(`
           id,
           bebidas_id,
-          bebidas!inner(id, name, pricing)
+          bebidas!bebidas_id(id, name, pricing)
         `)
         .eq('orden_id', id);
 
@@ -129,7 +129,7 @@ export const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({
         .select(`
           id,
           topping_id,
-          toppings!inner(id, name, pricing)
+          toppings!topping_id(id, name, pricing)
         `)
         .eq('orden_id', id);
 

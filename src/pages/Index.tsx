@@ -320,7 +320,7 @@ const Index = () => {
           repartidor_id,
           sede_id,
           clientes!left(nombre, telefono),
-          pagos!left(type, status, total_pago),
+          pagos!payment_id(type, status, total_pago),
           repartidores!left(nombre),
           sedes!left(name)
         `)

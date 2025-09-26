@@ -21,6 +21,11 @@ export interface Order {
   deliveryType: DeliveryType; // Nueva propiedad para tipo de entrega
   type_order?: string; // Campo de base de datos para tipo de orden (delivery/pickup)
   pickupSede?: string; // Sede donde se recoge el pedido (solo para pickup)
+  // Discount fields
+  discountAmount?: number; // Valor del descuento aplicado
+  discountComment?: string; // Comentario del descuento
+  discountAppliedBy?: string; // ID del usuario que aplicó el descuento
+  discountAppliedDate?: Date; // Fecha de aplicación del descuento
 }
 
 export interface OrderItem {
@@ -81,7 +86,9 @@ export interface Sede {
   maxCapacity: number;
 }
 
-export type OrderStatus = 'received' | 'kitchen' | 'delivery' | 'delivered' | 'cancelled' | 'ready_pickup';
+export type OrderStatus =
+  | 'received' | 'kitchen' | 'delivery' | 'delivered' | 'cancelled' | 'ready_pickup' // English statuses
+  | 'Recibidos' | 'Cocina' | 'Camino' | 'Entregados' | 'Cancelado' | 'ready_pickup'; // Spanish statuses (database format)
 export type OrderSource = 'ai_agent' | 'call_center' | 'web' | 'app' | 'sede';
 export type PaymentMethod = 'card' | 'cash' | 'nequi' | 'transfer';
 export type PaymentStatus = 'pending' | 'paid' | 'failed';
@@ -159,4 +166,36 @@ export interface InventoryItem {
   preparationTime?: number;
   size?: string;
   toppings?: Topping[];
+}
+
+// Interfaces para sistema de descuentos
+export interface DiscountApplication {
+  orderId: number;
+  discountAmount: number;
+  discountComment: string;
+  appliedBy: string;
+  appliedDate: string;
+}
+
+export interface DiscountValidation {
+  isValid: boolean;
+  error?: string;
+  allowedStatuses: string[];
+}
+
+export interface DiscountRequest {
+  orderId: number;
+  discountAmount: number;
+  discountComment: string;
+  userId: string;
+  userRole: string;
+  userSedeId: string;
+}
+
+export interface DiscountMetrics {
+  totalDiscounts: number;
+  totalDiscountAmount: number;
+  averageDiscount: number;
+  discountsByStatus: Record<string, number>;
+  recentDiscounts: DiscountApplication[];
 }
