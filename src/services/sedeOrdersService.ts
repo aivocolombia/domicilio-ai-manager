@@ -81,8 +81,8 @@ class SedeOrdersService {
           status,
           hora_entrega,
           observaciones,
-          clientes!inner(nombre, telefono, direccion),
-          pagos!left(type, status, total_pago),
+          clientes!cliente_id(nombre, telefono, direccion),
+          pagos!payment_id(type, status, total_pago),
           ordenes_platos!left(
             platos!inner(id, name, pricing)
           ),
@@ -246,8 +246,8 @@ class SedeOrdersService {
           status,
           created_at,
           observaciones,
-          clientes!inner(nombre, telefono, direccion),
-          pagos!left(type, status, total_pago),
+          clientes!cliente_id(nombre, telefono, direccion),
+          pagos!payment_id(type, status, total_pago),
           ordenes_platos!left(
             platos!inner(id, name, pricing)
           ),
@@ -291,8 +291,8 @@ class SedeOrdersService {
           status,
           created_at,
           observaciones,
-          clientes!inner(nombre, telefono, direccion),
-          pagos!left(type, status, total_pago),
+          clientes!cliente_id(nombre, telefono, direccion),
+          pagos!payment_id(type, status, total_pago),
           ordenes_platos!left(
             platos!inner(id, name, pricing)
           ),

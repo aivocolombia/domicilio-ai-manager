@@ -319,7 +319,7 @@ export const EditOrderModal: React.FC<EditOrderModalProps> = ({
           .select(`
             id,
             plato_id,
-            platos!inner(id, name, pricing)
+            platos!plato_id(id, name, pricing)
           `)
           .eq('orden_id', orderId);
 
@@ -333,7 +333,7 @@ export const EditOrderModal: React.FC<EditOrderModalProps> = ({
           .select(`
             id,
             bebidas_id,
-            bebidas!inner(id, name, pricing)
+            bebidas!bebidas_id(id, name, pricing)
           `)
           .eq('orden_id', orderId);
 
@@ -347,7 +347,7 @@ export const EditOrderModal: React.FC<EditOrderModalProps> = ({
           .select(`
             id,
             topping_id,
-            toppings!inner(id, name, pricing)
+            toppings!topping_id(id, name, pricing)
           `)
           .eq('orden_id', orderId);
 

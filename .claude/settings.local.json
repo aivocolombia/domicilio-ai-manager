@@ -11,7 +11,8 @@
       "Bash(export:*)",
       "Bash(grep:*)",
       "Bash(sed:*)",
-      "Bash(npx tsc:*)"
+      "Bash(npx tsc:*)",
+      "Bash(npm run build:dev:*)"
     ],
     "deny": [],
     "ask": [],

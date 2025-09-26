@@ -5,13 +5,16 @@ export interface DashboardOrder {
   id_display: string;
   cliente_nombre: string;
   cliente_telefono: string;
+  cliente_direccion?: string; // Dirección del cliente
   address: string; // Dirección específica de esta orden (no del cliente)
   sede: string;
   estado: string;
   pago_tipo: string;
   pago_estado: string;
+  pago_metodo?: string; // Método de pago
   repartidor: string;
   total: number;
+  total_orden?: number; // Total de la orden antes de descuentos
   entrega_hora: string;
   creado_hora: string;
   creado_fecha: string;
@@ -20,6 +23,10 @@ export interface DashboardOrder {
   minuta_id?: string; // ID diario de la minuta (ej: "1", "2", "3")
   source?: string; // Fuente de la orden: 'sede' o 'ai_agent'
   type_order?: string; // Tipo de orden: 'delivery' o 'pickup'
+  // Discount fields
+  descuento_valor?: number; // Valor del descuento aplicado
+  descuento_comentario?: string; // Comentario del descuento
+  descuento_aplicado_fecha?: string; // Fecha de aplicación del descuento
 }
 
 export interface DashboardFilters {
@@ -71,10 +78,13 @@ export class DashboardService {
           source,
           type_order,
           address,
-          clientes!left(nombre, telefono),
-          pagos!left(type, status, total_pago),
-          repartidores!left(nombre),
-          sedes!left(name),
+          descuento_valor,
+          descuento_comentario,
+          descuento_aplicado_fecha,
+          clientes!cliente_id(nombre, telefono, direccion),
+          pagos!payment_id(type, status, total_pago),
+          repartidores!repartidor_id(nombre),
+          sedes!sede_id(name),
           minutas!left(daily_id)
         `)
         .order('created_at', { ascending: false });
@@ -248,23 +258,27 @@ export class DashboardService {
         pago_estado: this.mapPaymentStatus(order.pagos?.status),
         repartidor: order.repartidores?.nombre || 'Sin asignar',
         total: order.pagos?.total_pago || 0,
-        entrega_hora: order.hora_entrega ? 
-          new Date(order.hora_entrega).toLocaleTimeString('es-CO', { 
-            hour: '2-digit', 
+        entrega_hora: order.hora_entrega ?
+          new Date(order.hora_entrega).toLocaleTimeString('es-CO', {
+            hour: '2-digit',
             minute: '2-digit',
-            hour12: false 
+            hour12: false
           }) : 'No definida',
-        creado_hora: new Date(order.created_at).toLocaleTimeString('es-CO', { 
-          hour: '2-digit', 
+        creado_hora: new Date(order.created_at).toLocaleTimeString('es-CO', {
+          hour: '2-digit',
           minute: '2-digit',
-          hour12: false 
+          hour12: false
         }),
         creado_fecha: new Date(order.created_at).toLocaleDateString('es-CO'),
         orden_id: order.id,
         payment_id: order.payment_id || 0,
         minuta_id: order.minutas && order.minutas.length > 0 ? order.minutas[0].daily_id.toString() : undefined,
         source: order.source || 'sede',
-        type_order: order.type_order || 'delivery'
+        type_order: order.type_order || 'delivery',
+        // Discount fields mapping
+        descuento_valor: order.descuento_valor || undefined,
+        descuento_comentario: order.descuento_comentario,
+        descuento_aplicado_fecha: order.descuento_aplicado_fecha
       }));
 
       console.log('✅ Órdenes del dashboard obtenidas:', transformedOrders.length);

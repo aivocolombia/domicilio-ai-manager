@@ -104,7 +104,7 @@ export const CancelledOrdersModal: React.FC<CancelledOrdersModalProps> = ({
           motivo_cancelacion,
           payment_id,
           clientes!left(nombre, telefono),
-          pagos!left(total_pago)
+          pagos!payment_id(total_pago)
         `)
         .eq('status', 'Cancelado')
         .eq('sede_id', sedeId)

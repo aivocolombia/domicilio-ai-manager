@@ -188,7 +188,7 @@ export class MetricsService {
             .from('ordenes')
             .select(`
               id,
-              pagos!left(total_pago)
+              pagos!payment_id(total_pago)
             `)
             .in('id', ordenIds);
 
@@ -378,7 +378,7 @@ export class MetricsService {
             .from('ordenes')
             .select(`
               id,
-              pagos!left(total_pago)
+              pagos!payment_id(total_pago)
             `)
             .in('id', ordenIds);
 
@@ -524,7 +524,7 @@ export class MetricsService {
           motivo_cancelacion,
           created_at,
           sedes!left(name),
-          pagos!left(total_pago)
+          pagos!payment_id(total_pago)
         `)
         .eq('status', 'Cancelado')
         .order('created_at', { ascending: false });
@@ -548,7 +548,7 @@ export class MetricsService {
       // También obtener el total de pedidos para calcular porcentaje
       let totalQuery = supabase
         .from('ordenes')
-        .select('id, pagos!left(total_pago)')
+        .select('id, pagos!payment_id(total_pago)')
         .neq('status', null);
 
       // Solo aplicar filtros de fecha (las métricas de cancelación son globales)
@@ -868,7 +868,7 @@ export class MetricsService {
           created_at,
           hora_entrega,
           repartidores!left(id, nombre),
-          pagos!left(total_pago)
+          pagos!payment_id(total_pago)
         `)
         .not('repartidor_id', 'is', null)
         .order('created_at', { ascending: false });

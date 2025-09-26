@@ -1,6 +1,5 @@
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { useOrdersRealtime } from '@/hooks/useRealtime';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -35,7 +34,8 @@ import {
   MessageCircle,
   Edit,
   Printer,
-  Plus
+  Plus,
+  Calculator
 } from 'lucide-react';
 import { Calendar as CalendarComponent } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
@@ -51,6 +51,7 @@ import { OrderConfigModal } from './OrderConfigModal';
 import { OrderDetailsModal } from './OrderDetailsModal';
 import { EditOrderModal } from './EditOrderModal';
 import { MinutaModal } from './MinutaModal';
+import { DiscountDialog } from './DiscountDialog';
 import { cn } from '@/lib/utils';
 import { useDashboard } from '@/hooks/useDashboard';
 import { logDebug, logError, logWarn } from '@/utils/logger';
@@ -218,6 +219,10 @@ export const Dashboard: React.FC<DashboardProps> = ({
   const [editingOrderId, setEditingOrderId] = useState<string | null>(null);
   const [selectedOrderForMinuta, setSelectedOrderForMinuta] = useState<DashboardOrder | null>(null);
 
+  // Estados para modal de descuento
+  const [isDiscountDialogOpen, setIsDiscountDialogOpen] = useState(false);
+  const [selectedOrderForDiscount, setSelectedOrderForDiscount] = useState<DashboardOrder | null>(null);
+
   // Estados para ordenamiento
   const [sortField, setSortField] = useState<keyof DashboardOrder>('creado_fecha');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
@@ -235,6 +240,14 @@ export const Dashboard: React.FC<DashboardProps> = ({
   // Hook para datos reales del dashboard
   // Usar effectiveSedeId cuando esté disponible (admin) o sede_id del usuario (agente)
   const sedeIdToUse = effectiveSedeId || profile?.sede_id;
+
+  // Debug: Verificar sedeIdToUse
+  console.log('🔍 [DASHBOARD] SedeId calculation:', {
+    effectiveSedeId,
+    profileSedeId: profile?.sede_id,
+    finalSedeIdToUse: sedeIdToUse,
+    timestamp: new Date().toISOString()
+  });
 
   // Hook para crear pedidos
   const {
@@ -392,6 +405,52 @@ export const Dashboard: React.FC<DashboardProps> = ({
     setIsEditModalOpen(true);
   };
 
+  // Funciones para descuentos
+  const handleDiscountOrder = (order: DashboardOrder) => {
+    logDebug('Dashboard', 'Abriendo modal de descuento', { orderId: order.orden_id });
+    setSelectedOrderForDiscount(order);
+    setIsDiscountDialogOpen(true);
+  };
+
+  const handleDiscountApplied = (orderId: number, discountAmount: number) => {
+    logDebug('Dashboard', 'Descuento aplicado', { orderId, discountAmount });
+
+    toast({
+      title: "Descuento Aplicado",
+      description: `Descuento de $${discountAmount.toLocaleString()} aplicado exitosamente`,
+      variant: "default"
+    });
+
+    // Refrescar los datos del dashboard manteniendo los filtros actuales
+    refreshDataWithCurrentFilters();
+  };
+
+  const canApplyDiscount = (order: DashboardOrder): boolean => {
+    // Solo admin_punto y admin_global pueden aplicar descuentos
+    if (!user || !['admin_punto', 'admin_global'].includes(user.role)) {
+      return false;
+    }
+
+    // Estados permitidos para aplicar descuentos
+    const allowedStatuses = ['Recibidos', 'Cocina', 'Camino', 'Entregados', 'received', 'kitchen', 'delivery', 'delivered'];
+
+    // Verificar estado de la orden
+    if (!allowedStatuses.includes(order.estado)) {
+      return false;
+    }
+
+    // admin_punto solo puede aplicar descuentos en su sede
+    if (user.role === 'admin_punto' && user.sede_id !== currentSedeId) {
+      return false;
+    }
+
+    // No permitir descuento si ya tiene uno aplicado
+    if (order.descuento_valor && order.descuento_valor > 0) {
+      return false;
+    }
+
+    return true;
+  };
 
   // Función para confirmar cancelación de pedido
   const handleConfirmCancel = async () => {
@@ -2018,7 +2077,18 @@ export const Dashboard: React.FC<DashboardProps> = ({
                             <span className="text-sm">{realOrder.repartidor}</span>
                           </div>
                         </td>
-                        <td className="p-2 font-medium">${(realOrder.total ?? 0).toLocaleString()}</td>
+                        <td className="p-2">
+                          <div className="space-y-1">
+                            <div className="font-medium">${(realOrder.total ?? 0).toLocaleString()}</div>
+                            {realOrder.descuento_valor && realOrder.descuento_valor > 0 && (
+                              <div className="flex items-center gap-1">
+                                <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200 text-xs">
+                                  Descuento: -${realOrder.descuento_valor.toLocaleString()}
+                                </Badge>
+                              </div>
+                            )}
+                          </div>
+                        </td>
                         <td className="p-2">
                           <div className="text-sm">
                             {realOrder.entrega_hora}
@@ -2057,7 +2127,20 @@ export const Dashboard: React.FC<DashboardProps> = ({
                                 <Edit className="h-4 w-4" />
                               </Button>
                             )}
-                            
+
+                            {/* Botón de descuento - solo para admin_punto y admin_global en estados permitidos */}
+                            {canApplyDiscount(realOrder) && (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => handleDiscountOrder(realOrder)}
+                                className="h-8 w-8 p-0 border-green-300 text-green-600 hover:bg-green-50"
+                                title={`Aplicar descuento a ${realOrder.id_display}`}
+                              >
+                                <Calculator className="h-4 w-4" />
+                              </Button>
+                            )}
+
                             {/* Botón de cancelar - solo para pedidos que no estén cancelados o entregados */}
                             {realOrder.estado !== 'Cancelado' && realOrder.estado !== 'Entregados' && (
                               <Button
@@ -2478,6 +2561,25 @@ export const Dashboard: React.FC<DashboardProps> = ({
         orderId={editingOrderId}
         order={editingOrderId ? orders.find(order => order.orden_id.toString() === editingOrderId) || null : null}
         onOrderUpdated={refreshDataWithCurrentFilters}
+      />
+
+      {/* Modal para aplicar descuento */}
+      <DiscountDialog
+        isOpen={isDiscountDialogOpen}
+        onClose={() => {
+          setIsDiscountDialogOpen(false);
+          setSelectedOrderForDiscount(null);
+        }}
+        order={selectedOrderForDiscount ? {
+          orden_id: selectedOrderForDiscount.orden_id,
+          id_display: selectedOrderForDiscount.id_display,
+          cliente_nombre: selectedOrderForDiscount.cliente_nombre,
+          total: selectedOrderForDiscount.total,
+          estado: selectedOrderForDiscount.estado,
+          pago_estado: selectedOrderForDiscount.pago_estado,
+          sede: selectedOrderForDiscount.sede
+        } : null}
+        onDiscountApplied={handleDiscountApplied}
       />
 
       {/* Modal para crear nuevo pedido */}
