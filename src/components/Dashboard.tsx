@@ -168,6 +168,50 @@ export const Dashboard: React.FC<DashboardProps> = ({
   });
   const [loadingSedeProducts, setLoadingSedeProducts] = useState(false);
 
+  // Helpers para manejar cantidades por producto dentro de la UI de selección
+  const getItemCount = (productType: 'plato' | 'bebida' | 'topping', productId: string | number) => {
+    const uniqueId = `${productType}_${productId}`;
+    const item = newOrder.items.find(i => i.productId === uniqueId);
+    return item?.quantity ?? 0;
+  };
+
+  const incrementItem = (productType: 'plato' | 'bebida', productId: string | number) => {
+    // Reutiliza la función existente
+    addItemToOrder(productId.toString(), productType);
+  };
+
+  const decrementItem = (productType: 'plato' | 'bebida', productId: string | number) => {
+    const uniqueId = `${productType}_${productId}`;
+    const existing = newOrder.items.find(i => i.productId === uniqueId);
+    if (!existing) return;
+    if (existing.quantity > 1) {
+      setNewOrder({
+        ...newOrder,
+        items: newOrder.items.map(i => i.productId === uniqueId ? { ...i, quantity: i.quantity - 1 } : i)
+      });
+    } else {
+      removeItemFromOrder(uniqueId);
+    }
+  };
+
+  const incrementTopping = (toppingId: string | number) => {
+    addToppingToOrder(toppingId.toString());
+  };
+
+  const decrementTopping = (toppingId: string | number) => {
+    const uniqueId = `topping_${toppingId}`;
+    const existing = newOrder.items.find(i => i.productId === uniqueId);
+    if (!existing) return;
+    if (existing.quantity > 1) {
+      setNewOrder({
+        ...newOrder,
+        items: newOrder.items.map(i => i.productId === uniqueId ? { ...i, quantity: i.quantity - 1 } : i)
+      });
+    } else {
+      removeItemFromOrder(uniqueId);
+    }
+  };
+
   // Estados para modal de impresión de minuta
   const [printMinutaModalOpen, setPrintMinutaModalOpen] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
@@ -2664,13 +2708,24 @@ export const Dashboard: React.FC<DashboardProps> = ({
                           <p className="text-sm text-gray-600">${(item.pricing ?? 0).toLocaleString()}</p>
                           <span className="text-xs bg-green-100 text-green-800 px-1 rounded">Disponible</span>
                         </div>
-                        <Button
-                          size="sm"
-                          onClick={() => addItemToOrder(item.id.toString(), 'plato')}
-                          className="bg-brand-primary hover:bg-brand-primary/90"
-                        >
-                          <Plus className="h-4 w-4" />
-                        </Button>
+                        <div className="flex items-center gap-2">
+                          <Button
+                            size="icon"
+                            variant="outline"
+                            onClick={() => decrementItem('plato', item.id)}
+                          >
+                            −
+                          </Button>
+                          <span className="w-8 text-center font-mono">{getItemCount('plato', item.id)}</span>
+                          <Button
+                            size="icon"
+                            variant="outline"
+                            onClick={() => incrementItem('plato', item.id)}
+                            className="bg-brand-primary text-white hover:bg-brand-primary/90"
+                          >
+                            +
+                          </Button>
+                        </div>
                       </div>
                     ))}
                     {sedeProducts.bebidas.map((item) => (
@@ -2680,13 +2735,24 @@ export const Dashboard: React.FC<DashboardProps> = ({
                           <p className="text-sm text-gray-600">${(item.pricing ?? 0).toLocaleString()}</p>
                           <span className="text-xs bg-blue-100 text-blue-800 px-1 rounded">Disponible</span>
                         </div>
-                        <Button
-                          size="sm"
-                          onClick={() => addItemToOrder(item.id.toString(), 'bebida')}
-                          className="bg-brand-primary hover:bg-brand-primary/90"
-                        >
-                          <Plus className="h-4 w-4" />
-                        </Button>
+                        <div className="flex items-center gap-2">
+                          <Button
+                            size="icon"
+                            variant="outline"
+                            onClick={() => decrementItem('bebida', item.id)}
+                          >
+                            −
+                          </Button>
+                          <span className="w-8 text-center font-mono">{getItemCount('bebida', item.id)}</span>
+                          <Button
+                            size="icon"
+                            variant="outline"
+                            onClick={() => incrementItem('bebida', item.id)}
+                            className="bg-brand-primary text-white hover:bg-brand-primary/90"
+                          >
+                            +
+                          </Button>
+                        </div>
                       </div>
                     ))}
                     {sedeProducts.platos.length === 0 && sedeProducts.bebidas.length === 0 && (
@@ -2721,13 +2787,24 @@ export const Dashboard: React.FC<DashboardProps> = ({
                           <p className="text-sm text-orange-600">${(item.pricing ?? 0).toLocaleString()}</p>
                           <span className="text-xs bg-orange-100 text-orange-800 px-1 rounded">Disponible</span>
                         </div>
-                        <Button
-                          size="sm"
-                          onClick={() => addToppingToOrder(item.id.toString())}
-                          className="bg-orange-500 hover:bg-orange-600 text-white"
-                        >
-                          <Plus className="h-4 w-4" />
-                        </Button>
+                        <div className="flex items-center gap-2">
+                          <Button
+                            size="icon"
+                            variant="outline"
+                            onClick={() => decrementTopping(item.id)}
+                          >
+                            −
+                          </Button>
+                          <span className="w-8 text-center font-mono">{getItemCount('topping', item.id)}</span>
+                          <Button
+                            size="icon"
+                            variant="outline"
+                            onClick={() => incrementTopping(item.id)}
+                            className="bg-orange-500 text-white hover:bg-orange-600"
+                          >
+                            +
+                          </Button>
+                        </div>
                       </div>
                     ))}
                   </>

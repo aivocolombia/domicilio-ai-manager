@@ -103,6 +103,36 @@ export const EditOrderModal: React.FC<EditOrderModalProps> = ({
     setItems(prev => [...prev, newItem]);
   };
 
+  // Helpers para contador por producto disponible en grillas de agregar
+  const getSelectedCount = (tipo: 'plato' | 'bebida' | 'topping', productoId: number) => {
+    const key = `${tipo}_${productoId}`;
+    const item = items.find(i => i.id === key);
+    return item?.cantidad ?? 0;
+  };
+
+  const incrementSelected = (tipo: 'plato' | 'bebida' | 'topping', producto: { id: number; name: string; pricing?: number }) => {
+    const key = `${tipo}_${producto.id}`;
+    const existing = items.find(i => i.id === key);
+    if (existing) {
+      handleQuantityChange(existing.id, existing.cantidad + 1);
+    } else {
+      if (tipo === 'plato') handleAddPlato(producto as any);
+      else if (tipo === 'bebida') handleAddBebida(producto as any);
+      else handleAddTopping(producto as any);
+    }
+  };
+
+  const decrementSelected = (tipo: 'plato' | 'bebida' | 'topping', productoId: number) => {
+    const key = `${tipo}_${productoId}`;
+    const existing = items.find(i => i.id === key);
+    if (!existing) return;
+    if (existing.cantidad > 1) {
+      handleQuantityChange(existing.id, existing.cantidad - 1);
+    } else {
+      handleRemoveItem(existing.id);
+    }
+  };
+
   // Funciones para manejar cantidades y eliminar items
   const handleQuantityChange = (itemId: string, newQuantity: number) => {
     if (newQuantity <= 0) {
@@ -755,15 +785,27 @@ export const EditOrderModal: React.FC<EditOrderModalProps> = ({
                     <div className="text-xs text-gray-600 mb-2">
                       ${plato.pricing?.toLocaleString()}
                     </div>
-                    <Button
-                      size="sm"
-                      onClick={() => handleAddPlato(plato)}
-                      className="w-full"
-                      disabled={loadingSedeProducts}
-                    >
-                      <Plus className="h-4 w-4 mr-1" />
-                      Agregar
-                    </Button>
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <Button
+                          size="icon"
+                          variant="outline"
+                          onClick={() => decrementSelected('plato', plato.id)}
+                          disabled={loadingSedeProducts}
+                        >
+                          <Minus className="h-4 w-4" />
+                        </Button>
+                        <span className="w-8 text-center font-mono">{getSelectedCount('plato', plato.id)}</span>
+                        <Button
+                          size="icon"
+                          variant="outline"
+                          onClick={() => incrementSelected('plato', plato)}
+                          disabled={loadingSedeProducts}
+                        >
+                          <Plus className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </div>
                   </div>
                 ))}
                 {sedeProducts.platos.length === 0 && !loadingSedeProducts && (
@@ -791,15 +833,27 @@ export const EditOrderModal: React.FC<EditOrderModalProps> = ({
                     <div className="text-xs text-gray-600 mb-2">
                       ${bebida.pricing?.toLocaleString()}
                     </div>
-                    <Button
-                      size="sm"
-                      onClick={() => handleAddBebida(bebida)}
-                      className="w-full"
-                      disabled={loadingSedeProducts}
-                    >
-                      <Plus className="h-4 w-4 mr-1" />
-                      Agregar
-                    </Button>
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <Button
+                          size="icon"
+                          variant="outline"
+                          onClick={() => decrementSelected('bebida', bebida.id)}
+                          disabled={loadingSedeProducts}
+                        >
+                          <Minus className="h-4 w-4" />
+                        </Button>
+                        <span className="w-8 text-center font-mono">{getSelectedCount('bebida', bebida.id)}</span>
+                        <Button
+                          size="icon"
+                          variant="outline"
+                          onClick={() => incrementSelected('bebida', bebida)}
+                          disabled={loadingSedeProducts}
+                        >
+                          <Plus className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </div>
                   </div>
                 ))}
                 {sedeProducts.bebidas.length === 0 && !loadingSedeProducts && (
@@ -827,15 +881,28 @@ export const EditOrderModal: React.FC<EditOrderModalProps> = ({
                     <div className="text-xs text-orange-600 mb-2">
                       ${topping.pricing?.toLocaleString()}
                     </div>
-                    <Button
-                      size="sm"
-                      onClick={() => handleAddTopping(topping)}
-                      className="w-full bg-orange-600 hover:bg-orange-700"
-                      disabled={loadingSedeProducts}
-                    >
-                      <Plus className="h-4 w-4 mr-1" />
-                      Agregar
-                    </Button>
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <Button
+                          size="icon"
+                          variant="outline"
+                          onClick={() => decrementSelected('topping', topping.id)}
+                          disabled={loadingSedeProducts}
+                        >
+                          <Minus className="h-4 w-4" />
+                        </Button>
+                        <span className="w-8 text-center font-mono">{getSelectedCount('topping', topping.id)}</span>
+                        <Button
+                          size="icon"
+                          variant="outline"
+                          onClick={() => incrementSelected('topping', topping)}
+                          className="bg-orange-600 text-white hover:bg-orange-700"
+                          disabled={loadingSedeProducts}
+                        >
+                          <Plus className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </div>
                   </div>
                 ))}
                 {sedeProducts.toppings.length === 0 && !loadingSedeProducts && (
