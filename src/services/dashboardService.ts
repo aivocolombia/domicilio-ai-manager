@@ -27,6 +27,8 @@ export interface DashboardOrder {
   descuento_valor?: number; // Valor del descuento aplicado
   descuento_comentario?: string; // Comentario del descuento
   descuento_aplicado_fecha?: string; // Fecha de aplicación del descuento
+  // Multi-payment support
+  has_multiple_payments?: boolean;
 }
 
 export interface DashboardFilters {
@@ -81,8 +83,10 @@ export class DashboardService {
           descuento_valor,
           descuento_comentario,
           descuento_aplicado_fecha,
+          payment_id_2,
           clientes!cliente_id(nombre, telefono, direccion),
           pagos!payment_id(type, status, total_pago),
+          pagos2:pagos!payment_id_2(type, status, total_pago),
           repartidores!repartidor_id(nombre),
           sedes!sede_id(name),
           minutas!left(daily_id)
@@ -257,7 +261,9 @@ export class DashboardService {
         pago_tipo: order.pagos?.type || 'Sin pago',
         pago_estado: this.mapPaymentStatus(order.pagos?.status),
         repartidor: order.repartidores?.nombre || 'Sin asignar',
-        total: order.pagos?.total_pago || 0,
+        total: !!order.payment_id_2
+          ? (order.pagos?.total_pago || 0) + (order.pagos2?.total_pago || 0)
+          : (order.pagos?.total_pago || 0),
         entrega_hora: order.hora_entrega ?
           new Date(order.hora_entrega).toLocaleTimeString('es-CO', {
             hour: '2-digit',
@@ -278,7 +284,9 @@ export class DashboardService {
         // Discount fields mapping
         descuento_valor: order.descuento_valor || undefined,
         descuento_comentario: order.descuento_comentario,
-        descuento_aplicado_fecha: order.descuento_aplicado_fecha
+        descuento_aplicado_fecha: order.descuento_aplicado_fecha,
+        // Multi-payment support
+        has_multiple_payments: !!order.payment_id_2
       }));
 
       console.log('✅ Órdenes del dashboard obtenidas:', transformedOrders.length);

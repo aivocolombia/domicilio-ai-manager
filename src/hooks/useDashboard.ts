@@ -154,7 +154,7 @@ export const useDashboard = (sede_id?: string | number) => {
   }, [toast, loadDashboardOrders]);
 
   // Función para recarga con filtros actuales (será pasada desde Dashboard)
-  const refreshFunctionRef = useRef<(() => void) | null>(null);
+  const refreshFunctionRef = useRef<((options?: { force?: boolean }) => void) | null>(null);
   
   // Forzar recarga inmediata para cambios de estado críticos
   const forceReload = useCallback(() => {
@@ -168,7 +168,7 @@ export const useDashboard = (sede_id?: string | number) => {
         // Usar función de refresh del Dashboard si está disponible, sino usar loadDashboardOrders básico
         if (refreshFunctionRef.current) {
           console.log('🔄 Dashboard: Usando función de refresh con filtros actuales');
-          refreshFunctionRef.current();
+          refreshFunctionRef.current({ force: true });
         } else {
           console.log('⚠️ Dashboard: refreshFunctionRef no disponible, usando loadDashboardOrders básico (SIN FILTROS)');
           loadDashboardOrders();
@@ -229,7 +229,7 @@ export const useDashboard = (sede_id?: string | number) => {
   });
 
   // Función para registrar la función de refresh del Dashboard
-  const registerRefreshFunction = useCallback((refreshFn: () => void) => {
+  const registerRefreshFunction = useCallback((refreshFn: (options?: { force?: boolean }) => void) => {
     refreshFunctionRef.current = refreshFn;
     console.log('🔄 Dashboard: Función de refresh registrada');
   }, []);

@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useSmartQuery, useThrottle, usePersistentMemo } from '@/hooks/usePerformance';
 import { sedeService } from '@/services/sedeService';
+import { multiPaymentService } from '@/services/multiPaymentService';
 import { supabase } from '@/lib/supabase';
 import { logDebug, logError, logWarn } from '@/utils/logger';
 
@@ -21,6 +22,9 @@ interface DashboardOrder {
   entrega_hora: string;
   repartidor: string;
   payment_id: string;
+  payment_id_2?: string; // Segundo pago
+  payment_display: string; // Formato para mostrar: "efectivo" o "efectivo +1"
+  has_multiple_payments: boolean;
   minuta_id?: string;
 }
 
@@ -98,12 +102,15 @@ export const useOptimizedDashboard = (sedeId?: string): UseOptimizedDashboardRes
       .select(`
         id,
         status,
+        payment_id,
+        payment_id_2,
         created_at,
         observaciones,
         precio_envio,
         address,
         clientes!cliente_id(nombre, telefono),
         pagos!payment_id(type, total_pago),
+        pagos_secondary:pagos!payment_id_2(type, total_pago),
         repartidores!left(nombre),
         minutas!left(daily_id),
         sedes!inner(name)
@@ -131,28 +138,51 @@ export const useOptimizedDashboard = (sedeId?: string): UseOptimizedDashboardRes
     }
 
     // Transformar datos
-    const transformedOrders: DashboardOrder[] = (ordersData || []).map(order => ({
-      id: order.id,
-      id_display: `ORD-${order.id.toString().padStart(4, '0')}`,
-      orden_id: order.id,
-      cliente_nombre: order.clientes?.nombre || 'Sin nombre',
-      cliente_telefono: order.clientes?.telefono || 'Sin teléfono',
-      direccion: order.address || 'Sin dirección',
-      sede: order.sedes?.name || 'Sin sede',
-      estado: order.status || 'Desconocido',
-      total: order.pagos?.total_pago || 0,
-      pago_tipo: order.pagos?.type || 'Sin especificar',
-      pago_estado: order.pagos?.total_pago ? 'Pagado' : 'Pendiente',
-      creado_fecha: new Date(order.created_at).toLocaleDateString('es-CO'),
-      creado_hora: new Date(order.created_at).toLocaleTimeString('es-CO', { 
-        hour: '2-digit', 
-        minute: '2-digit' 
-      }),
-      entrega_hora: 'N/A',
-      repartidor: order.repartidores?.nombre || 'Sin asignar',
-      payment_id: '',
-      minuta_id: order.minutas?.[0]?.daily_id?.toString()
-    }));
+    const transformedOrders: DashboardOrder[] = (ordersData || []).map(order => {
+      const payment1 = order.pagos;
+      const payment2 = order.pagos_secondary;
+
+      // Calcular información de pagos
+      const hasMultiplePayments = !!(payment1 && payment2);
+      const totalPaid = (payment1?.total_pago || 0) + (payment2?.total_pago || 0);
+
+      // Determinar método principal (el de mayor monto)
+      let primaryPaymentType = payment1?.type || 'Sin especificar';
+      if (hasMultiplePayments && (payment2?.total_pago || 0) > (payment1?.total_pago || 0)) {
+        primaryPaymentType = payment2?.type || primaryPaymentType;
+      }
+
+      // Formato de visualización
+      const paymentDisplay = hasMultiplePayments
+        ? `${primaryPaymentType} +1`
+        : primaryPaymentType;
+
+      return {
+        id: order.id,
+        id_display: `ORD-${order.id.toString().padStart(4, '0')}`,
+        orden_id: order.id,
+        cliente_nombre: order.clientes?.nombre || 'Sin nombre',
+        cliente_telefono: order.clientes?.telefono || 'Sin teléfono',
+        direccion: order.address || 'Sin dirección',
+        sede: order.sedes?.name || 'Sin sede',
+        estado: order.status || 'Desconocido',
+        total: totalPaid,
+        pago_tipo: primaryPaymentType,
+        pago_estado: totalPaid > 0 ? 'Pagado' : 'Pendiente',
+        creado_fecha: new Date(order.created_at).toLocaleDateString('es-CO'),
+        creado_hora: new Date(order.created_at).toLocaleTimeString('es-CO', {
+          hour: '2-digit',
+          minute: '2-digit'
+        }),
+        entrega_hora: 'N/A',
+        repartidor: order.repartidores?.nombre || 'Sin asignar',
+        payment_id: order.payment_id?.toString() || '',
+        payment_id_2: order.payment_id_2?.toString(),
+        payment_display: paymentDisplay,
+        has_multiple_payments: hasMultiplePayments,
+        minuta_id: order.minutas?.[0]?.daily_id?.toString()
+      };
+    });
 
     // Aplicar filtro de búsqueda en memoria (más eficiente)
     let filteredOrders = transformedOrders;

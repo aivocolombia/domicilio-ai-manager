@@ -16,6 +16,11 @@ export interface Order {
   assignedDeliveryPersonId?: string;
   paymentMethod: PaymentMethod;
   paymentStatus: PaymentStatus;
+  // Multi-payment support
+  hasMultiplePayments?: boolean;
+  paymentMethod2?: PaymentMethod;
+  paymentAmount1?: number;
+  paymentAmount2?: number;
   originSede?: string; // Nueva propiedad para sede de origen
   assignedSede?: string; // Nueva propiedad para sede asignada
   deliveryType: DeliveryType; // Nueva propiedad para tipo de entrega

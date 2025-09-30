@@ -40,6 +40,8 @@ export const OrderConfigModal: React.FC<OrderConfigModalProps> = ({
   const [newStatus, setNewStatus] = useState<string>('');
   const [assignedDeliveryPersonId, setAssignedDeliveryPersonId] = useState<string>('');
   const [newPaymentStatus, setNewPaymentStatus] = useState<string>('');
+  const [newPaymentStatus2, setNewPaymentStatus2] = useState<string>('');
+  const [hasMultiplePayments, setHasMultiplePayments] = useState<boolean>(false);
   const [availableDeliveryPersonnel, setAvailableDeliveryPersonnel] = useState<Array<{
     id: string;
     nombre: string;
@@ -98,7 +100,14 @@ export const OrderConfigModal: React.FC<OrderConfigModalProps> = ({
       // Cargar estados de pago válidos
       const paymentStatuses = orderStatusService.getValidPaymentStatuses();
       setValidPaymentStatuses(paymentStatuses);
-      
+
+      // Detectar si hay órdenes con múltiples métodos de pago
+      const ordersWithMultiplePayments = selectedOrders.some(order => {
+        return (order as any).payment_id_2 || (order as any).has_multiple_payments;
+      });
+      setHasMultiplePayments(ordersWithMultiplePayments);
+      console.log('💳 Múltiples métodos de pago detectados:', ordersWithMultiplePayments);
+
     } catch (error) {
       console.error('❌ Error cargando datos del modal:', error);
       toast({
@@ -217,7 +226,8 @@ export const OrderConfigModal: React.FC<OrderConfigModalProps> = ({
         extraTime: extraTime > 0 ? extraTime : undefined,
         extraTimeReason: extraTimeReason || undefined,
         assignedDeliveryPersonId: hasMixedStates ? undefined : (assignedDeliveryPersonId || undefined),
-        paymentStatus: hasMixedStates ? undefined : (newPaymentStatus || undefined)
+        paymentStatus: hasMixedStates ? undefined : (newPaymentStatus || undefined),
+        paymentStatus2: hasMixedStates ? undefined : (newPaymentStatus2 || undefined)
       }));
       
       // Aplicar actualizaciones a la base de datos
@@ -569,7 +579,7 @@ export const OrderConfigModal: React.FC<OrderConfigModalProps> = ({
           {/* Payment Status Change */}
           <div className="space-y-3">
             <Label className={hasMixedStates ? 'text-muted-foreground' : ''}>
-              Estado de Pago
+              {hasMultiplePayments ? 'Estados de Pago (Múltiples Métodos)' : 'Estado de Pago'}
               {hasMixedStates && <span className="text-xs ml-2">(Bloqueado por estados mixtos)</span>}
             </Label>
             {hasMixedStates ? (
@@ -587,18 +597,53 @@ export const OrderConfigModal: React.FC<OrderConfigModalProps> = ({
                 <span className="text-sm text-muted-foreground">Cargando estados de pago...</span>
               </div>
             ) : (
-              <Select value={newPaymentStatus} onValueChange={setNewPaymentStatus} disabled={isUpdating}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Seleccionar estado de pago" />
-                </SelectTrigger>
-                <SelectContent>
-                  {validPaymentStatuses.map(status => (
-                    <SelectItem key={status.value} value={status.value}>
-                      {status.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <div className="space-y-3">
+                {/* Pago Principal */}
+                <div>
+                  <Label className="text-sm font-medium">
+                    {hasMultiplePayments ? 'Pago Principal' : 'Estado de Pago'}
+                  </Label>
+                  <Select value={newPaymentStatus} onValueChange={setNewPaymentStatus} disabled={isUpdating}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Seleccionar estado de pago" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {validPaymentStatuses.map(status => (
+                        <SelectItem key={status.value} value={status.value}>
+                          {status.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {/* Pago Secundario - Solo mostrar si hay múltiples pagos */}
+                {hasMultiplePayments && (
+                  <div>
+                    <Label className="text-sm font-medium">Pago Secundario</Label>
+                    <Select value={newPaymentStatus2} onValueChange={setNewPaymentStatus2} disabled={isUpdating}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Seleccionar estado del segundo pago" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {validPaymentStatuses.map(status => (
+                          <SelectItem key={status.value} value={status.value}>
+                            {status.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
+
+                {hasMultiplePayments && (
+                  <div className="p-2 bg-blue-50 border border-blue-200 rounded-md">
+                    <p className="text-xs text-blue-700">
+                      💳 Estas órdenes tienen múltiples métodos de pago. Puedes actualizar el estado de cada pago por separado.
+                    </p>
+                  </div>
+                )}
+              </div>
             )}
           </div>
 
@@ -613,7 +658,7 @@ export const OrderConfigModal: React.FC<OrderConfigModalProps> = ({
               disabled={
                 isUpdating || 
                 isLoading || 
-                (hasMixedStates ? extraTime === 0 : (extraTime === 0 && !newStatus && !assignedDeliveryPersonId && !newPaymentStatus))
+                (hasMixedStates ? extraTime === 0 : (extraTime === 0 && !newStatus && !assignedDeliveryPersonId && !newPaymentStatus && !newPaymentStatus2))
               }
             >
               {isUpdating ? (

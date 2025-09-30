@@ -17,6 +17,7 @@ export interface OrderStatusUpdate {
   extraTimeReason?: string;
   assignedDeliveryPersonId?: string;
   paymentStatus?: string;
+  paymentStatus2?: string;
 }
 
 export class OrderStatusService {
@@ -144,7 +145,7 @@ export class OrderStatusService {
         if (orderData?.payment_id) {
           const { error: paymentError } = await supabase
             .from('pagos')
-            .update({ 
+            .update({
               status: update.paymentStatus
             })
             .eq('id', orderData.payment_id);
@@ -152,6 +153,35 @@ export class OrderStatusService {
           if (paymentError) {
             console.error('❌ Error actualizando estado de pago:', paymentError);
             throw new Error(`Error actualizando pago: ${paymentError.message}`);
+          }
+        }
+      }
+
+      // Actualizar estado del segundo pago si se proporciona
+      if (update.paymentStatus2) {
+        // Obtener el payment_id_2 de la orden
+        const { data: orderData2, error: orderError2 } = await supabase
+          .from('ordenes')
+          .select('payment_id_2')
+          .eq('id', orderId)
+          .single();
+
+        if (orderError2) {
+          console.error('❌ Error obteniendo payment_id_2:', orderError2);
+          throw new Error(`Error obteniendo información del segundo pago: ${orderError2.message}`);
+        }
+
+        if (orderData2?.payment_id_2) {
+          const { error: paymentError2 } = await supabase
+            .from('pagos')
+            .update({
+              status: update.paymentStatus2
+            })
+            .eq('id', orderData2.payment_id_2);
+
+          if (paymentError2) {
+            console.error('❌ Error actualizando estado del segundo pago:', paymentError2);
+            throw new Error(`Error actualizando segundo pago: ${paymentError2.message}`);
           }
         }
       }

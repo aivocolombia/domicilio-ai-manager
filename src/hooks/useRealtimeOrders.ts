@@ -114,6 +114,9 @@ export const useRealtimeOrders = ({
       settings: supabase.realtime?.channels?.length || 0
     });
 
+    // Test 2: Intentar suscripción más simple primero
+    console.log('🧪 [ORDERS] Testing simple subscription to ordenes table...');
+
     const ordersChannel = supabase
       .channel(`orders_${sedeId}`)
       .on(

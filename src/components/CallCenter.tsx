@@ -10,6 +10,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Phone, Search, Plus, User, MapPin, Clock, CreditCard, Store, AlertTriangle, Pause, Loader2 } from 'lucide-react';
 import { Order, PaymentMethod, DeliveryType, Sede, DeliverySettings } from '@/types/delivery';
@@ -49,6 +50,10 @@ const CallCenter: React.FC<CallCenterProps> = ({
     address: '',
     items: [] as { productId: string; quantity: number; toppings: string[] }[],
     paymentMethod: 'cash' as PaymentMethod,
+    hasMultiplePayments: false,
+    paymentMethod2: 'cash' as PaymentMethod,
+    paymentAmount1: 0,
+    paymentAmount2: 0,
     specialInstructions: '',
     deliveryType: 'delivery' as DeliveryType,
     pickupSede: '',
@@ -150,23 +155,48 @@ const CallCenter: React.FC<CallCenterProps> = ({
 
   const calculateTotal = () => {
     const itemsTotal = newOrder.items.reduce((total, item) => {
-      const product = platos.find(p => p.id.toString() === item.productId) || 
+      const product = platos.find(p => p.id.toString() === item.productId) ||
                      bebidas.find(b => b.id.toString() === item.productId);
       return total + (product ? product.pricing * item.quantity : 0);
     }, 0);
-    
+
     // Add dynamic delivery price for delivery orders
     const deliveryFee = newOrder.deliveryType === 'delivery' ? newOrder.deliveryPrice : 0;
     return itemsTotal + deliveryFee;
+  };
+
+  // Función para manejar el cambio del checkbox de múltiples pagos
+  const handleMultiplePaymentsChange = (checked: boolean) => {
+    const total = calculateTotal();
+    setNewOrder(prev => ({
+      ...prev,
+      hasMultiplePayments: checked,
+      paymentAmount1: checked ? Math.ceil(total / 2) : total,
+      paymentAmount2: checked ? Math.floor(total / 2) : 0
+    }));
+  };
+
+  // Función para validar que los montos sumen el total
+  const validatePaymentAmounts = () => {
+    if (!newOrder.hasMultiplePayments) return true;
+    const total = calculateTotal();
+    const sum = newOrder.paymentAmount1 + newOrder.paymentAmount2;
+    return Math.abs(sum - total) < 1; // Tolerancia de 1 peso
   };
 
   const handleCreateOrder = () => {
     if (newOrder.deliveryType === 'delivery' && !newOrder.address) return;
     if (newOrder.deliveryType === 'pickup' && !newOrder.pickupSede) return;
     if (newOrder.items.length === 0) return;
-    
+
     const customerName = customer?.name || newCustomerName;
     if (!customerName) return;
+
+    // Validar múltiples pagos si están habilitados
+    if (newOrder.hasMultiplePayments && !validatePaymentAmounts()) {
+      alert('Los montos de pago no suman el total de la orden');
+      return;
+    }
 
     const orderItems = newOrder.items.map(item => {
       const product = platos.find(p => p.id.toString() === item.productId) || 
@@ -193,7 +223,12 @@ const CallCenter: React.FC<CallCenterProps> = ({
       paymentMethod: newOrder.paymentMethod,
       paymentStatus: 'pending',
       deliveryType: newOrder.deliveryType,
-      pickupSede: newOrder.deliveryType === 'pickup' ? newOrder.pickupSede : undefined
+      pickupSede: newOrder.deliveryType === 'pickup' ? newOrder.pickupSede : undefined,
+      // Información de múltiples pagos
+      hasMultiplePayments: newOrder.hasMultiplePayments,
+      paymentMethod2: newOrder.hasMultiplePayments ? newOrder.paymentMethod2 : undefined,
+      paymentAmount1: newOrder.hasMultiplePayments ? newOrder.paymentAmount1 : calculateTotal(),
+      paymentAmount2: newOrder.hasMultiplePayments ? newOrder.paymentAmount2 : undefined
     });
 
     // Reset form
@@ -201,6 +236,10 @@ const CallCenter: React.FC<CallCenterProps> = ({
       address: '',
       items: [],
       paymentMethod: 'cash',
+      hasMultiplePayments: false,
+      paymentMethod2: 'cash',
+      paymentAmount1: 0,
+      paymentAmount2: 0,
       specialInstructions: '',
       deliveryType: 'delivery',
       pickupSede: '',
@@ -409,8 +448,8 @@ const CallCenter: React.FC<CallCenterProps> = ({
 
                     <div>
                       <Label>Método de Pago</Label>
-                      <Select 
-                        value={newOrder.paymentMethod} 
+                      <Select
+                        value={newOrder.paymentMethod}
                         onValueChange={(value: PaymentMethod) => setNewOrder({ ...newOrder, paymentMethod: value })}
                       >
                         <SelectTrigger>
@@ -424,6 +463,83 @@ const CallCenter: React.FC<CallCenterProps> = ({
                         </SelectContent>
                       </Select>
                     </div>
+
+                    {/* Checkbox para múltiples métodos de pago */}
+                    <div className="flex items-center space-x-2">
+                      <Checkbox
+                        id="multiplePayments"
+                        checked={newOrder.hasMultiplePayments}
+                        onCheckedChange={handleMultiplePaymentsChange}
+                      />
+                      <Label
+                        htmlFor="multiplePayments"
+                        className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+                      >
+                        El cliente paga con más de un método
+                      </Label>
+                    </div>
+
+                    {/* Controles para múltiples pagos */}
+                    {newOrder.hasMultiplePayments && (
+                      <div className="space-y-4 p-4 border border-blue-200 rounded-lg bg-blue-50">
+                        <div className="text-sm font-medium text-blue-800">
+                          💳 Configuración de Múltiples Pagos
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-4">
+                          {/* Primer pago */}
+                          <div>
+                            <Label className="text-sm font-medium">Segundo Método de Pago</Label>
+                            <Select
+                              value={newOrder.paymentMethod2}
+                              onValueChange={(value: PaymentMethod) => setNewOrder({ ...newOrder, paymentMethod2: value })}
+                            >
+                              <SelectTrigger>
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="cash">Efectivo</SelectItem>
+                                <SelectItem value="card">Tarjeta</SelectItem>
+                                <SelectItem value="nequi">Nequi</SelectItem>
+                                <SelectItem value="transfer">Transferencia</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
+
+                          {/* Montos */}
+                          <div>
+                            <Label className="text-sm font-medium">Montos (Total: ${calculateTotal().toLocaleString()})</Label>
+                            <div className="grid grid-cols-2 gap-2">
+                              <div>
+                                <Label className="text-xs">Pago 1 ({newOrder.paymentMethod})</Label>
+                                <Input
+                                  type="number"
+                                  value={newOrder.paymentAmount1}
+                                  onChange={(e) => setNewOrder({ ...newOrder, paymentAmount1: Number(e.target.value) })}
+                                  className="text-sm"
+                                />
+                              </div>
+                              <div>
+                                <Label className="text-xs">Pago 2 ({newOrder.paymentMethod2})</Label>
+                                <Input
+                                  type="number"
+                                  value={newOrder.paymentAmount2}
+                                  onChange={(e) => setNewOrder({ ...newOrder, paymentAmount2: Number(e.target.value) })}
+                                  className="text-sm"
+                                />
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Validación visual */}
+                        {!validatePaymentAmounts() && (
+                          <div className="text-xs text-red-600 bg-red-50 p-2 rounded">
+                            ⚠️ Los montos no suman el total de la orden (${calculateTotal().toLocaleString()})
+                          </div>
+                        )}
+                      </div>
+                    )}
 
                     <div>
                       <Label>Productos Disponibles</Label>

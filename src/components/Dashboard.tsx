@@ -52,6 +52,7 @@ import { OrderDetailsModal } from './OrderDetailsModal';
 import { EditOrderModal } from './EditOrderModal';
 import { MinutaModal } from './MinutaModal';
 import { DiscountDialog } from './DiscountDialog';
+import { PaymentDetailsModal } from './PaymentDetailsModal';
 import { cn } from '@/lib/utils';
 import { useDashboard } from '@/hooks/useDashboard';
 import { logDebug, logError, logWarn } from '@/utils/logger';
@@ -135,6 +136,10 @@ export const Dashboard: React.FC<DashboardProps> = ({
   const [pauseTimer, setPauseTimer] = useState<string>('');
   const [pauseTimerActive, setPauseTimerActive] = useState(false);
 
+  // Estados para modal de detalles de pago
+  const [paymentDetailsOpen, setPaymentDetailsOpen] = useState(false);
+  const [selectedPaymentOrderId, setSelectedPaymentOrderId] = useState<number | null>(null);
+
   // Estados para modal de detalles del pedido
   const [orderDetailsModalOpen, setOrderDetailsModalOpen] = useState(false);
   const [selectedOrderId, setSelectedOrderId] = useState<number | null>(null);
@@ -159,7 +164,12 @@ export const Dashboard: React.FC<DashboardProps> = ({
     deliveryTimeMinutes: 90,
     deliveryCost: 0,
     cutleryCount: 0,
-    cutleryManuallyAdjusted: false
+    cutleryManuallyAdjusted: false,
+    // Multi-payment support
+    hasMultiplePayments: false,
+    paymentMethod2: 'cash' as PaymentMethod,
+    paymentAmount1: 0,
+    paymentAmount2: 0
   });
   const [searchingPrice, setSearchingPrice] = useState(false);
   const [sedeProducts, setSedeProducts] = useState({
@@ -211,6 +221,30 @@ export const Dashboard: React.FC<DashboardProps> = ({
     } else {
       removeItemFromOrder(uniqueId);
     }
+  };
+
+  // Multi-payment helper functions
+  const handleMultiplePaymentsChange = (checked: boolean | string) => {
+    const isChecked = checked === true || checked === 'true';
+    setNewOrder({
+      ...newOrder,
+      hasMultiplePayments: isChecked,
+      paymentAmount1: isChecked ? 0 : 0,
+      paymentAmount2: isChecked ? 0 : 0
+    });
+  };
+
+  const validatePaymentAmounts = (amount1: number, amount2: number, total: number): string | null => {
+    if (amount2 <= 0) {
+      return 'El monto del segundo pago debe ser mayor a 0';
+    }
+    if (amount2 > total) {
+      return 'El monto del segundo pago no puede ser mayor al total';
+    }
+    if (amount1 < 0) {
+      return 'El monto del primer pago no puede ser negativo';
+    }
+    return null;
   };
 
   // Estados para modal de impresión de minuta
@@ -633,7 +667,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
       'Sede': order.sede || '',
       'Estado': getDisplayStatus(order.estado || '', order.type_order),
       'Total': order.total ? `$${order.total.toLocaleString()}` : '$0',
-      'Tipo Pago': order.pago_tipo || '',
+      'Tipo Pago': order.payment_display || order.pago_tipo || '',
       'Estado Pago': order.pago_estado || '',
       'Fecha Creación': order.creado_fecha || '',
       'Hora Creación': order.creado_hora || '',
@@ -788,13 +822,8 @@ export const Dashboard: React.FC<DashboardProps> = ({
   const { totalItems, totalPages, startIndex, endIndex, paginatedOrders } = paginationData;
 
   // Función personalizada para recargar con filtros actuales
-  const refreshDataWithCurrentFilters = useCallback(async () => {
-    logDebug('Dashboard', 'Recargando con filtros actuales', { viewMode, dateFilter, statusFilter });
-    await applyDateFilter();
-  }, [viewMode, dateFilter, statusFilter]);
-
   // Función para aplicar filtros de fecha
-  const applyDateFilter = async () => {
+  const applyDateFilter = useCallback(async (force = false) => {
     let filters: any = {};
     
     if (dateFilter === 'today') {
@@ -874,12 +903,13 @@ export const Dashboard: React.FC<DashboardProps> = ({
     // Crear una clave única para los filtros actuales (incluyendo sede_id)
     const currentFiltersKey = JSON.stringify({ ...filters, sede_id: sedeIdToUse });
     
-    // Evitar cargas duplicadas si los filtros no han cambiado
-    if (currentFiltersKey === lastAppliedFilters) {
+    // Evitar cargas duplicadas si los filtros no han cambiado (a menos que sea forzado)
+    if (!force && currentFiltersKey === lastAppliedFilters) {
       logDebug('Dashboard', 'Filtros no han cambiado, saltando carga', { 
         currentFiltersKey,
         lastAppliedFilters,
-        filters 
+        filters,
+        force 
       });
       return;
     }
@@ -893,10 +923,29 @@ export const Dashboard: React.FC<DashboardProps> = ({
     
     // Llamar directamente a loadDashboardOrders sin timeout
     if (sedeIdToUse) {
-      logDebug('Dashboard', 'Cargando datos con filtros nuevos', { filters });
+      logDebug('Dashboard', 'Cargando datos con filtros nuevos', { filters, force });
       loadDashboardOrders(filters);
     }
-  };
+  }, [dateFilter, dateRange, statusFilter, viewMode, sedeIdToUse, lastAppliedFilters, loadDashboardOrders]);
+
+  const refreshDataWithCurrentFilters = useCallback(async (maybeOptions?: { force?: boolean } | boolean | React.SyntheticEvent) => {
+    let force = false;
+
+    if (typeof maybeOptions === 'boolean') {
+      force = maybeOptions;
+    } else if (maybeOptions && typeof maybeOptions === 'object') {
+      const potentialEvent = maybeOptions as React.SyntheticEvent;
+      if ('preventDefault' in potentialEvent && typeof potentialEvent.preventDefault === 'function') {
+        force = false;
+      } else if ('force' in (maybeOptions as { force?: boolean })) {
+        const value = (maybeOptions as { force?: boolean }).force;
+        force = typeof value === 'boolean' ? value : false;
+      }
+    }
+
+    logDebug('Dashboard', 'Recargando con filtros actuales', { viewMode, dateFilter, statusFilter, force });
+    await applyDateFilter(force);
+  }, [viewMode, dateFilter, statusFilter, applyDateFilter]);
 
   // Aplicar filtro de fecha cuando cambie el tipo de filtro (con timeout para evitar bucles)
   useEffect(() => {
@@ -1453,6 +1502,27 @@ export const Dashboard: React.FC<DashboardProps> = ({
     if (!sedeIdToUse) return;
     if (!customerData.name || !customerData.phone) return;
 
+    // Validar múltiples pagos si están habilitados
+    if (newOrder.hasMultiplePayments) {
+      const total = calculateTotal();
+      if (newOrder.paymentAmount2 <= 0) {
+        toast({
+          title: "Error en los pagos",
+          description: "Debes especificar el monto del segundo método de pago",
+          variant: "destructive",
+        });
+        return;
+      }
+      if (newOrder.paymentAmount2 > total) {
+        toast({
+          title: "Error en los pagos",
+          description: "El monto del segundo pago no puede ser mayor al total",
+          variant: "destructive",
+        });
+        return;
+      }
+    }
+
     if (newOrder.deliveryType === 'delivery' && newOrder.deliveryCost === 0) {
       setShowZeroDeliveryConfirm(true);
       return;
@@ -1542,7 +1612,16 @@ export const Dashboard: React.FC<DashboardProps> = ({
           nombre: customerData.name,
           telefono: customerData.phone,
           direccion: newOrder.deliveryType === 'delivery' ? customerData.address : undefined
-        }
+        },
+        // Multi-payment support
+        hasMultiplePayments: newOrder.hasMultiplePayments,
+        pago_tipo2: newOrder.hasMultiplePayments ? (
+          newOrder.paymentMethod2 === 'cash' ? 'efectivo' :
+          newOrder.paymentMethod2 === 'card' ? 'tarjeta' :
+          newOrder.paymentMethod2 === 'nequi' ? 'nequi' : 'transferencia'
+        ) : undefined,
+        pago_monto1: newOrder.hasMultiplePayments ? newOrder.paymentAmount1 : undefined,
+        pago_monto2: newOrder.hasMultiplePayments ? newOrder.paymentAmount2 : undefined
       };
 
       await createOrder(orderData);
@@ -1558,7 +1637,12 @@ export const Dashboard: React.FC<DashboardProps> = ({
         deliveryTimeMinutes: 90,
         deliveryCost: 0,
         cutleryCount: 0,
-        cutleryManuallyAdjusted: false
+        cutleryManuallyAdjusted: false,
+        // Multi-payment support
+        hasMultiplePayments: false,
+        paymentMethod2: 'cash',
+        paymentAmount1: 0,
+        paymentAmount2: 0
       });
       setCustomerData({
         name: '',
@@ -2059,9 +2143,23 @@ export const Dashboard: React.FC<DashboardProps> = ({
                         </td>
                         <td className="p-2">
                           <div className="space-y-1">
-                            <div className="flex items-center gap-1">
-                              <CreditCard className="h-4 w-4" />
-                              <span className="text-xs">{realOrder.pago_tipo}</span>
+                            <div
+                              className={`flex items-center gap-1 ${
+                                realOrder.has_multiple_payments ? 'cursor-pointer hover:bg-gray-50 p-1 rounded' : ''
+                              }`}
+                              onClick={() => {
+                                if (realOrder.has_multiple_payments) {
+                                  setSelectedPaymentOrderId(realOrder.id);
+                                  setPaymentDetailsOpen(true);
+                                }
+                              }}
+                              title={realOrder.has_multiple_payments ? 'Ver detalles de pagos múltiples' : undefined}
+                            >
+                              {getPaymentMethodIcon(realOrder.pago_tipo as PaymentMethod)}
+                              <span className="text-xs">{realOrder.payment_display || realOrder.pago_tipo}</span>
+                              {realOrder.has_multiple_payments && (
+                                <span className="text-xs font-bold text-blue-600 bg-blue-100 px-1 rounded">+1</span>
+                              )}
                             </div>
                             <Badge className={cn("text-white text-xs", 
                               realOrder.pago_estado === 'Pagado' ? 'bg-green-500' : 
@@ -2541,6 +2639,16 @@ export const Dashboard: React.FC<DashboardProps> = ({
         orderId={selectedOrderId}
       />
 
+      {/* Modal para ver detalles de pagos múltiples */}
+      <PaymentDetailsModal
+        isOpen={paymentDetailsOpen}
+        onClose={() => {
+          setPaymentDetailsOpen(false);
+          setSelectedPaymentOrderId(null);
+        }}
+        orderId={selectedPaymentOrderId}
+      />
+
       {/* Modal para imprimir minuta */}
       <MinutaModal
         isOpen={printMinutaModalOpen}
@@ -2795,6 +2903,101 @@ export const Dashboard: React.FC<DashboardProps> = ({
                 </SelectContent>
               </Select>
             </div>
+
+            {/* Checkbox para múltiples métodos de pago */}
+            <div className="flex items-center space-x-2 mt-3">
+              <Checkbox
+                id="multiplePayments"
+                checked={newOrder.hasMultiplePayments}
+                onCheckedChange={handleMultiplePaymentsChange}
+              />
+              <Label htmlFor="multiplePayments" className="text-sm">
+                El cliente paga con más de un método
+              </Label>
+            </div>
+
+            {/* Controles de múltiples pagos */}
+            {newOrder.hasMultiplePayments && (
+              <div className="space-y-4 p-4 border rounded-lg bg-blue-50">
+                <div className="text-sm font-medium text-blue-700">
+                  Segundo método de pago
+                </div>
+
+                <div className="space-y-3">
+                  {/* Segundo método de pago */}
+                  <div className="space-y-2">
+                    <Label className="text-sm">Método adicional</Label>
+                    <Select
+                      value={newOrder.paymentMethod2}
+                      onValueChange={(value: PaymentMethod) => setNewOrder({ ...newOrder, paymentMethod2: value })}
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="cash">Efectivo</SelectItem>
+                        <SelectItem value="card">Tarjeta</SelectItem>
+                        <SelectItem value="nequi">Nequi</SelectItem>
+                        <SelectItem value="transfer">Transferencia</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label className="text-sm">¿Cuánto paga con este método?</Label>
+                    <Input
+                      type="number"
+                      placeholder="0"
+                      value={newOrder.paymentAmount2 || ''}
+                      onChange={(e) => {
+                        const amount2 = parseFloat(e.target.value) || 0;
+                        const total = calculateTotal();
+                        const amount1 = Math.max(0, total - amount2);
+
+                        setNewOrder({
+                          ...newOrder,
+                          paymentAmount2: amount2,
+                          paymentAmount1: amount1
+                        });
+                      }}
+                    />
+                  </div>
+
+                  {/* Mostrar cálculo automático */}
+                  {newOrder.paymentAmount2 > 0 && (
+                    <div className="p-3 bg-blue-100 rounded-lg">
+                      <div className="text-sm text-blue-800">
+                        <div className="flex justify-between">
+                          <span>Total del pedido:</span>
+                          <span className="font-medium">${calculateTotal().toLocaleString()}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span>Pago con {newOrder.paymentMethod2 === 'cash' ? 'efectivo' :
+                                          newOrder.paymentMethod2 === 'card' ? 'tarjeta' :
+                                          newOrder.paymentMethod2 === 'nequi' ? 'Nequi' : 'transferencia'}:</span>
+                          <span className="font-medium">-${newOrder.paymentAmount2.toLocaleString()}</span>
+                        </div>
+                        <hr className="my-1 border-blue-300" />
+                        <div className="flex justify-between font-medium">
+                          <span>Restante con {newOrder.paymentMethod === 'cash' ? 'efectivo' :
+                                            newOrder.paymentMethod === 'card' ? 'tarjeta' :
+                                            newOrder.paymentMethod === 'nequi' ? 'Nequi' : 'transferencia'}:</span>
+                          <span>${Math.max(0, calculateTotal() - newOrder.paymentAmount2).toLocaleString()}</span>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Validación */}
+                  {newOrder.paymentAmount2 > calculateTotal() && (
+                    <div className="text-red-600 flex items-center gap-2 text-sm">
+                      <AlertTriangle className="h-4 w-4" />
+                      El monto no puede ser mayor al total del pedido
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
 
             <div>
               <Label>Productos Disponibles en {currentSedeName}</Label>

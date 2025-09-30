@@ -254,7 +254,8 @@ export interface Database {
           repartidor_id: number | null; // bigint
           date: string | null; // timestamp without time zone
           status: string | null;
-          payment_id: number | null; // bigint
+          payment_id: number | null; // bigint - Pago principal
+          payment_id_2: number | null; // bigint - Pago secundario
           time: number | null; // integer
           add_time: number | null; // integer
           razon_tiempo_extra: string | null;
@@ -273,6 +274,7 @@ export interface Database {
           date?: string | null;
           status?: string | null;
           payment_id?: number | null;
+          payment_id_2?: number | null;
           time?: number | null;
           add_time?: number | null;
           razon_tiempo_extra?: string | null;
@@ -291,6 +293,7 @@ export interface Database {
           date?: string | null;
           status?: string | null;
           payment_id?: number | null;
+          payment_id_2?: number | null;
           time?: number | null;
           add_time?: number | null;
           razon_tiempo_extra?: string | null;

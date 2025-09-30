@@ -43,6 +43,11 @@ export interface CreateOrderData {
   tipo_entrega: 'delivery' | 'pickup';
   sede_recogida?: string;
   pago_tipo: 'efectivo' | 'tarjeta' | 'nequi' | 'transferencia';
+  // Multi-payment support
+  hasMultiplePayments?: boolean;
+  pago_tipo2?: 'efectivo' | 'tarjeta' | 'nequi' | 'transferencia';
+  pago_monto1?: number;
+  pago_monto2?: number;
   instrucciones?: string;
   cubiertos?: number;
   items: {
@@ -510,22 +515,68 @@ class SedeOrdersService {
       // Paso 2: Calcular total
       const total = await this.calculateOrderTotal(orderData.items, orderData.tipo_entrega, orderData.delivery_cost);
 
-      // Paso 3: Crear pago
-      const { data: pago, error: pagoError } = await supabase
-        .from('pagos')
-        .insert({
-          type: orderData.pago_tipo,
-          status: 'pending',
-          total_pago: total
-        })
-        .select('id')
-        .single();
+      // Paso 3: Crear pago(s)
+      let paymentId: number;
+      let paymentId2: number | undefined;
 
-      if (pagoError) {
-        throw pagoError;
+      if (orderData.hasMultiplePayments) {
+        // Crear dos pagos separados
+        console.log('💳 Creando múltiples pagos:', {
+          pago1: { tipo: orderData.pago_tipo, monto: orderData.pago_monto1 },
+          pago2: { tipo: orderData.pago_tipo2, monto: orderData.pago_monto2 }
+        });
+
+        // Primer pago
+        const { data: pago1, error: pagoError1 } = await supabase
+          .from('pagos')
+          .insert({
+            type: orderData.pago_tipo,
+            status: 'pending',
+            total_pago: orderData.pago_monto1
+          })
+          .select('id')
+          .single();
+
+        if (pagoError1) {
+          throw pagoError1;
+        }
+        paymentId = pago1.id;
+
+        // Segundo pago
+        const { data: pago2, error: pagoError2 } = await supabase
+          .from('pagos')
+          .insert({
+            type: orderData.pago_tipo2!,
+            status: 'pending',
+            total_pago: orderData.pago_monto2
+          })
+          .select('id')
+          .single();
+
+        if (pagoError2) {
+          throw pagoError2;
+        }
+        paymentId2 = pago2.id;
+
+        console.log('✅ Múltiples pagos creados:', { paymentId, paymentId2 });
+      } else {
+        // Crear un solo pago
+        const { data: pago, error: pagoError } = await supabase
+          .from('pagos')
+          .insert({
+            type: orderData.pago_tipo,
+            status: 'pending',
+            total_pago: total
+          })
+          .select('id')
+          .single();
+
+        if (pagoError) {
+          throw pagoError;
+        }
+        paymentId = pago.id;
+        console.log('✅ Pago creado:', paymentId);
       }
-
-      console.log('✅ Pago creado:', pago.id);
 
       // Paso 4: Crear orden con hora_entrega personalizable
       const now = new Date();
@@ -542,7 +593,8 @@ class SedeOrdersService {
         .from('ordenes')
         .insert({
           cliente_id: clienteId,
-          payment_id: pago.id,
+          payment_id: paymentId,
+          payment_id_2: paymentId2, // Agregar segundo pago si existe
           status: 'Recibidos',
           sede_id: orderData.sede_id,
           observaciones: orderData.instrucciones,

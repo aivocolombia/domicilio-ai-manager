@@ -17,17 +17,26 @@ import {
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { toast } from '@/hooks/use-toast';
+import { substitutionHistoryService, type SubstitutionHistoryRecord } from '@/services/substitutionHistoryService';
 
 interface OrderItem {
   id: number;
   quantity: number;
   unit_price: number;
+  orden_item_id: number; // ID único del item en ordenes_platos/bebidas/toppings
   producto: {
     id: number;
     name: string;
     pricing?: number;
   };
   tipo: 'plato' | 'bebida' | 'topping';
+  substitutions?: Array<{
+    type: 'product_substitution' | 'topping_substitution';
+    original_name: string;
+    substitute_name: string;
+    price_difference: number;
+    parent_item_name?: string;
+  }>;
 }
 
 interface OrderDetails {
@@ -59,6 +68,7 @@ export const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({
   const [orderDetails, setOrderDetails] = useState<OrderDetails | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [substitutionHistory, setSubstitutionHistory] = useState<SubstitutionHistoryRecord[]>([]);
 
   const fetchOrderDetails = async (id: number) => {
     if (!id) return;
@@ -80,8 +90,10 @@ export const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({
           observaciones,
           cubiertos,
           address,
+          payment_id_2,
           clientes!cliente_id(nombre, telefono),
-          pagos!payment_id(total_pago)
+          pagos!payment_id(total_pago),
+          pagos2:pagos!payment_id_2(total_pago)
         `)
         .eq('id', id)
         .single();
@@ -137,46 +149,13 @@ export const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({
         console.error('❌ Error obteniendo toppings:', toppingsError);
       }
 
-      // Agrupar items por producto para contar cantidades
-      const platosMap = new Map<number, { count: number; item: any }>();
-      const bebidasMap = new Map<number, { count: number; item: any }>();
-      const toppingsMap = new Map<number, { count: number; item: any }>();
-
-      // Contar platos
-      (platosData || []).forEach(item => {
-        const platoId = item.plato_id || item.platos.id;
-        if (platosMap.has(platoId)) {
-          platosMap.get(platoId)!.count++;
-        } else {
-          platosMap.set(platoId, { count: 1, item });
-        }
-      });
-
-      // Contar bebidas
-      (bebidasData || []).forEach(item => {
-        const bebidaId = item.bebidas_id || item.bebidas.id;
-        if (bebidasMap.has(bebidaId)) {
-          bebidasMap.get(bebidaId)!.count++;
-        } else {
-          bebidasMap.set(bebidaId, { count: 1, item });
-        }
-      });
-
-      // Contar toppings
-      (toppingsData || []).forEach(item => {
-        const toppingId = item.topping_id || item.toppings.id;
-        if (toppingsMap.has(toppingId)) {
-          toppingsMap.get(toppingId)!.count++;
-        } else {
-          toppingsMap.set(toppingId, { count: 1, item });
-        }
-      });
-
-      // Combinar items
+      // NUEVO: Mantener items individuales sin agrupar
       const items: OrderItem[] = [
-        ...Array.from(platosMap.values()).map(({ count, item }) => ({
-          id: item.id,
-          quantity: count,
+        // Procesar platos individualmente
+        ...(platosData || []).map(item => ({
+          id: item.platos.id,
+          orden_item_id: item.id, // ID único del item en ordenes_platos
+          quantity: 1, // Siempre 1 para items individuales
           unit_price: item.platos?.pricing || 0,
           producto: {
             id: item.platos.id,
@@ -185,9 +164,11 @@ export const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({
           },
           tipo: 'plato' as const
         })),
-        ...Array.from(bebidasMap.values()).map(({ count, item }) => ({
-          id: item.id,
-          quantity: count,
+        // Procesar bebidas individualmente
+        ...(bebidasData || []).map(item => ({
+          id: item.bebidas.id,
+          orden_item_id: item.id, // ID único del item en ordenes_bebidas
+          quantity: 1, // Siempre 1 para items individuales
           unit_price: item.bebidas?.pricing || 0,
           producto: {
             id: item.bebidas.id,
@@ -196,9 +177,11 @@ export const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({
           },
           tipo: 'bebida' as const
         })),
-        ...Array.from(toppingsMap.values()).map(({ count, item }) => ({
-          id: item.id,
-          quantity: count,
+        // Procesar toppings individualmente
+        ...(toppingsData || []).map(item => ({
+          id: item.toppings.id,
+          orden_item_id: item.id, // ID único del item en ordenes_toppings
+          quantity: 1, // Siempre 1 para items individuales
           unit_price: item.toppings?.pricing || 0,
           producto: {
             id: item.toppings.id,
@@ -216,7 +199,9 @@ export const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({
         cliente_telefono: orderData.clientes?.telefono || 'Sin teléfono',
         direccion: orderData.address || 'Sin dirección',
         estado: orderData.status || 'Desconocido',
-        total: orderData.pagos?.total_pago || 0,
+        total: !!orderData.payment_id_2
+          ? (orderData.pagos?.total_pago || 0) + (orderData.pagos2?.total_pago || 0)
+          : (orderData.pagos?.total_pago || 0),
         created_at: orderData.created_at,
         hora_entrega: orderData.hora_entrega || undefined,
         observaciones: orderData.observaciones || undefined,
@@ -231,7 +216,69 @@ export const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({
         cantidad: item.quantity,
         total: item.unit_price * item.quantity
       })));
-      setOrderDetails(details);
+
+      // Intentar cargar historial de sustituciones (opcional)
+      try {
+        const history = await substitutionHistoryService.getOrderSubstitutionHistory(id);
+        setSubstitutionHistory(history);
+
+        if (history.length > 0) {
+          // Mapear el historial a los items específicos usando orden_item_id
+          const itemsWithSubstitutions = items.map(item => ({
+            ...item,
+            substitutions: history
+              .filter(sub => {
+                console.log(`🔍 OrderDetailsModal: Evaluando substitución para item "${item.producto.name}" (orden_item_id: ${item.orden_item_id}):`, {
+                  sub_orden_item_id: sub.orden_item_id,
+                  sub_type: sub.substitution_type,
+                  sub_original: sub.original_name,
+                  sub_substitute: sub.substitute_name,
+                  sub_parent: sub.parent_item_name
+                });
+
+                // NUEVO: Filtrar por orden_item_id específico si está disponible
+                if (sub.orden_item_id && item.orden_item_id) {
+                  const match = sub.orden_item_id === item.orden_item_id;
+                  console.log(`🎯 OrderDetailsModal: Item ID match: ${match} (${sub.orden_item_id} === ${item.orden_item_id})`);
+                  return match;
+                }
+
+                console.log(`⚠️ OrderDetailsModal: Usando fallback - sub.orden_item_id: ${sub.orden_item_id}, item.orden_item_id: ${item.orden_item_id}`);
+                // FALLBACK: Usar lógica anterior para compatibilidad
+                return sub.substitution_type === 'product_substitution' ||
+                       (sub.substitution_type === 'topping_substitution' && sub.parent_item_name === item.producto.name);
+              })
+              .map(sub => ({
+                type: sub.substitution_type,
+                original_name: sub.original_name,
+                substitute_name: sub.substitute_name,
+                price_difference: sub.price_difference,
+                parent_item_name: sub.parent_item_name
+              }))
+          }));
+          setOrderDetails({ ...details, items: itemsWithSubstitutions });
+        } else {
+          // Si no hay historial, mostrar mensaje informativo
+          const itemsWithInfo = items.map(item => {
+            const hasUnexpectedPrice = item.producto.pricing &&
+                                     Math.abs(item.unit_price - item.producto.pricing) > 0;
+            return {
+              ...item,
+              substitutions: hasUnexpectedPrice ? [{
+                type: 'product_substitution' as const,
+                original_name: 'Producto original',
+                substitute_name: item.producto.name,
+                price_difference: item.unit_price - (item.producto.pricing || 0),
+                parent_item_name: undefined
+              }] : []
+            };
+          });
+          setOrderDetails({ ...details, items: itemsWithInfo });
+        }
+      } catch (error) {
+        // Si falla el historial, mostrar items normales
+        setOrderDetails(details);
+      }
 
     } catch (error) {
       console.error('❌ Error cargando detalles de orden:', error);
@@ -252,6 +299,7 @@ export const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({
     } else {
       setOrderDetails(null);
       setError(null);
+      setSubstitutionHistory([]);
     }
   }, [isOpen, orderId]);
 
@@ -384,7 +432,7 @@ export const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({
               ) : (
                 <div className="space-y-3">
                   {orderDetails.items.map((item) => (
-                    <div key={`${item.tipo}-${item.id}`} className="flex items-center justify-between p-3 border border-gray-200 rounded-lg">
+                    <div key={`${item.tipo}-${item.orden_item_id}`} className="flex items-center justify-between p-3 border border-gray-200 rounded-lg">
                       <div className="flex items-center gap-3">
                         {item.tipo === 'plato' ? (
                           <Package className="h-5 w-5 text-orange-600" />
@@ -396,10 +444,46 @@ export const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({
                         <div>
                           <h4 className="font-medium">{item.producto.name}</h4>
                           <p className="text-sm text-gray-600">
-                            {item.tipo === 'plato' ? 'Plato' : 
-                             item.tipo === 'bebida' ? 'Bebida' : 
+                            {item.tipo === 'plato' ? 'Plato' :
+                             item.tipo === 'bebida' ? 'Bebida' :
                              'Topping Extra'} • {formatCurrency(item.unit_price)}
                           </p>
+
+                          {/* Mostrar sustituciones si existen */}
+                          {item.substitutions && item.substitutions.length > 0 && (
+                            <div className="mt-2 space-y-1">
+                              {item.substitutions.map((substitution, idx) => (
+                                <div key={idx} className="text-xs bg-blue-50 border border-blue-200 rounded px-2 py-1">
+                                  {substitution.type === 'topping_substitution' ? (
+                                    <span>
+                                      🔄 <strong>Topping cambiado:</strong> {substitution.original_name} → {substitution.substitute_name}
+                                      {substitution.price_difference !== 0 && (
+                                        <span className={substitution.price_difference > 0 ? 'text-red-600' : 'text-green-600'}>
+                                          {' '}({substitution.price_difference > 0 ? '+' : ''}{formatCurrency(substitution.price_difference)})
+                                        </span>
+                                      )}
+                                    </span>
+                                  ) : (
+                                    <span>
+                                      {substitution.original_name === 'Producto original' ? (
+                                        <span>🔄 <strong>Producto modificado:</strong> {substitution.substitute_name}</span>
+                                      ) : (
+                                        <span>
+                                          🔄 <strong>Producto cambiado:</strong> {substitution.original_name} → {substitution.substitute_name}
+                                          {substitution.price_difference !== 0 && (
+                                            <span className={substitution.price_difference > 0 ? 'text-red-600' : 'text-green-600'}>
+                                              {' '}({substitution.price_difference > 0 ? '+' : ''}{formatCurrency(substitution.price_difference)})
+                                            </span>
+                                          )}
+                                        </span>
+                                      )}
+                                    </span>
+                                  )}
+                                </div>
+                              ))}
+                            </div>
+                          )}
+
                         </div>
                       </div>
                       <div className="text-right">

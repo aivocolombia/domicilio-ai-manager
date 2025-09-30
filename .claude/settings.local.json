@@ -12,7 +12,9 @@
       "Bash(grep:*)",
       "Bash(sed:*)",
       "Bash(npx tsc:*)",
-      "Bash(npm run build:dev:*)"
+      "Bash(npm run build:dev:*)",
+      "Bash(npm install:*)",
+      "Bash(psql:*)"
     ],
     "deny": [],
     "ask": [],

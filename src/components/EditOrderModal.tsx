@@ -6,12 +6,15 @@ import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { toast } from '@/hooks/use-toast';
-import { Loader2, Trash2, Plus, Minus, Navigation } from 'lucide-react';
+import { Loader2, Trash2, Plus, Minus, Navigation, ArrowUpDown } from 'lucide-react';
 import { DashboardOrder } from '@/services/dashboardService';
 import { useMenu } from '@/hooks/useMenu';
 import { addressService } from '@/services/addressService';
 import { supabase } from '@/lib/supabase';
 import { sedeService } from '@/services/sedeService';
+import { ProductSubstitutionDialog } from '@/components/ProductSubstitutionDialog';
+import type { SubstitutionDetails } from '@/services/substitutionService';
+import { substitutionHistoryService } from '@/services/substitutionHistoryService';
 
 interface OrderItem {
   id: string;
@@ -21,6 +24,8 @@ interface OrderItem {
   precio_unitario: number;
   precio_total: number;
   producto_id: number;
+  orden_item_id?: number; // ID único del item en ordenes_platos/bebidas/toppings
+  substitutions?: SubstitutionDetails[];
 }
 
 interface EditOrderModalProps {
@@ -47,6 +52,15 @@ export const EditOrderModal: React.FC<EditOrderModalProps> = ({
   const [sedeAddress, setSedeAddress] = useState<string>('');
   const [sedeId, setSedeId] = useState<string>('');
   const [cutleryCount, setCutleryCount] = useState<number>(0);
+
+  // Estado para el diálogo de sustituciones
+  const [substitutionDialogOpen, setSubstitutionDialogOpen] = useState(false);
+  const [selectedItemForSubstitution, setSelectedItemForSubstitution] = useState<OrderItem | null>(null);
+
+  // REMOVIDO: Estados de toppingsDialog - consolidado en ProductSubstitutionDialog
+
+  // Estado para rastrear sustituciones realizadas
+  const [substitutionHistory, setSubstitutionHistory] = useState<SubstitutionDetails[]>([]);
 
   // Estado para productos específicos de sede (disponibles)
   const [sedeProducts, setSedeProducts] = useState({
@@ -154,6 +168,73 @@ export const EditOrderModal: React.FC<EditOrderModalProps> = ({
   const handleRemoveItem = (itemId: string) => {
     setItems(prev => prev.filter(item => item.id !== itemId));
   };
+
+  // Función para abrir el diálogo de sustitución
+  const handleOpenSubstitution = (item: OrderItem) => {
+    console.log('🔍 DEBUG EditOrderModal: Opening substitution for item:', item);
+    console.log('🔍 DEBUG EditOrderModal: Item orden_item_id:', item.orden_item_id);
+    setSelectedItemForSubstitution(item);
+    setSubstitutionDialogOpen(true);
+  };
+
+  // Función para aplicar una sustitución
+  const handleSubstitutionApplied = (originalItem: OrderItem, substitutedItem: OrderItem) => {
+    // Conservar el orden_item_id del item original
+    const updatedItem = {
+      ...substitutedItem,
+      orden_item_id: originalItem.orden_item_id
+    };
+
+    setItems(prev => prev.map(item =>
+      item.id === originalItem.id ? updatedItem : item
+    ));
+
+    // Agregar al historial de sustituciones si es una sustitución de producto (sin duplicar)
+    if (substitutedItem.producto_id !== originalItem.producto_id) {
+      const substitutionDetail: SubstitutionDetails & { orden_item_id?: number } = {
+        type: 'product_substitution',
+        original_name: originalItem.nombre,
+        substitute_name: substitutedItem.nombre,
+        price_difference: substitutedItem.precio_unitario - originalItem.precio_unitario,
+        orden_item_id: originalItem.orden_item_id // Incluir ID específico del item
+      };
+
+      setSubstitutionHistory(prev => {
+        // Evitar duplicados de sustitución de productos para este item específico
+        const filtered = prev.filter(existing =>
+          !(existing.type === 'product_substitution' &&
+            existing.original_name === substitutionDetail.original_name &&
+            existing.substitute_name === substitutionDetail.substitute_name &&
+            (existing as any).orden_item_id === substitutionDetail.orden_item_id)
+        );
+        return [...filtered, substitutionDetail];
+      });
+    }
+
+    // Agregar detalles de sustitución de toppings si existen (sin duplicar)
+    if ((substitutedItem as any)._substitutionDetails) {
+      const newSubstitutions = (substitutedItem as any)._substitutionDetails as SubstitutionDetails[];
+      console.log('🔍 DEBUG EditOrderModal: New substitutions from toppings dialog:', newSubstitutions);
+      setSubstitutionHistory(prev => {
+        const filtered = prev.filter(existing =>
+          !newSubstitutions.some(newSub =>
+            existing.original_name === newSub.original_name &&
+            existing.substitute_name === newSub.substitute_name &&
+            existing.parent_item_name === newSub.parent_item_name &&
+            (existing as any).orden_item_id === (newSub as any).orden_item_id
+          )
+        );
+        return [...filtered, ...newSubstitutions];
+      });
+    }
+
+    toast({
+      title: "Producto sustituido",
+      description: `${originalItem.nombre} → ${substitutedItem.nombre}`,
+    });
+  };
+
+  // REMOVIDO: handleOpenToppings y handleToppingsChanged - consolidado en ProductSubstitutionDialog
 
   // Función para normalizar direcciones (usa la misma que addressService)
   const normalizeAddress = (address: string) => {
@@ -297,10 +378,18 @@ export const EditOrderModal: React.FC<EditOrderModalProps> = ({
   // Cargar datos reales de la orden al abrir
   useEffect(() => {
     const loadOrderItems = async () => {
-      if (!isOpen || !order || !orderId) return;
+      if (!isOpen || !order || !orderId) {
+        // Limpiar historial cuando se cierra el modal
+        if (!isOpen) {
+          setSubstitutionHistory([]);
+        }
+        return;
+      }
 
       try {
         setLoading(true);
+        // Limpiar historial al cargar una nueva orden
+        setSubstitutionHistory([]);
         // Cargar campos adicionales de orden (cubiertos, address, precio_envio)
         const { data: baseOrder, error: baseOrderErr } = await supabase
           .from('ordenes')
@@ -355,77 +444,56 @@ export const EditOrderModal: React.FC<EditOrderModalProps> = ({
           console.error('❌ Error obteniendo toppings:', toppingsError);
         }
         
-        // Agrupar items por producto para contar cantidades
-        const itemsMap = new Map<string, OrderItem>();
-        
-        // Procesar platos
-        (platosData || []).forEach(item => {
+        // NUEVO: Mantener items individuales sin agrupar (para sustituciones específicas)
+        const finalItems: OrderItem[] = [];
+
+        // Procesar platos individualmente
+        (platosData || []).forEach((item, index) => {
           if (item.platos) {
-            const platoId = item.plato_id || item.platos.id;
-            const key = `plato_${platoId}`;
-            if (itemsMap.has(key)) {
-              const existing = itemsMap.get(key)!;
-              existing.cantidad++;
-              existing.precio_total = existing.precio_unitario * existing.cantidad;
-            } else {
-              itemsMap.set(key, {
-                id: key,
-                tipo: 'plato',
-                nombre: item.platos.name,
-                cantidad: 1,
-                precio_unitario: item.platos.pricing || 0,
-                precio_total: item.platos.pricing || 0,
-                producto_id: item.platos.id
-              });
-            }
+            finalItems.push({
+              id: `plato_${item.id}_${index}`, // Usar ID único del registro
+              tipo: 'plato',
+              nombre: item.platos.name,
+              cantidad: 1, // Siempre 1 para items individuales
+              precio_unitario: item.platos.pricing || 0,
+              precio_total: item.platos.pricing || 0,
+              producto_id: item.platos.id,
+              orden_item_id: item.id // ID específico del item en ordenes_platos
+            });
           }
         });
 
-        // Procesar bebidas
-        (bebidasData || []).forEach(item => {
+        // Procesar bebidas individualmente
+        (bebidasData || []).forEach((item, index) => {
           if (item.bebidas) {
-            const key = `bebida_${item.bebidas.id}`;
-            if (itemsMap.has(key)) {
-              const existing = itemsMap.get(key)!;
-              existing.cantidad++;
-              existing.precio_total = existing.precio_unitario * existing.cantidad;
-            } else {
-              itemsMap.set(key, {
-                id: key,
-                tipo: 'bebida',
-                nombre: item.bebidas.name,
-                cantidad: 1,
-                precio_unitario: item.bebidas.pricing || 0,
-                precio_total: item.bebidas.pricing || 0,
-                producto_id: item.bebidas.id
-              });
-            }
+            finalItems.push({
+              id: `bebida_${item.id}_${index}`, // Usar ID único del registro
+              tipo: 'bebida',
+              nombre: item.bebidas.name,
+              cantidad: 1, // Siempre 1 para items individuales
+              precio_unitario: item.bebidas.pricing || 0,
+              precio_total: item.bebidas.pricing || 0,
+              producto_id: item.bebidas.id,
+              orden_item_id: item.id // ID específico del item en ordenes_bebidas
+            });
           }
         });
-        
-        // Procesar toppings
-        (toppingsData || []).forEach(item => {
+
+        // Procesar toppings individualmente
+        (toppingsData || []).forEach((item, index) => {
           if (item.toppings) {
-            const key = `topping_${item.toppings.id}`;
-            if (itemsMap.has(key)) {
-              const existing = itemsMap.get(key)!;
-              existing.cantidad++;
-              existing.precio_total = existing.precio_unitario * existing.cantidad;
-            } else {
-              itemsMap.set(key, {
-                id: key,
-                tipo: 'topping',
-                nombre: item.toppings.name,
-                cantidad: 1,
-                precio_unitario: item.toppings.pricing || 0,
-                precio_total: item.toppings.pricing || 0,
-                producto_id: item.toppings.id
-              });
-            }
+            finalItems.push({
+              id: `topping_${item.id}_${index}`, // Usar ID único del registro
+              tipo: 'topping',
+              nombre: item.toppings.name,
+              cantidad: 1, // Siempre 1 para items individuales
+              precio_unitario: item.toppings.pricing || 0,
+              precio_total: item.toppings.pricing || 0,
+              producto_id: item.toppings.id,
+              orden_item_id: item.id // ID específico del item en ordenes_toppings
+            });
           }
         });
-        
-        const finalItems = Array.from(itemsMap.values());
         console.log('🔍 EditOrderModal: Items procesados:', {
           platosData: platosData?.length || 0,
           bebidasData: bebidasData?.length || 0,
@@ -484,7 +552,8 @@ export const EditOrderModal: React.FC<EditOrderModalProps> = ({
 
     try {
       setLoading(true);
-      
+      setError(null);
+
       // 1. Actualizar dirección del cliente y de la orden si cambió
       if (newAddress.trim() && newAddress !== order.address) {
         // Actualizar dirección del cliente para futuras órdenes
@@ -551,43 +620,97 @@ export const EditOrderModal: React.FC<EditOrderModalProps> = ({
         throw new Error('Error actualizando total de pago');
       }
 
-      // 4. Eliminar todos los items existentes
-      await Promise.all([
-        supabase.from('ordenes_platos').delete().eq('orden_id', orderId),
-        supabase.from('ordenes_bebidas').delete().eq('orden_id', orderId),
-        supabase.from('ordenes_toppings').delete().eq('orden_id', orderId)
-      ]);
+      // 4. Guardar historial de sustituciones ANTES de modificar items
+      if (substitutionHistory.length > 0) {
+        console.log('💾 Guardando historial de sustituciones:', substitutionHistory);
 
-      // 5. Insertar los nuevos items
-      const platos = items.filter(item => item.tipo === 'plato');
-      const bebidas = items.filter(item => item.tipo === 'bebida');
-      const toppings = items.filter(item => item.tipo === 'topping');
+        const substitutionsToRecord = substitutionHistory.map(substitution => {
+          const enrichedSub = substitution as any; // Acceso temporal a orden_item_id
+          console.log('🔍 DEBUG: Preparando sustitución para guardar:', {
+            substitution: substitution,
+            enrichedSub_orden_item_id: enrichedSub.orden_item_id,
+            type: substitution.type,
+            original: substitution.original_name,
+            substitute: substitution.substitute_name
+          });
 
-      // Insertar platos
-      for (const plato of platos) {
-        for (let i = 0; i < plato.cantidad; i++) {
-          await supabase
-            .from('ordenes_platos')
-            .insert({ orden_id: orderId, plato_id: plato.producto_id });
+          return {
+            itemType: 'plato' as const, // Se puede mejorar para determinar el tipo real
+            itemId: 1, // Se puede mejorar para obtener el ID real del item
+            ordenItemId: enrichedSub.orden_item_id, // Usar ID específico del item
+            substitutionDetail: substitution
+          };
+        });
+
+        const historySuccess = await substitutionHistoryService.recordMultipleSubstitutions(
+          parseInt(orderId),
+          substitutionsToRecord
+        );
+
+        if (historySuccess) {
+          console.log('✅ Historial de sustituciones guardado exitosamente');
+          // Limpiar el historial de la sesión después de guardarlo
+          setSubstitutionHistory([]);
+        } else {
+          console.warn('⚠️ No se pudo guardar el historial de sustituciones, pero la orden se actualizó correctamente');
         }
+      } else {
+        console.log('ℹ️ No hay sustituciones para guardar en el historial');
       }
 
-      // Insertar bebidas
-      for (const bebida of bebidas) {
-        for (let i = 0; i < bebida.cantidad; i++) {
-          await supabase
-            .from('ordenes_bebidas')
-            .insert({ orden_id: orderId, bebidas_id: bebida.producto_id });
-        }
+      // 5. SOLUCIÓN TEMPORAL: Solo recrear items si realmente cambiaron los productos base
+      // (las sustituciones no requieren cambios en ordenes_platos)
+
+      // Por ahora, saltarse la eliminación si solo hay sustituciones de toppings
+      const hasProductSubstitutions = substitutionHistory.some(sub => sub.type === 'product_substitution');
+      const hasOnlyToppingSubstitutions = substitutionHistory.length > 0 && !hasProductSubstitutions;
+
+      if (hasOnlyToppingSubstitutions) {
+        console.log('🔧 SOLUCIÓN TEMPORAL: Solo hay sustituciones de toppings, preservando IDs originales');
+        console.log('ℹ️ Saltando eliminación/recreación de items para preservar orden_item_id');
+      } else {
+        console.log('⚠️ ADVERTENCIA: Eliminando y recreando items - esto rompe las referencias de orden_item_id');
+        await Promise.all([
+          supabase.from('ordenes_platos').delete().eq('orden_id', orderId),
+          supabase.from('ordenes_bebidas').delete().eq('orden_id', orderId),
+          supabase.from('ordenes_toppings').delete().eq('orden_id', orderId)
+        ]);
       }
 
-      // Insertar toppings
-      for (const topping of toppings) {
-        for (let i = 0; i < topping.cantidad; i++) {
-          await supabase
-            .from('ordenes_toppings')
-            .insert({ orden_id: orderId, topping_id: topping.producto_id });
+      // 6. Insertar los nuevos items (solo si se eliminaron los anteriores)
+      if (!hasOnlyToppingSubstitutions) {
+        const platos = items.filter(item => item.tipo === 'plato');
+        const bebidas = items.filter(item => item.tipo === 'bebida');
+        const toppings = items.filter(item => item.tipo === 'topping');
+
+        // Insertar platos
+        for (const plato of platos) {
+          for (let i = 0; i < plato.cantidad; i++) {
+            await supabase
+              .from('ordenes_platos')
+              .insert({ orden_id: orderId, plato_id: plato.producto_id });
+          }
         }
+
+        // Insertar bebidas
+        for (const bebida of bebidas) {
+          for (let i = 0; i < bebida.cantidad; i++) {
+            await supabase
+              .from('ordenes_bebidas')
+              .insert({ orden_id: orderId, bebidas_id: bebida.producto_id });
+          }
+        }
+
+        // Insertar toppings
+        for (const topping of toppings) {
+          for (let i = 0; i < topping.cantidad; i++) {
+            await supabase
+              .from('ordenes_toppings')
+              .insert({ orden_id: orderId, topping_id: topping.producto_id });
+          }
+        }
+      } else {
+        console.log('ℹ️ Preservando items existentes - solo se guardaron sustituciones de toppings');
       }
       
       toast({
@@ -597,6 +720,8 @@ export const EditOrderModal: React.FC<EditOrderModalProps> = ({
 
       onOrderUpdated();
       onClose();
+      // Limpiar historial al cerrar exitosamente
+      setSubstitutionHistory([]);
     } catch (error) {
       console.error('Error actualizando orden:', error);
       toast({
@@ -711,16 +836,19 @@ export const EditOrderModal: React.FC<EditOrderModalProps> = ({
             <CardContent>
               <div className="space-y-3">
                 {items.map((item) => (
-                  <div key={item.id} className="flex items-center justify-between p-3 border rounded-lg">
+                  <div key={`${item.tipo}-${item.orden_item_id || item.id}`} className="flex items-center justify-between p-3 border rounded-lg">
                     <div className="flex-1">
                       <div className="font-medium">{item.nombre}</div>
                       <div className="text-sm text-gray-600">
                         ${item.precio_unitario.toLocaleString()} c/u
                       </div>
-                      <Badge variant="outline" className="mt-1">
-                        {item.tipo === 'plato' ? '🍽️ Plato' : 
-                         item.tipo === 'bebida' ? '🥤 Bebida' : '🧀 Topping'}
-                      </Badge>
+                      <div className="flex items-center gap-2 mt-1">
+                        <Badge variant="outline">
+                          {item.tipo === 'plato' ? '🍽️ Plato' :
+                           item.tipo === 'bebida' ? '🥤 Bebida' : '🧀 Topping'}
+                        </Badge>
+                        {/* Botón de toppings removido - consolidado en ProductSubstitutionDialog */}
+                      </div>
                     </div>
                     
                     <div className="flex items-center gap-2">
@@ -731,9 +859,9 @@ export const EditOrderModal: React.FC<EditOrderModalProps> = ({
                       >
                         <Minus className="h-4 w-4" />
                       </Button>
-                      
+
                       <span className="mx-2 font-medium">{item.cantidad}</span>
-                      
+
                       <Button
                         size="sm"
                         variant="outline"
@@ -741,7 +869,17 @@ export const EditOrderModal: React.FC<EditOrderModalProps> = ({
                       >
                         <Plus className="h-4 w-4" />
                       </Button>
-                      
+
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => handleOpenSubstitution(item)}
+                        className="ml-2"
+                        title="Cambiar producto o toppings"
+                      >
+                        <ArrowUpDown className="h-4 w-4" />
+                      </Button>
+
                       <Button
                         size="sm"
                         variant="destructive"
@@ -961,6 +1099,19 @@ export const EditOrderModal: React.FC<EditOrderModalProps> = ({
             </Button>
           </div>
         </div>
+
+        {/* Diálogo de sustitución de productos */}
+        <ProductSubstitutionDialog
+          isOpen={substitutionDialogOpen}
+          onClose={() => {
+            setSubstitutionDialogOpen(false);
+            setSelectedItemForSubstitution(null);
+          }}
+          item={selectedItemForSubstitution}
+          onSubstitutionApplied={handleSubstitutionApplied}
+        />
+
+        {/* REMOVIDO: PlatoToppingsDialog - consolidado en ProductSubstitutionDialog */}
       </DialogContent>
     </Dialog>
   );

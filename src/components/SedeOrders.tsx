@@ -9,6 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Textarea } from '@/components/ui/textarea';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Separator } from '@/components/ui/separator';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { toast } from '@/hooks/use-toast';
@@ -137,6 +138,10 @@ export const SedeOrders: React.FC<SedeOrdersProps> = ({
     address: '',
     items: [] as { productId: string; quantity: number; toppings: string[] }[],
     paymentMethod: 'cash' as PaymentMethod,
+    hasMultiplePayments: false,
+    paymentMethod2: 'cash' as PaymentMethod,
+    paymentAmount1: 0,
+    paymentAmount2: 0,
     specialInstructions: '',
     deliveryType: 'delivery' as DeliveryType,
     pickupSede: '', // Se auto-asignará con la sede del agente
@@ -542,6 +547,25 @@ export const SedeOrders: React.FC<SedeOrdersProps> = ({
     return itemsTotal + deliveryFee;
   };
 
+  // Función para manejar el cambio del checkbox de múltiples pagos
+  const handleMultiplePaymentsChange = (checked: boolean) => {
+    const total = calculateTotal();
+    setNewOrder(prev => ({
+      ...prev,
+      hasMultiplePayments: checked,
+      paymentAmount1: checked ? Math.ceil(total / 2) : total,
+      paymentAmount2: checked ? Math.floor(total / 2) : 0
+    }));
+  };
+
+  // Función para validar que los montos sumen el total
+  const validatePaymentAmounts = () => {
+    if (!newOrder.hasMultiplePayments) return true;
+    const total = calculateTotal();
+    const sum = newOrder.paymentAmount1 + newOrder.paymentAmount2;
+    return Math.abs(sum - total) < 1; // Tolerancia de 1 peso
+  };
+
   const handleCreateOrder = async () => {
     // Validaciones básicas
     if (newOrder.deliveryType === 'delivery' && !customerData.address) return;
@@ -549,6 +573,16 @@ export const SedeOrders: React.FC<SedeOrdersProps> = ({
     if (newOrder.items.length === 0) return;
     if (!effectiveSedeId) return; // Validar que hay sede efectiva (seleccionada por admin o asignada al agente)
     if (!customerData.name || !customerData.phone) return;
+
+    // Validar múltiples pagos si están habilitados
+    if (newOrder.hasMultiplePayments && !validatePaymentAmounts()) {
+      toast({
+        title: "Error de validación",
+        description: "Los montos de pago no suman el total de la orden",
+        variant: "destructive"
+      });
+      return;
+    }
 
     // Validar valor de domicilio si es delivery
     if (newOrder.deliveryType === 'delivery' && newOrder.deliveryCost === 0) {
@@ -601,9 +635,18 @@ export const SedeOrders: React.FC<SedeOrdersProps> = ({
         direccion: finalAddress,
         tipo_entrega: newOrder.deliveryType,
         sede_recogida: newOrder.deliveryType === 'pickup' ? currentSedeName : undefined,
-        pago_tipo: newOrder.paymentMethod === 'cash' ? 'efectivo' : 
+        pago_tipo: newOrder.paymentMethod === 'cash' ? 'efectivo' :
                    newOrder.paymentMethod === 'card' ? 'tarjeta' :
                    newOrder.paymentMethod === 'nequi' ? 'nequi' : 'transferencia',
+        // Información de múltiples pagos
+        hasMultiplePayments: newOrder.hasMultiplePayments,
+        pago_tipo2: newOrder.hasMultiplePayments ? (
+          newOrder.paymentMethod2 === 'cash' ? 'efectivo' :
+          newOrder.paymentMethod2 === 'card' ? 'tarjeta' :
+          newOrder.paymentMethod2 === 'nequi' ? 'nequi' : 'transferencia'
+        ) : undefined,
+        pago_monto1: newOrder.hasMultiplePayments ? newOrder.paymentAmount1 : calculateTotal(),
+        pago_monto2: newOrder.hasMultiplePayments ? newOrder.paymentAmount2 : undefined,
         instrucciones: newOrder.specialInstructions || undefined,
         delivery_time_minutes: newOrder.deliveryTimeMinutes,
         delivery_cost: newOrder.deliveryType === 'delivery' ? newOrder.deliveryCost : undefined,
@@ -675,6 +718,10 @@ export const SedeOrders: React.FC<SedeOrdersProps> = ({
         address: '',
         items: [],
         paymentMethod: 'cash',
+        hasMultiplePayments: false,
+        paymentMethod2: 'cash',
+        paymentAmount1: 0,
+        paymentAmount2: 0,
         specialInstructions: '',
         deliveryType: 'delivery',
         pickupSede: '', // Se auto-asignará
@@ -743,9 +790,421 @@ export const SedeOrders: React.FC<SedeOrdersProps> = ({
   };
 
   // Filtrar pedidos: usar datos reales si están disponibles
-  const sedeOrders = realOrders.length > 0 
-    ? realOrders 
+  const sedeOrders = realOrders.length > 0
+    ? realOrders
     : orders.filter((order: any) => order.assignedSede === currentUser.sede);
 
-  return null;
+  return (
+    <div className="space-y-6">
+      {/* Header con información de la sede */}
+      <Card>
+        <CardHeader className="pb-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Building2 className="h-5 w-5 text-blue-600" />
+              <CardTitle className="text-lg">Órdenes de {currentSedeName}</CardTitle>
+            </div>
+            <Badge variant="secondary" className="text-sm">
+              {sedeOrders.length} órdenes
+            </Badge>
+          </div>
+        </CardHeader>
+      </Card>
+
+      {/* Botón para crear nueva orden */}
+      <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
+        <DialogTrigger asChild>
+          <Button className="w-full mb-4">
+            <Plus className="h-4 w-4 mr-2" />
+            Crear Nueva Orden
+          </Button>
+        </DialogTrigger>
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Crear Nueva Orden</DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-6">
+            {/* Búsqueda de cliente */}
+            <div className="space-y-4">
+              <Label htmlFor="customerSearch">Buscar Cliente</Label>
+              <div className="flex gap-2">
+                <Input
+                  id="customerSearch"
+                  type="tel"
+                  placeholder="Número de teléfono del cliente"
+                  value={searchPhone}
+                  onChange={(e) => setSearchPhone(e.target.value)}
+                />
+                <Button
+                  onClick={() => searchCustomer(searchPhone)}
+                  disabled={!searchPhone.trim()}
+                >
+                  <Search className="h-4 w-4 mr-2" />
+                  Buscar
+                </Button>
+              </div>
+            </div>
+
+            {/* Información del cliente */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <Label htmlFor="customerName">Nombre del Cliente</Label>
+                <Input
+                  id="customerName"
+                  value={customerData.name}
+                  onChange={(e) => setCustomerData(prev => ({ ...prev, name: e.target.value }))}
+                  placeholder="Nombre completo"
+                />
+              </div>
+              <div>
+                <Label htmlFor="customerPhone">Teléfono</Label>
+                <Input
+                  id="customerPhone"
+                  type="tel"
+                  value={customerData.phone}
+                  onChange={(e) => setCustomerData(prev => ({ ...prev, phone: e.target.value }))}
+                  placeholder="Número de teléfono"
+                />
+              </div>
+            </div>
+
+            {/* Tipo de entrega */}
+            <div className="space-y-3">
+              <Label>Tipo de Entrega</Label>
+              <RadioGroup
+                value={newOrder.deliveryType}
+                onValueChange={(value: DeliveryType) => setNewOrder(prev => ({ ...prev, deliveryType: value }))}
+                className="flex gap-6"
+              >
+                <div className="flex items-center space-x-2">
+                  <RadioGroupItem value="delivery" id="delivery" />
+                  <Label htmlFor="delivery">Domicilio</Label>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <RadioGroupItem value="pickup" id="pickup" />
+                  <Label htmlFor="pickup">Recoger en Sede</Label>
+                </div>
+              </RadioGroup>
+            </div>
+
+            {/* Dirección (solo para delivery) */}
+            {newOrder.deliveryType === 'delivery' && (
+              <div>
+                <Label htmlFor="address">Dirección de Entrega</Label>
+                <Textarea
+                  id="address"
+                  value={customerData.address}
+                  onChange={(e) => setCustomerData(prev => ({ ...prev, address: e.target.value }))}
+                  placeholder="Dirección completa de entrega"
+                  rows={3}
+                />
+              </div>
+            )}
+
+            {/* Productos */}
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <Label>Productos</Label>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={addNewItem}
+                >
+                  <Plus className="h-4 w-4 mr-2" />
+                  Agregar Producto
+                </Button>
+              </div>
+
+              {newOrder.items.map((item, index) => (
+                <Card key={index} className="p-4">
+                  <div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
+                    <div>
+                      <Label>Tipo de Producto</Label>
+                      <Select
+                        value={item.productType}
+                        onValueChange={(value: 'plato' | 'bebida') => updateItem(index, 'productType', value)}
+                      >
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="plato">Plato Fuerte</SelectItem>
+                          <SelectItem value="bebida">Bebida</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    <div>
+                      <Label>Producto</Label>
+                      <Select
+                        value={item.productId}
+                        onValueChange={(value) => updateItem(index, 'productId', value)}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Seleccionar producto" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {getAvailableProducts(item.productType).map((product) => (
+                            <SelectItem key={product.id} value={product.id}>
+                              {product.name} - ${product.pricing?.toLocaleString() || 0}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    <div>
+                      <Label>Cantidad</Label>
+                      <Input
+                        type="number"
+                        min="1"
+                        value={item.quantity}
+                        onChange={(e) => updateItem(index, 'quantity', parseInt(e.target.value) || 1)}
+                      />
+                    </div>
+
+                    <Button
+                      variant="destructive"
+                      size="sm"
+                      onClick={() => removeItem(index)}
+                    >
+                      Eliminar
+                    </Button>
+                  </div>
+                </Card>
+              ))}
+            </div>
+
+            {/* Método de Pago */}
+            <div className="space-y-4">
+              <Label>Método de Pago</Label>
+              <Select
+                value={newOrder.paymentMethod}
+                onValueChange={(value: PaymentMethod) => setNewOrder(prev => ({ ...prev, paymentMethod: value }))}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="cash">Efectivo</SelectItem>
+                  <SelectItem value="card">Tarjeta</SelectItem>
+                  <SelectItem value="nequi">Nequi</SelectItem>
+                  <SelectItem value="transfer">Transferencia</SelectItem>
+                </SelectContent>
+              </Select>
+
+              {/* Checkbox para múltiples métodos de pago */}
+              <div className="flex items-center space-x-2 mt-3">
+                <Checkbox
+                  id="multiplePayments"
+                  checked={newOrder.hasMultiplePayments}
+                  onCheckedChange={handleMultiplePaymentsChange}
+                />
+                <Label htmlFor="multiplePayments" className="text-sm">
+                  El cliente paga con más de un método
+                </Label>
+              </div>
+
+              {/* Controles de múltiples pagos */}
+              {newOrder.hasMultiplePayments && (
+                <div className="space-y-4 p-4 border rounded-lg bg-gray-50">
+                  <h4 className="font-medium text-sm text-gray-700">Configuración de Múltiples Pagos</h4>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {/* Primer pago */}
+                    <div className="space-y-2">
+                      <Label className="text-xs text-gray-600">Primer Método: {
+                        newOrder.paymentMethod === 'cash' ? 'Efectivo' :
+                        newOrder.paymentMethod === 'card' ? 'Tarjeta' :
+                        newOrder.paymentMethod === 'nequi' ? 'Nequi' : 'Transferencia'
+                      }</Label>
+                      <Input
+                        type="number"
+                        placeholder="Monto del primer pago"
+                        value={newOrder.paymentAmount1 || ''}
+                        onChange={(e) => setNewOrder(prev => ({
+                          ...prev,
+                          paymentAmount1: parseFloat(e.target.value) || 0
+                        }))}
+                      />
+                    </div>
+
+                    {/* Segundo pago */}
+                    <div className="space-y-2">
+                      <Label className="text-xs text-gray-600">Segundo Método</Label>
+                      <Select
+                        value={newOrder.paymentMethod2}
+                        onValueChange={(value: PaymentMethod) => setNewOrder(prev => ({ ...prev, paymentMethod2: value }))}
+                      >
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="cash">Efectivo</SelectItem>
+                          <SelectItem value="card">Tarjeta</SelectItem>
+                          <SelectItem value="nequi">Nequi</SelectItem>
+                          <SelectItem value="transfer">Transferencia</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <Input
+                        type="number"
+                        placeholder="Monto del segundo pago"
+                        value={newOrder.paymentAmount2 || ''}
+                        onChange={(e) => setNewOrder(prev => ({
+                          ...prev,
+                          paymentAmount2: parseFloat(e.target.value) || 0
+                        }))}
+                      />
+                    </div>
+                  </div>
+
+                  {/* Validación de montos */}
+                  <div className="text-sm">
+                    <span className="text-gray-600">Total de la orden: </span>
+                    <span className="font-medium">${calculateTotal().toLocaleString()}</span>
+                    {newOrder.hasMultiplePayments && (
+                      <>
+                        <br />
+                        <span className="text-gray-600">Suma de pagos: </span>
+                        <span className={`font-medium ${
+                          validatePaymentAmounts() ? 'text-green-600' : 'text-red-600'
+                        }`}>
+                          ${(newOrder.paymentAmount1 + newOrder.paymentAmount2).toLocaleString()}
+                        </span>
+                        {!validatePaymentAmounts() && (
+                          <div className="text-red-600 text-xs mt-1">
+                            ⚠️ La suma de los pagos debe coincidir con el total de la orden
+                          </div>
+                        )}
+                      </>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Instrucciones especiales */}
+            <div>
+              <Label htmlFor="instructions">Instrucciones Especiales</Label>
+              <Textarea
+                id="instructions"
+                value={newOrder.specialInstructions}
+                onChange={(e) => setNewOrder(prev => ({ ...prev, specialInstructions: e.target.value }))}
+                placeholder="Instrucciones adicionales para la preparación o entrega"
+                rows={3}
+              />
+            </div>
+
+            {/* Resumen del pedido */}
+            <div className="border-t pt-4">
+              <div className="flex justify-between items-center mb-2">
+                <span className="font-medium">Total del Pedido:</span>
+                <span className="font-bold text-lg">${calculateTotal().toLocaleString()}</span>
+              </div>
+            </div>
+
+            {/* Botones de acción */}
+            <div className="flex gap-2 pt-4">
+              <Button
+                onClick={executeCreateOrder}
+                disabled={isCreatingOrder || newOrder.items.length === 0 || !customerData.name.trim() || !customerData.phone.trim()}
+                className="flex-1"
+              >
+                {isCreatingOrder ? (
+                  <>
+                    <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                    Creando...
+                  </>
+                ) : (
+                  <>
+                    <ShoppingCart className="h-4 w-4 mr-2" />
+                    Crear Orden
+                  </>
+                )}
+              </Button>
+              <Button
+                variant="outline"
+                onClick={() => setShowCreateDialog(false)}
+                disabled={isCreatingOrder}
+              >
+                Cancelar
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Lista de órdenes */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-lg">Órdenes Activas</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {sedeOrders.length === 0 ? (
+            <div className="text-center py-8 text-gray-500">
+              <Package className="h-12 w-12 mx-auto mb-4 opacity-50" />
+              <p>No hay órdenes registradas para esta sede</p>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {sedeOrders.map((order) => (
+                <Card key={order.id} className="border-l-4 border-l-blue-500">
+                  <CardContent className="p-4">
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="flex items-center gap-2">
+                        <Badge variant="outline">ORD-{order.id}</Badge>
+                        <Badge className={getStatusColor(order.status)}>
+                          {order.status}
+                        </Badge>
+                      </div>
+                      <div className="text-sm text-gray-500">
+                        {new Date(order.createdAt).toLocaleString('es-CO')}
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
+                        <div className="flex items-center gap-2 mb-1">
+                          <User className="h-4 w-4 text-gray-500" />
+                          <span className="font-medium">{order.customerName}</span>
+                        </div>
+                        <div className="flex items-center gap-2 mb-1">
+                          <Phone className="h-4 w-4 text-gray-500" />
+                          <span className="text-sm">{order.customerPhone}</span>
+                        </div>
+                        {order.address && (
+                          <div className="flex items-center gap-2">
+                            <MapPin className="h-4 w-4 text-gray-500" />
+                            <span className="text-sm">{order.address}</span>
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="text-right">
+                        <div className="flex items-center justify-end gap-2 mb-1">
+                          <CreditCard className="h-4 w-4 text-gray-500" />
+                          <span className="font-bold">${order.totalAmount.toLocaleString()}</span>
+                        </div>
+                        <div className="flex items-center justify-end gap-2">
+                          <Clock className="h-4 w-4 text-gray-500" />
+                          <span className="text-sm">
+                            {new Date(order.estimatedDeliveryTime).toLocaleTimeString('es-CO', {
+                              hour: '2-digit',
+                              minute: '2-digit'
+                            })}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  );
 };

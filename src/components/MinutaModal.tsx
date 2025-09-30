@@ -3,6 +3,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { Button } from '@/components/ui/button';
 import { Printer, Truck, Package, MapPin } from 'lucide-react';
 import { minutaService, MinutaOrderDetails } from '@/services/minutaService';
+import { substitutionHistoryService } from '@/services/substitutionHistoryService';
 import { logError } from '@/utils/logger';
 
 interface MinutaModalProps {
@@ -27,11 +28,17 @@ export const MinutaModal: React.FC<MinutaModalProps> = ({
   }, [isOpen, orderId]);
 
   const loadOrderDetails = async () => {
+    console.log('🔄 MinutaModal: INICIANDO loadOrderDetails para orden:', orderId);
     setLoading(true);
     setError(null);
     try {
+      // Usar el mismo patrón que OrderDetailsModal
       const details = await minutaService.getOrderDetailsForMinuta(orderId);
+      console.log('🔄 MinutaModal: minutaService.getOrderDetailsForMinuta completado:', !!details);
       if (details) {
+        console.log('🖨️ MinutaModal: Detalles base cargados:', details);
+        // MinutaService ya aplicó las sustituciones correctamente por orden_item_id
+        console.log('✅ MinutaModal: Usando detalles con sustituciones ya aplicadas por MinutaService');
         setOrderDetails(details);
       } else {
         setError('No se encontraron detalles para esta orden');
@@ -262,6 +269,24 @@ export const MinutaModal: React.FC<MinutaModalProps> = ({
             background-color: #f3e5f5;
             border-left: 4px solid #9c27b0;
         }
+
+        .substitution-info {
+            font-size: 8px;
+            margin-left: 10px;
+            color: #007acc;
+            font-weight: bold;
+            padding: 1px 0;
+            border-left: 2px solid #007acc;
+            padding-left: 5px;
+            margin-top: 2px;
+            background-color: #f0f8ff;
+        }
+
+        .substitution-topping {
+            color: #ff6b35;
+            border-left-color: #ff6b35;
+            background-color: #fff8f0;
+        }
     </style>
 </head>
 <body>
@@ -336,15 +361,32 @@ export const MinutaModal: React.FC<MinutaModalProps> = ({
         
         ${details.platos.length > 0 ? `
         <div style="margin: 5px 0;"><strong>Platos:</strong></div>
-        ${details.platos.map(plato => `
-        <div class="product-item">• ${plato.plato_nombre}${plato.cantidad > 1 ? ` x${plato.cantidad}` : ''} - $${plato.precio_total.toLocaleString()}</div>
-        `).join('')}
+        ${details.platos.map(plato => {
+          console.log(`🖨️ HTML: Renderizando ${plato.plato_nombre}, substitutions:`, plato.substitutions);
+          let platoHTML = `<div class="product-item">• ${plato.plato_nombre}${plato.cantidad > 1 ? ` x${plato.cantidad}` : ''} - $${plato.precio_total.toLocaleString()}</div>`;
+
+          if (plato.substitutions && plato.substitutions.length > 0) {
+            console.log(`✅ HTML: ${plato.plato_nombre} tiene ${plato.substitutions.length} sustituciones`);
+            platoHTML += plato.substitutions.map(sub =>
+              `<div class="substitution-info ${sub.type === 'topping_substitution' ? 'substitution-topping' : ''}">
+                 🔄 ${sub.type === 'topping_substitution' ? 'Topping' : 'Producto'}: ${sub.original_name} → ${sub.substitute_name}
+               </div>`
+            ).join('');
+          }
+
+          return platoHTML;
+        }).join('')}
         ` : ''}
 
         ${details.bebidas.length > 0 ? `
         <div style="margin: 5px 0;"><strong>Bebidas:</strong></div>
         ${details.bebidas.map(bebida => `
         <div class="product-item">• ${bebida.bebida_nombre}${bebida.cantidad > 1 ? ` x${bebida.cantidad}` : ''} - $${bebida.precio_total.toLocaleString()}</div>
+        ${bebida.substitutions ? bebida.substitutions.map(sub => `
+        <div class="substitution-info">
+          🔄 Producto: ${sub.original_name} → ${sub.substitute_name}
+        </div>
+        `).join('') : ''}
         `).join('')}
         ` : ''}
 
@@ -352,6 +394,11 @@ export const MinutaModal: React.FC<MinutaModalProps> = ({
         <div style="margin: 5px 0;"><strong>Toppings Extra:</strong></div>
         ${details.toppings.map(topping => `
         <div class="product-item" style="color: #ff6b35;">• ${topping.topping_nombre}${topping.cantidad > 1 ? ` x${topping.cantidad}` : ''} - $${topping.precio_total.toLocaleString()}</div>
+        ${topping.substitutions ? topping.substitutions.map(sub => `
+        <div class="substitution-info substitution-topping">
+          🔄 Topping: ${sub.original_name} → ${sub.substitute_name}
+        </div>
+        `).join('') : ''}
         `).join('')}
         ` : ''}
     </div>
@@ -359,7 +406,15 @@ export const MinutaModal: React.FC<MinutaModalProps> = ({
     <!-- Total y Pago -->
     <div class="total-section">
         <div style="margin-bottom: 6px;">
-            <strong>Método de Pago: ${details.pago_tipo}</strong>
+            ${details.has_multiple_payments ? `
+                <strong>Métodos de Pago:</strong><br>
+                <span style="font-size: 10px;">
+                  • ${details.pago_tipo}: $${(details.pago_monto1 || 0).toLocaleString()}<br>
+                  • ${details.pago_tipo2}: $${(details.pago_monto2 || 0).toLocaleString()}
+                </span>
+            ` : `
+                <strong>Método de Pago: ${details.pago_tipo}</strong>
+            `}
         </div>
         ${details.tipo_pedido === 'delivery' && details.precio_envio > 0 ? `
         <div style="margin-bottom: 4px; font-size: 9px; text-align: left;">
@@ -479,8 +534,26 @@ export const MinutaModal: React.FC<MinutaModalProps> = ({
                     <div className="mt-2">
                       <div className="font-medium">Platos:</div>
                       {orderDetails.platos.map((plato, index) => (
-                        <div key={index} className="ml-2 text-base font-bold text-black">
-                          • {plato.plato_nombre}{plato.cantidad > 1 ? ` x${plato.cantidad}` : ''} - ${plato.precio_total.toLocaleString()}
+                        <div key={index}>
+                          <div className="ml-2 text-base font-bold text-black">
+                            • {plato.plato_nombre}{plato.cantidad > 1 ? ` x${plato.cantidad}` : ''} - ${plato.precio_total.toLocaleString()}
+                          </div>
+                          {plato.substitutions && plato.substitutions.length > 0 && (
+                            <div className="ml-4 space-y-1">
+                              {plato.substitutions.map((sub, subIdx) => (
+                                <div
+                                  key={subIdx}
+                                  className={`text-xs font-bold px-2 py-1 rounded border-l-2 ${
+                                    sub.type === 'topping_substitution'
+                                      ? 'bg-orange-50 border-orange-400 text-orange-700'
+                                      : 'bg-blue-50 border-blue-400 text-blue-700'
+                                  }`}
+                                >
+                                  🔄 {sub.type === 'topping_substitution' ? 'Topping' : 'Producto'}: {sub.original_name} → {sub.substitute_name}
+                                </div>
+                              ))}
+                            </div>
+                          )}
                         </div>
                       ))}
                     </div>
@@ -489,8 +562,22 @@ export const MinutaModal: React.FC<MinutaModalProps> = ({
                     <div className="mt-2">
                       <div className="font-medium">Bebidas:</div>
                       {orderDetails.bebidas.map((bebida, index) => (
-                        <div key={index} className="ml-2 text-base font-bold text-black">
-                          • {bebida.bebida_nombre}{bebida.cantidad > 1 ? ` x${bebida.cantidad}` : ''} - ${bebida.precio_total.toLocaleString()}
+                        <div key={index}>
+                          <div className="ml-2 text-base font-bold text-black">
+                            • {bebida.bebida_nombre}{bebida.cantidad > 1 ? ` x${bebida.cantidad}` : ''} - ${bebida.precio_total.toLocaleString()}
+                          </div>
+                          {bebida.substitutions && bebida.substitutions.length > 0 && (
+                            <div className="ml-4 space-y-1">
+                              {bebida.substitutions.map((sub, subIdx) => (
+                                <div
+                                  key={subIdx}
+                                  className="text-xs font-bold px-2 py-1 rounded border-l-2 bg-blue-50 border-blue-400 text-blue-700"
+                                >
+                                  🔄 Producto: {sub.original_name} → {sub.substitute_name}
+                                </div>
+                              ))}
+                            </div>
+                          )}
                         </div>
                       ))}
                     </div>
@@ -499,8 +586,22 @@ export const MinutaModal: React.FC<MinutaModalProps> = ({
                     <div className="mt-2">
                       <div className="font-medium text-orange-600">Toppings Extra:</div>
                       {orderDetails.toppings.map((topping, index) => (
-                        <div key={index} className="ml-2 text-base font-bold text-orange-600">
-                          • {topping.topping_nombre}{topping.cantidad > 1 ? ` x${topping.cantidad}` : ''} - ${topping.precio_total.toLocaleString()}
+                        <div key={index}>
+                          <div className="ml-2 text-base font-bold text-orange-600">
+                            • {topping.topping_nombre}{topping.cantidad > 1 ? ` x${topping.cantidad}` : ''} - ${topping.precio_total.toLocaleString()}
+                          </div>
+                          {topping.substitutions && topping.substitutions.length > 0 && (
+                            <div className="ml-4 space-y-1">
+                              {topping.substitutions.map((sub, subIdx) => (
+                                <div
+                                  key={subIdx}
+                                  className="text-xs font-bold px-2 py-1 rounded border-l-2 bg-orange-50 border-orange-400 text-orange-700"
+                                >
+                                  🔄 Topping: {sub.original_name} → {sub.substitute_name}
+                                </div>
+                              ))}
+                            </div>
+                          )}
                         </div>
                       ))}
                     </div>
@@ -508,7 +609,17 @@ export const MinutaModal: React.FC<MinutaModalProps> = ({
                 </div>
 
                 <div className="border-2 border-black p-2 bg-gray-100 rounded text-center">
-                  <strong>Método de Pago: {orderDetails.pago_tipo}</strong>
+                  {orderDetails.has_multiple_payments ? (
+                    <div>
+                      <strong>Métodos de Pago:</strong>
+                      <div className="text-sm mt-1">
+                        <div>• {orderDetails.pago_tipo}: ${(orderDetails.pago_monto1 || 0).toLocaleString()}</div>
+                        <div>• {orderDetails.pago_tipo2}: ${(orderDetails.pago_monto2 || 0).toLocaleString()}</div>
+                      </div>
+                    </div>
+                  ) : (
+                    <strong>Método de Pago: {orderDetails.pago_tipo}</strong>
+                  )}
                   {orderDetails.tipo_pedido === 'delivery' && orderDetails.precio_envio > 0 && (
                     <div className="text-sm text-gray-700 mt-1 text-left">
                       Subtotal productos: ${(orderDetails.pago_total - orderDetails.precio_envio).toLocaleString()}
