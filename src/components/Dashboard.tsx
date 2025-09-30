@@ -1721,22 +1721,45 @@ export const Dashboard: React.FC<DashboardProps> = ({
                    realtimeStatus?.connectionStatus === 'connecting' ? 'Conectando...' : 
                    realtimeStatus?.connectionStatus === 'error' ? 'Error' : 'Desconectado'}
                 </span>
-                {realtimeStatus?.connectionStatus === 'error' && (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => {
-                      realtimeStatus.reconnect();
-                      toast({
-                        title: "Reconectando...",
-                        description: "Intentando restablecer conexión en tiempo real",
-                        duration: 2000,
-                      });
-                    }}
-                    className="h-6 px-2 text-xs"
-                  >
-                    Reconectar
-                  </Button>
+                {(realtimeStatus?.connectionStatus === 'error' || realtimeStatus?.connectionStatus === 'connecting') && (
+                  <div className="flex gap-1">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={async () => {
+                        if (realtimeStatus.testConnection) {
+                          const isConnected = await realtimeStatus.testConnection();
+                          toast({
+                            title: isConnected ? "✅ Conectividad OK" : "❌ Error de conectividad",
+                            description: isConnected
+                              ? "Supabase funciona, problema en Realtime"
+                              : "Problema de conexión a Supabase",
+                            duration: 4000,
+                          });
+                        }
+                      }}
+                      className="h-6 px-2 text-xs"
+                    >
+                      Test
+                    </Button>
+                    {realtimeStatus?.connectionStatus === 'error' && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          realtimeStatus.reconnect();
+                          toast({
+                            title: "Reconectando...",
+                            description: "Intentando restablecer conexión en tiempo real",
+                            duration: 2000,
+                          });
+                        }}
+                        className="h-6 px-2 text-xs"
+                      >
+                        Reconectar
+                      </Button>
+                    )}
+                  </div>
                 )}
               </div>
             </div>

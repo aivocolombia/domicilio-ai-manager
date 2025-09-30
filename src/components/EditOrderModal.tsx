@@ -44,6 +44,7 @@ export const EditOrderModal: React.FC<EditOrderModalProps> = ({
   onOrderUpdated
 }) => {
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [searchingPrice, setSearchingPrice] = useState(false);
   const [items, setItems] = useState<OrderItem[]>([]);
   const [newAddress, setNewAddress] = useState('');

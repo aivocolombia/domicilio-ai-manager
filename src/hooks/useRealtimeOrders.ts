@@ -36,6 +36,28 @@ export const useRealtimeOrders = ({
     };
   }, [onOrderUpdated, onNewOrder, onOrderStatusChanged]);
   
+  // Función para testear conectividad básica de Supabase
+  const testSupabaseConnection = useCallback(async () => {
+    try {
+      console.log('🧪 [TEST] Probando conectividad básica de Supabase...');
+      const { data, error } = await supabase
+        .from('ordenes')
+        .select('id')
+        .limit(1);
+
+      if (error) {
+        console.error('❌ [TEST] Error en consulta básica:', error);
+        return false;
+      }
+
+      console.log('✅ [TEST] Supabase conectado correctamente, datos obtenidos:', !!data);
+      return true;
+    } catch (error) {
+      console.error('❌ [TEST] Error en test de conectividad:', error);
+      return false;
+    }
+  }, []);
+
   const handleOrderChange = useCallback((payload: any) => {
     const orderId = payload.new?.id || payload.old?.id;
     
@@ -79,6 +101,16 @@ export const useRealtimeOrders = ({
       return;
     }
 
+    // Test de conectividad antes de intentar Realtime
+    testSupabaseConnection().then(isConnected => {
+      if (!isConnected) {
+        console.error('❌ [REALTIME] Test de conectividad falló, no iniciando Realtime');
+        setConnectionStatus('error');
+        return;
+      }
+      console.log('✅ [REALTIME] Test de conectividad exitoso, iniciando Realtime...');
+    });
+
     logDebug('Realtime', 'Configurando suscripción realtime', { sedeId });
     isConnectedRef.current = false;
     setConnectionStatus('connecting');
@@ -117,16 +149,21 @@ export const useRealtimeOrders = ({
     // Test 2: Intentar suscripción más simple primero
     console.log('🧪 [ORDERS] Testing simple subscription to ordenes table...');
 
+    // Timeout para la suscripción
+    const subscriptionTimeout = setTimeout(() => {
+      console.error('⏰ [ORDERS] Timeout de suscripción - forzando estado de error');
+      setConnectionStatus('error');
+    }, 10000); // 10 segundos timeout
+
     const ordersChannel = supabase
-      .channel(`orders_${sedeId}`)
+      .channel(`simple_orders_test`)
       .on(
         'postgres_changes',
         {
           event: '*',
           schema: 'public',
           table: 'ordenes'
-          // Temporalmente sin filtro para testing
-          // filter: `sede_id=eq.${sedeId}`
+          // Sin filtro para testing inicial
         },
         (payload) => {
           console.log('📨 [ORDERS] Realtime payload recibido (SIN FILTRO - testing):', {
@@ -160,6 +197,7 @@ export const useRealtimeOrders = ({
 
         if (status === 'SUBSCRIBED') {
           console.log('✅ [ORDERS] Realtime conectado exitosamente para sede:', sedeId);
+          clearTimeout(subscriptionTimeout); // Limpiar timeout
           logDebug('Realtime', '[ORDERS] Realtime conectado exitosamente', {
             sedeId,
             channel: `orders_${sedeId}`,
@@ -169,6 +207,7 @@ export const useRealtimeOrders = ({
           setConnectionStatus('connected');
         } else if (status === 'CHANNEL_ERROR') {
           console.error('❌ [ORDERS] Error en conexión realtime:', { status, error: err, sedeId });
+          clearTimeout(subscriptionTimeout); // Limpiar timeout
           logError('Realtime', '[ORDERS] Error en conexión realtime', {
             sedeId,
             status,
@@ -293,6 +332,9 @@ export const useRealtimeOrders = ({
         connectionStatus,
         sedeId
       };
-    }, [sedeId, connectionStatus])
+    }, [sedeId, connectionStatus]),
+
+    // Función para testear conectividad
+    testConnection: testSupabaseConnection
   };
 };
