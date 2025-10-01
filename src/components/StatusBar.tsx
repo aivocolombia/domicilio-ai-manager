@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useInventoryEvents } from '@/contexts/InventoryContext';
 import { useAuth } from '@/hooks/useAuth';
-import { useRealtime } from '@/hooks/useRealtime';
+import { useSharedRealtime } from '@/hooks/useSharedRealtime';
 import { sedeServiceSimple } from '@/services/sedeServiceSimple';
 import { supabase } from '@/lib/supabase';
 import { Badge } from '@/components/ui/badge';
@@ -122,74 +122,50 @@ export const StatusBar: React.FC<StatusBarProps> = ({ orders, currentSede = 'Niz
     }
   }, [isOpen]);
 
-  // Real-time para sede_platos - mejorado con manejo de errores
-  useRealtime({
-    table: 'sede_platos',
-    enabled: !!sedeToUse,
-    onPayload: (payload) => {
-      console.log('🔔 StatusBar: sede_platos actualizado:', payload.eventType);
-      loadInventoryConSede();
-    },
-    onError: (error) => {
-      // Solo logear errores que no sean problemas temporales de conectividad
-      if (!error.message.includes('Temporary connectivity') && !error.message.includes('connectivity issue')) {
-        console.error('❌ StatusBar: Error crítico en realtime sede_platos:', error.message);
-      }
-      // Para errores temporales, usar logDebug en lugar de warn
-      else {
-        console.debug('🔄 StatusBar: Problema temporal de conectividad sede_platos, reintentando...');
-      }
-    },
-    onSubscribed: () => {
-      console.log('✅ StatusBar: Suscrito a cambios en sede_platos');
-    }
-  });
+  // Usar Realtime compartido para todas las tablas de inventario
+  const sharedRealtime = useSharedRealtime(sedeToUse);
 
-  // Real-time para sede_bebidas - mejorado con manejo de errores
-  useRealtime({
-    table: 'sede_bebidas',
-    enabled: !!sedeToUse,
-    onPayload: (payload) => {
-      console.log('🔔 StatusBar: sede_bebidas actualizado:', payload.eventType);
-      loadInventoryConSede();
-    },
-    onError: (error) => {
-      // Solo logear errores que no sean problemas temporales de conectividad
-      if (!error.message.includes('Temporary connectivity') && !error.message.includes('connectivity issue')) {
-        console.error('❌ StatusBar: Error crítico en realtime sede_bebidas:', error.message);
-      }
-      // Para errores temporales, usar logDebug en lugar de warn
-      else {
-        console.debug('🔄 StatusBar: Problema temporal de conectividad sede_bebidas, reintentando...');
-      }
-    },
-    onSubscribed: () => {
-      console.log('✅ StatusBar: Suscrito a cambios en sede_bebidas');
-    }
-  });
+  // Configurar suscripciones usando Realtime compartido
+  useEffect(() => {
+    if (!sedeToUse) return;
 
-  // Real-time para sede_toppings - mejorado con manejo de errores
-  useRealtime({
-    table: 'sede_toppings',
-    enabled: !!sedeToUse,
-    onPayload: (payload) => {
-      console.log('🔔 StatusBar: sede_toppings actualizado:', payload.eventType);
+    const handleInventoryChange = (payload: any) => {
+      console.log(`🔔 StatusBar: ${payload.table} actualizado:`, payload.eventType);
       loadInventoryConSede();
-    },
-    onError: (error) => {
-      // Solo logear errores que no sean problemas temporales de conectividad
-      if (!error.message.includes('Temporary connectivity') && !error.message.includes('connectivity issue')) {
-        console.error('❌ StatusBar: Error crítico en realtime sede_toppings:', error.message);
+    };
+
+    // Suscribirse a las tres tablas de inventario
+    const subscriptions = [
+      {
+        id: `statusbar_sede_platos_${sedeToUse}`,
+        table: 'sede_platos',
+        callback: handleInventoryChange
+      },
+      {
+        id: `statusbar_sede_bebidas_${sedeToUse}`,
+        table: 'sede_bebidas',
+        callback: handleInventoryChange
+      },
+      {
+        id: `statusbar_sede_toppings_${sedeToUse}`,
+        table: 'sede_toppings',
+        callback: handleInventoryChange
       }
-      // Para errores temporales, usar logDebug en lugar de warn
-      else {
-        console.debug('🔄 StatusBar: Problema temporal de conectividad sede_toppings, reintentando...');
-      }
-    },
-    onSubscribed: () => {
-      console.log('✅ StatusBar: Suscrito a cambios en sede_toppings');
-    }
-  });
+    ];
+
+    subscriptions.forEach(sub => {
+      sharedRealtime.subscribe(sub);
+    });
+
+    console.log('✅ StatusBar: Suscrito a cambios en inventario usando conexión compartida');
+
+    return () => {
+      subscriptions.forEach(sub => {
+        sharedRealtime.unsubscribe(sub.id);
+      });
+      console.log('🧹 StatusBar: Desuscrito de cambios en inventario');
+    };
+  }, [sedeToUse, sharedRealtime]);
 
   // Actualizar datos cuando hay cambios en el inventario (tiempo real)
   useEffect(() => {

@@ -130,17 +130,16 @@ export const PlatoToppingsDialog: React.FC<PlatoToppingsDialogProps> = ({
       return;
     }
 
-    // Calcular el cambio total de precio y recopilar detalles de sustitución
-    let totalPriceChange = 0;
+    // Recopilar detalles de sustitución - las sustituciones son GRATUITAS
     const substitutionMessages: string[] = [];
     const substitutionDetails: SubstitutionDetails[] = [];
 
     changedToppings.forEach(topping => {
       if (topping.selectedSubstitution) {
-        const priceChange = topping.selectedSubstitution.price_difference;
-        totalPriceChange += priceChange;
+        // Las sustituciones de toppings son gratuitas - no hay cambio de precio
+        const priceChange = 0;
 
-        const message = `${topping.topping_name} → ${topping.selectedSubstitution.substitute_name}`;
+        const message = `${topping.topping_name} → ${topping.selectedSubstitution.substitute_name} (sin costo adicional)`;
         substitutionMessages.push(message);
 
         // Agregar detalle de sustitución
@@ -148,7 +147,7 @@ export const PlatoToppingsDialog: React.FC<PlatoToppingsDialogProps> = ({
           type: 'topping_substitution' as const,
           original_name: topping.topping_name,
           substitute_name: topping.selectedSubstitution.substitute_name,
-          price_difference: priceChange,
+          price_difference: 0, // Siempre 0 - gratuito
           parent_item_name: platoItem.nombre,
           orden_item_id: platoItem.orden_item_id // Agregar ID específico del item
         };
@@ -158,11 +157,11 @@ export const PlatoToppingsDialog: React.FC<PlatoToppingsDialogProps> = ({
       }
     });
 
-    // Crear el item actualizado con el nuevo precio
+    // Crear el item actualizado - SIN cambio de precio (sustituciones gratuitas)
     const updatedItem = {
       ...platoItem,
-      precio_unitario: platoItem.precio_unitario + totalPriceChange,
-      precio_total: (platoItem.precio_unitario + totalPriceChange) * platoItem.cantidad
+      precio_unitario: platoItem.precio_unitario, // Mantener precio original
+      precio_total: platoItem.precio_unitario * platoItem.cantidad // Mantener precio total original
     };
 
     // Enviar el item actualizado junto con los detalles de sustitución
@@ -185,9 +184,8 @@ export const PlatoToppingsDialog: React.FC<PlatoToppingsDialogProps> = ({
   };
 
   const formatPriceDifference = (priceDifference: number) => {
-    if (priceDifference === 0) return 'Mismo precio';
-    if (priceDifference > 0) return `+${formatCurrency(priceDifference)}`;
-    return formatCurrency(priceDifference);
+    // Todas las sustituciones de toppings son gratuitas
+    return 'Sin costo adicional';
   };
 
   if (!platoItem) return null;
@@ -229,9 +227,6 @@ export const PlatoToppingsDialog: React.FC<PlatoToppingsDialogProps> = ({
                       <div className="flex justify-between items-center">
                         <div>
                           <h4 className="font-medium">{topping.topping_name}</h4>
-                          <p className="text-sm text-gray-600">
-                            Precio actual: {formatCurrency(topping.topping_pricing)}
-                          </p>
                         </div>
                         {topping.selectedSubstitution && (
                           <Badge variant="secondary" className="flex items-center gap-1">
@@ -274,9 +269,6 @@ export const PlatoToppingsDialog: React.FC<PlatoToppingsDialogProps> = ({
                               <span className="text-sm font-medium">
                                 Mantener {topping.topping_name}
                               </span>
-                              <span className="text-sm text-gray-600">
-                                {formatCurrency(topping.topping_pricing)}
-                              </span>
                             </div>
                           </div>
 
@@ -304,10 +296,7 @@ export const PlatoToppingsDialog: React.FC<PlatoToppingsDialogProps> = ({
                                   )}
                                 </div>
                                 <div className="text-right">
-                                  <div className="text-sm font-medium">
-                                    {formatCurrency(topping.topping_pricing + substitution.price_difference)}
-                                  </div>
-                                  <div className="text-xs text-gray-600">
+                                  <div className="text-xs text-green-600">
                                     {formatPriceDifference(substitution.price_difference)}
                                   </div>
                                 </div>
@@ -334,29 +323,17 @@ export const PlatoToppingsDialog: React.FC<PlatoToppingsDialogProps> = ({
                             <span>
                               {topping.topping_name} → {topping.selectedSubstitution!.substitute_name}
                             </span>
-                            <span className={
-                              topping.selectedSubstitution!.price_difference >= 0
-                                ? 'text-red-600'
-                                : 'text-green-600'
-                            }>
-                              {formatPriceDifference(topping.selectedSubstitution!.price_difference)}
+                            <span className="text-green-600">
+                              Sin costo adicional
                             </span>
                           </div>
                         ))}
 
                       <div className="border-t pt-2 mt-2 font-medium">
                         <div className="flex justify-between">
-                          <span>Cambio total del plato:</span>
-                          <span className={
-                            toppings.reduce((sum, t) =>
-                              sum + (t.selectedSubstitution?.price_difference || 0), 0
-                            ) >= 0 ? 'text-red-600' : 'text-green-600'
-                          }>
-                            {formatPriceDifference(
-                              toppings.reduce((sum, t) =>
-                                sum + (t.selectedSubstitution?.price_difference || 0), 0
-                              )
-                            )}
+                          <span>Cambios aplicados:</span>
+                          <span className="text-green-600">
+                            Sin costo adicional
                           </span>
                         </div>
                       </div>

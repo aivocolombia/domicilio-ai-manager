@@ -15,6 +15,18 @@ export const useRealtimeOrders = ({
   onNewOrder,
   onOrderStatusChanged
 }: UseRealtimeOrdersProps) => {
+  // TEMPORALMENTE DESACTIVADO para evitar conflictos con useSharedRealtime
+  console.log('⚠️ useRealtimeOrders: DESACTIVADO temporalmente para evitar conflictos de canales');
+
+  return {
+    isConnected: false,
+    connectionStatus: 'disconnected' as const,
+    lastHeartbeat: Date.now(),
+    reconnectAttempts: 0
+  };
+
+  // CÓDIGO ORIGINAL COMENTADO TEMPORALMENTE
+  /*
   const channelsRef = useRef<any[]>([]);
   const isConnectedRef = useRef(false);
   const [connectionStatus, setConnectionStatus] = useState<'connecting' | 'connected' | 'disconnected' | 'error'>('disconnected');
@@ -448,4 +460,5 @@ export const useRealtimeOrders = ({
     // Función para testear conectividad
     testConnection: testSupabaseConnection
   };
+  */
 };

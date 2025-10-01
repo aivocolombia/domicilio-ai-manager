@@ -1,7 +1,7 @@
 import { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import { dashboardService, DashboardOrder, DashboardFilters } from '@/services/dashboardService';
 import { useToast } from '@/hooks/use-toast';
-import { useRealtimeOrders } from '@/hooks/useRealtimeOrders';
+import { useSharedRealtime } from '@/hooks/useSharedRealtime';
 import { logDebug, logError, logWarn } from '@/utils/logger';
 
 // Simple debounce function
@@ -224,12 +224,51 @@ export const useDashboard = (sede_id?: string | number, onRealtimeUpdate?: () =>
     onRealtimeUpdate?.(); // También refrescar componentes externos
   }, [forceReload, toast, onRealtimeUpdate]);
 
-  const realtimeStatus = useRealtimeOrders({
-    sedeId: currentSedeId,
-    onOrderUpdated,
-    onNewOrder,
-    onOrderStatusChanged
-  });
+  // Usar Realtime compartido en lugar de useRealtimeOrders
+  const sharedRealtime = useSharedRealtime(currentSedeId);
+
+  // Configurar suscripción a órdenes usando Realtime compartido
+  useEffect(() => {
+    if (!currentSedeId) return;
+
+    const subscriberId = `dashboard_orders_${currentSedeId}`;
+
+    const handleOrderChange = (payload: any) => {
+      console.log('🔄 Dashboard: Change received from shared realtime:', payload);
+
+      const { eventType, new: newRecord, old: oldRecord } = payload;
+
+      if (eventType === 'INSERT' && newRecord) {
+        onNewOrder(newRecord);
+      } else if (eventType === 'UPDATE' && newRecord) {
+        if (oldRecord?.estado !== newRecord?.estado) {
+          onOrderStatusChanged(newRecord.id, newRecord.estado);
+        } else {
+          onOrderUpdated();
+        }
+      } else {
+        onOrderUpdated();
+      }
+    };
+
+    sharedRealtime.subscribe({
+      id: subscriberId,
+      table: 'ordenes',
+      callback: handleOrderChange,
+      filter: `sede_id=eq.${currentSedeId}`
+    });
+
+    return () => {
+      sharedRealtime.unsubscribe(subscriberId);
+    };
+  }, [currentSedeId, sharedRealtime, onNewOrder, onOrderStatusChanged, onOrderUpdated]);
+
+  const realtimeStatus = {
+    isConnected: sharedRealtime.isConnected,
+    connectionStatus: sharedRealtime.connectionStatus,
+    lastHeartbeat: Date.now(),
+    reconnectAttempts: 0
+  };
 
   // Función para registrar la función de refresh del Dashboard
   const registerRefreshFunction = useCallback((refreshFn: (options?: { force?: boolean }) => void) => {

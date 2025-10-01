@@ -871,15 +871,18 @@ export const EditOrderModal: React.FC<EditOrderModalProps> = ({
                         <Plus className="h-4 w-4" />
                       </Button>
 
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => handleOpenSubstitution(item)}
-                        className="ml-2"
-                        title="Cambiar producto o toppings"
-                      >
-                        <ArrowUpDown className="h-4 w-4" />
-                      </Button>
+                      {/* Solo mostrar botón de cambio para platos principales (que pueden tener toppings) */}
+                      {item.tipo === 'plato' && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => handleOpenSubstitution(item)}
+                          className="ml-2"
+                          title="Cambiar producto o toppings"
+                        >
+                          <ArrowUpDown className="h-4 w-4" />
+                        </Button>
+                      )}
 
                       <Button
                         size="sm"

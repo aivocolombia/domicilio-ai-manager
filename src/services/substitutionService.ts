@@ -203,6 +203,7 @@ export class SubstitutionService {
         .from(tableName)
         .select('*')
         .eq('id', productId)
+        .not('name', 'like', '%_DUPLICADO_%') // Filtrar duplicados marcados
         .single();
 
       if (error) throw error;
@@ -309,8 +310,9 @@ export class SubstitutionService {
         substitute: substituteToppingName
       });
 
-      const priceDifference = substituteToppingPrice - originalToppingPrice;
-      const newPlatoPrice = platoItem.precio_unitario + priceDifference;
+      // IMPORTANTE: Las sustituciones de toppings son GRATUITAS - no cambian el precio
+      const priceDifference = 0; // Siempre 0 para toppings
+      const newPlatoPrice = platoItem.precio_unitario; // Mantener precio original
       const newTotalPrice = newPlatoPrice * platoItem.cantidad;
 
       const updatedItem = {
@@ -321,15 +323,15 @@ export class SubstitutionService {
 
       return {
         success: true,
-        message: `${originalToppingName} → ${substituteToppingName} en ${platoItem.nombre}`,
+        message: `${originalToppingName} → ${substituteToppingName} en ${platoItem.nombre} (sin costo adicional)`,
         original_item: platoItem,
         substitute_item: updatedItem,
-        price_change: priceDifference * platoItem.cantidad,
+        price_change: 0, // Siempre 0 para toppings
         substitution_details: {
           type: 'topping_substitution',
           original_name: originalToppingName,
           substitute_name: substituteToppingName,
-          price_difference: priceDifference,
+          price_difference: 0, // Siempre 0 para toppings
           parent_item_name: platoItem.nombre
         }
       };
@@ -433,7 +435,8 @@ export class SubstitutionService {
       // Para cada relación, obtener la información del topping
       for (const relacion of relaciones) {
         const toppingInfo = await this.getProductInfo(relacion.topping_id, 'topping');
-        if (toppingInfo) {
+        // Solo incluir toppings válidos (no duplicados marcados)
+        if (toppingInfo && !toppingInfo.name.includes('_DUPLICADO_')) {
           toppings.push({
             id: relacion.id,
             plato_id: relacion.plato_id,
@@ -468,6 +471,7 @@ export class SubstitutionService {
           .from(tableName)
           .select('id, name')
           .ilike('name', `%${query}%`)
+          .not('name', 'like', '%_DUPLICADO_%') // Filtrar duplicados marcados
           .limit(10);
 
         if (!error && data) {
