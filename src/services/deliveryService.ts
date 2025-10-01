@@ -130,10 +130,12 @@ class DeliveryService {
           try {
             console.log(`📊 Obteniendo estadísticas para repartidor ${repartidor.id}...`);
             
-            // Crear rango de fechas del día actual (Colombia timezone)
+            // Crear rango de fechas del día actual (Colombia timezone UTC-5)
             const today = new Date();
-            const startOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate());
-            const endOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 23, 59, 59, 999);
+            const colombiaOffset = -5 * 60; // -5 horas en minutos
+            const colombiaToday = new Date(today.getTime() + (colombiaOffset - today.getTimezoneOffset()) * 60000);
+            const startOfDay = new Date(colombiaToday.getFullYear(), colombiaToday.getMonth(), colombiaToday.getDate());
+            const endOfDay = new Date(colombiaToday.getFullYear(), colombiaToday.getMonth(), colombiaToday.getDate(), 23, 59, 59, 999);
 
             // Query SQL directo para obtener estadísticas del repartidor
             console.log(`🔍 [DEBUG] Obteniendo órdenes para repartidor ${repartidor.id}`);
@@ -180,7 +182,8 @@ class DeliveryService {
               order.status === 'Entregados'
             );
 
-            const totalAsignados = stats?.length || 0;
+            // Total asignados solo del día de hoy
+            const totalAsignados = ordersToday.length;
 
             // Obtener información de pagos para las órdenes entregadas hoy
             let entregadosEfectivo = 0;
