@@ -1,4 +1,5 @@
 import { supabase } from '@/lib/supabase';
+import { formatDateForQuery } from '@/utils/dateUtils';
 
 export interface DiscountApplication {
   orderId: number;
@@ -330,11 +331,15 @@ export class DiscountService {
 
       // Filtrar por rango de fechas si se especifica
       if (startDate) {
-        query = query.gte('descuento_aplicado_fecha', startDate);
+        const startQuery = formatDateForQuery(new Date(`${startDate}T00:00:00`), false);
+        query = query.gte('descuento_aplicado_fecha', startQuery);
+        console.log('📅 Filtro fecha inicio:', { startDate, startQuery });
       }
 
       if (endDate) {
-        query = query.lte('descuento_aplicado_fecha', endDate);
+        const endQuery = formatDateForQuery(new Date(`${endDate}T23:59:59`), true);
+        query = query.lte('descuento_aplicado_fecha', endQuery);
+        console.log('📅 Filtro fecha fin:', { endDate, endQuery });
       }
 
       const { data: discountData, error } = await query.order('descuento_aplicado_fecha', { ascending: false });

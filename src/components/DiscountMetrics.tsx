@@ -3,15 +3,23 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Input } from '@/components/ui/input';
+import { Button } from '@/components/ui/button';
 import {
   Calculator,
   TrendingDown,
   Users,
   Calendar,
   AlertTriangle,
-  Loader2
+  Loader2,
+  Search,
+  X,
+  Receipt
 } from 'lucide-react';
 import { discountService, type DiscountMetrics as IDiscountMetrics } from '@/services/discountService';
+import { supabase } from '@/lib/supabase';
+import { ExportButton } from '@/components/ui/ExportButton';
+import { formatters, TableColumn, PDFSection } from '@/utils/exportUtils';
 
 interface DiscountMetricsProps {
   sedeId?: string;
@@ -29,6 +37,10 @@ export function DiscountMetrics({
   const [metrics, setMetrics] = useState<IDiscountMetrics | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [searchOrderId, setSearchOrderId] = useState('');
+  const [searchResult, setSearchResult] = useState<any>(null);
+  const [searchLoading, setSearchLoading] = useState(false);
+  const [searchError, setSearchError] = useState<string | null>(null);
 
   // Cargar métricas
   useEffect(() => {
@@ -68,6 +80,130 @@ export function DiscountMetrics({
       hour: '2-digit',
       minute: '2-digit'
     });
+  };
+
+  // Buscar descuento por ID de orden
+  const handleSearchOrder = async () => {
+    if (!searchOrderId.trim()) {
+      setSearchError('Ingresa un ID de orden válido');
+      return;
+    }
+
+    setSearchLoading(true);
+    setSearchError(null);
+    setSearchResult(null);
+
+    try {
+      const orderId = parseInt(searchOrderId.trim());
+      if (isNaN(orderId)) {
+        setSearchError('El ID de orden debe ser un número');
+        return;
+      }
+
+      // Buscar el descuento de la orden específica
+      const discountHistory = await discountService.getOrderDiscountHistory(orderId);
+
+      if (!discountHistory) {
+        setSearchError(`No se encontró descuento aplicado para la orden ${orderId}`);
+        return;
+      }
+
+      // Obtener información adicional de la orden y pago
+      const { data: orderData, error: orderError } = await supabase
+        .from('ordenes')
+        .select(`
+          id,
+          payment_id,
+          status,
+          created_at,
+          pagos!payment_id(total_pago)
+        `)
+        .eq('id', orderId)
+        .single();
+
+      if (orderError || !orderData) {
+        setSearchError(`Error obteniendo información de la orden ${orderId}`);
+        return;
+      }
+
+      const orderTotal = orderData.pagos?.total_pago || 0;
+      const originalTotal = orderTotal + discountHistory.discountAmount;
+
+      setSearchResult({
+        ...discountHistory,
+        orderTotal,
+        originalTotal,
+        orderStatus: orderData.status,
+        orderDate: orderData.created_at
+      });
+    } catch (error) {
+      console.error('❌ Error buscando descuento:', error);
+      setSearchError('Error buscando el descuento');
+    } finally {
+      setSearchLoading(false);
+    }
+  };
+
+  // Limpiar búsqueda
+  const clearSearch = () => {
+    setSearchOrderId('');
+    setSearchResult(null);
+    setSearchError(null);
+  };
+
+  // Configuración de columnas para exportación de descuentos
+  const discountColumns: TableColumn[] = [
+    { key: 'orderId', header: 'ID Orden', width: 12 },
+    { key: 'discountAmount', header: 'Descuento', width: 15, format: formatters.currency },
+    { key: 'discountComment', header: 'Motivo del Descuento', width: 40 },
+    { key: 'appliedBy', header: 'Aplicado Por', width: 25 },
+    { key: 'appliedDate', header: 'Fecha de Aplicación', width: 20, format: formatters.datetime }
+  ];
+
+  // Generar secciones para PDF de descuentos
+  const generateDiscountPDFSections = (): PDFSection[] => {
+    const sections: PDFSection[] = [];
+
+    if (!metrics || metrics.totalDiscounts === 0) {
+      sections.push({
+        title: 'Resumen',
+        content: ['No hay descuentos aplicados en el período seleccionado']
+      });
+      return sections;
+    }
+
+    // Resumen ejecutivo
+    sections.push({
+      title: 'Resumen Ejecutivo de Descuentos',
+      content: [
+        `Total de descuentos aplicados: ${metrics.totalDiscounts}`,
+        `Monto total de descuentos: ${formatCurrency(metrics.totalDiscountAmount)}`,
+        `Descuento promedio: ${formatCurrency(metrics.averageDiscount)}`,
+        `Período analizado: ${startDate || 'No especificado'} al ${endDate || 'No especificado'}`
+      ]
+    });
+
+    // Distribución por estado si está disponible
+    if (Object.keys(metrics.discountsByStatus).length > 0) {
+      sections.push({
+        title: 'Distribución por Estado de Orden',
+        content: Object.entries(metrics.discountsByStatus).map(([status, count]) =>
+          `${status}: ${count} descuento${count !== 1 ? 's' : ''}`
+        )
+      });
+    }
+
+    // Descuentos recientes
+    if (metrics.recentDiscounts.length > 0) {
+      sections.push({
+        title: 'Descuentos Recientes',
+        content: metrics.recentDiscounts.map(discount =>
+          `Orden #${discount.orderId}: ${formatCurrency(discount.discountAmount)} - ${discount.discountComment} (por ${discount.appliedBy})`
+        )
+      });
+    }
+
+    return sections;
   };
 
   if (loading) {
@@ -122,10 +258,39 @@ export function DiscountMetrics({
       {/* Resumen general */}
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Calculator className="w-5 h-5" />
-            Resumen de Descuentos
-          </CardTitle>
+          <div className="flex items-center justify-between">
+            <CardTitle className="flex items-center gap-2">
+              <Calculator className="w-5 h-5" />
+              Resumen de Descuentos
+            </CardTitle>
+            <div className="flex gap-2">
+              {/* Botón de exportación PDF para resumen */}
+              <ExportButton
+                pdfSections={generateDiscountPDFSections()}
+                formats={['pdf']}
+                filename={`reporte_descuentos_${sedeId || 'global'}_${startDate || 'inicio'}_${endDate || 'fin'}`}
+                title="Reporte de Descuentos"
+                subtitle={`Análisis de descuentos aplicados`}
+                variant="outline"
+                size="sm"
+              />
+
+              {/* Botón de exportación Excel/CSV para tabla de descuentos */}
+              {metrics?.recentDiscounts && metrics.recentDiscounts.length > 0 && (
+                <ExportButton
+                  data={metrics.recentDiscounts}
+                  columns={discountColumns}
+                  formats={['excel', 'csv']}
+                  filename={`descuentos_detalle_${sedeId || 'global'}_${startDate || 'inicio'}_${endDate || 'fin'}`}
+                  title="Detalle de Descuentos"
+                  subtitle={`Lista completa de descuentos aplicados`}
+                  sheetName="Descuentos"
+                  variant="outline"
+                  size="sm"
+                />
+              )}
+            </div>
+          </div>
         </CardHeader>
         <CardContent>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -194,6 +359,97 @@ export function DiscountMetrics({
         </Card>
       )}
 
+      {/* Búsqueda de descuento por orden */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Search className="w-5 h-5" />
+            Buscar Descuento por Orden
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-4">
+            <div className="flex gap-2">
+              <Input
+                placeholder="Ingresa el ID de la orden (ej: 123)"
+                value={searchOrderId}
+                onChange={(e) => setSearchOrderId(e.target.value)}
+                onKeyPress={(e) => e.key === 'Enter' && handleSearchOrder()}
+                className="flex-1"
+              />
+              <Button onClick={handleSearchOrder} disabled={searchLoading}>
+                {searchLoading ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <Search className="w-4 h-4" />
+                )}
+              </Button>
+              {(searchResult || searchError) && (
+                <Button variant="outline" onClick={clearSearch}>
+                  <X className="w-4 h-4" />
+                </Button>
+              )}
+            </div>
+
+            {searchError && (
+              <Alert variant="destructive">
+                <AlertTriangle className="h-4 w-4" />
+                <AlertDescription>{searchError}</AlertDescription>
+              </Alert>
+            )}
+
+            {searchResult && (
+              <div className="border-2 border-blue-200 bg-blue-50 rounded-lg p-4">
+                <div className="flex items-center gap-2 mb-3">
+                  <Receipt className="w-5 h-5 text-blue-600" />
+                  <h4 className="font-semibold text-blue-800">
+                    Descuento en Orden #{searchResult.orderId}
+                  </h4>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <div className="flex justify-between">
+                      <span className="text-sm text-gray-600">Total Original:</span>
+                      <span className="font-semibold">{formatCurrency(searchResult.originalTotal)}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-sm text-gray-600">Descuento Aplicado:</span>
+                      <span className="font-semibold text-red-600">-{formatCurrency(searchResult.discountAmount)}</span>
+                    </div>
+                    <div className="flex justify-between border-t pt-2">
+                      <span className="text-sm text-gray-600">Total Final:</span>
+                      <span className="font-bold text-green-600">{formatCurrency(searchResult.orderTotal)}</span>
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <div className="flex justify-between">
+                      <span className="text-sm text-gray-600">Estado:</span>
+                      <Badge variant="outline">{searchResult.orderStatus}</Badge>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-sm text-gray-600">Aplicado por:</span>
+                      <span className="text-sm">{searchResult.appliedBy}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-sm text-gray-600">Fecha:</span>
+                      <span className="text-sm">{formatDate(searchResult.appliedDate)}</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="mt-3 pt-3 border-t">
+                  <p className="text-sm text-gray-700">
+                    <strong>Motivo:</strong> {searchResult.discountComment}
+                  </p>
+                </div>
+              </div>
+            )}
+          </div>
+        </CardContent>
+      </Card>
+
       {/* Descuentos recientes */}
       {metrics.recentDiscounts.length > 0 && (
         <Card>
@@ -208,14 +464,25 @@ export function DiscountMetrics({
               {metrics.recentDiscounts.map((discount, index) => (
                 <div key={`${discount.orderId}-${index}`} className="border-l-4 border-blue-500 pl-4">
                   <div className="flex items-start justify-between">
-                    <div className="space-y-1">
-                      <div className="flex items-center space-x-2">
+                    <div className="space-y-1 flex-1">
+                      <div className="flex items-center space-x-2 flex-wrap">
                         <Badge variant="outline">
                           ORD-{discount.orderId.toString().padStart(4, '0')}
                         </Badge>
                         <span className="font-semibold text-red-600">
                           -{formatCurrency(discount.discountAmount)}
                         </span>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => {
+                            setSearchOrderId(discount.orderId.toString());
+                            handleSearchOrder();
+                          }}
+                          className="h-6 px-2 text-xs"
+                        >
+                          Ver detalles
+                        </Button>
                       </div>
                       <p className="text-sm text-gray-600 max-w-md">
                         {discount.discountComment}

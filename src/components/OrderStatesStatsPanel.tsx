@@ -2,11 +2,15 @@ import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { 
-  Clock, 
-  TrendingUp, 
-  BarChart3, 
-  Timer, 
+import { Input } from '@/components/ui/input';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { ExportButton } from '@/components/ui/ExportButton';
+import {
+  Clock,
+  TrendingUp,
+  BarChart3,
+  Timer,
   Package,
   Truck,
   CheckCircle,
@@ -15,13 +19,18 @@ import {
   Activity,
   Inbox,
   ChefHat,
-  AlertTriangle
+  AlertTriangle,
+  Search,
+  X,
+  Table as TableIcon,
+  Eye
 } from 'lucide-react';
-import { 
-  metricsService, 
-  MetricsFilters 
+import {
+  metricsService,
+  MetricsFilters
 } from '@/services/metricsService';
 import { supabase } from '@/lib/supabase';
+import { formatters, TableColumn, PDFSection } from '@/utils/exportUtils';
 
 interface OrderStatesStatsPanelProps {
   filters: MetricsFilters;
@@ -50,14 +59,35 @@ interface TransitionStats {
   slowest_transition: number;
 }
 
-export const OrderStatesStatsPanel: React.FC<OrderStatesStatsPanelProps> = ({ 
-  filters, 
-  onRefresh 
+interface OrderDetailRow {
+  id: number;
+  status: string;
+  sede_nombre: string;
+  created_at: string;
+  recibidos_at: string | null;
+  cocina_at: string | null;
+  camino_at: string | null;
+  entregado_at: string | null;
+  min_recibidos_a_cocina: number | null;
+  min_cocina_a_camino: number | null;
+  min_camino_a_fin: number | null;
+  min_total_desde_recibidos: number | null;
+  current_stage_duration: number;
+  is_stuck: boolean;
+}
+
+export const OrderStatesStatsPanel: React.FC<OrderStatesStatsPanelProps> = ({
+  filters,
+  onRefresh
 }) => {
   const [stateStats, setStateStats] = useState<StateStats[]>([]);
   const [transitionStats, setTransitionStats] = useState<TransitionStats[]>([]);
+  const [orderDetails, setOrderDetails] = useState<OrderDetailRow[]>([]);
+  const [filteredOrders, setFilteredOrders] = useState<OrderDetailRow[]>([]);
+  const [searchOrderId, setSearchOrderId] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showDetailTable, setShowDetailTable] = useState(false);
 
   // Cargar estadísticas de estados
   const loadStateStats = async () => {
@@ -85,6 +115,11 @@ export const OrderStatesStatsPanel: React.FC<OrderStatesStatsPanelProps> = ({
       // Procesar estadísticas de transiciones
       const processedTransitions = processTransitionStatistics(data || []);
       setTransitionStats(processedTransitions);
+
+      // Procesar detalles de órdenes para la tabla
+      const processedOrderDetails = processOrderDetails(data || []);
+      setOrderDetails(processedOrderDetails);
+      setFilteredOrders(processedOrderDetails);
 
       console.log('✅ Estadísticas por estado cargadas exitosamente');
     } catch (err) {
@@ -240,9 +275,93 @@ export const OrderStatesStatsPanel: React.FC<OrderStatesStatsPanelProps> = ({
     });
   };
 
+  // Procesar detalles de órdenes para la tabla de auditoría
+  const processOrderDetails = (data: any[]): OrderDetailRow[] => {
+    const now = new Date();
+
+    return data.map(order => {
+      const currentStatus = order.status;
+      let currentStageDuration = 0;
+      let isStuck = false;
+
+      // Calcular duración en el estado actual
+      switch (currentStatus) {
+        case 'Recibidos':
+          if (order.recibidos_at) {
+            currentStageDuration = (now.getTime() - new Date(order.recibidos_at).getTime()) / (1000 * 60);
+            isStuck = currentStageDuration > 15;
+          }
+          break;
+        case 'Cocina':
+          if (order.cocina_at) {
+            currentStageDuration = (now.getTime() - new Date(order.cocina_at).getTime()) / (1000 * 60);
+            isStuck = currentStageDuration > 45;
+          }
+          break;
+        case 'Camino':
+          if (order.camino_at) {
+            currentStageDuration = (now.getTime() - new Date(order.camino_at).getTime()) / (1000 * 60);
+            isStuck = currentStageDuration > 60;
+          }
+          break;
+        case 'Entregados':
+          currentStageDuration = 0; // Ya está entregado
+          break;
+      }
+
+      return {
+        id: order.id,
+        status: order.status,
+        sede_nombre: order.sede_nombre || 'Desconocida',
+        created_at: order.created_at,
+        recibidos_at: order.recibidos_at,
+        cocina_at: order.cocina_at,
+        camino_at: order.camino_at,
+        entregado_at: order.entregado_at,
+        min_recibidos_a_cocina: order.min_recibidos_a_cocina,
+        min_cocina_a_camino: order.min_cocina_a_camino,
+        min_camino_a_fin: order.min_camino_a_fin,
+        min_total_desde_recibidos: order.min_total_desde_recibidos,
+        current_stage_duration: currentStageDuration,
+        is_stuck: isStuck
+      };
+    }).sort((a, b) => {
+      // Ordenar por estado atascado primero, luego por duración descendente
+      if (a.is_stuck && !b.is_stuck) return -1;
+      if (!a.is_stuck && b.is_stuck) return 1;
+      return b.current_stage_duration - a.current_stage_duration;
+    });
+  };
+
+  // Filtrar órdenes por ID
+  const handleSearchOrder = (searchTerm: string) => {
+    setSearchOrderId(searchTerm);
+
+    if (!searchTerm.trim()) {
+      setFilteredOrders(orderDetails);
+      return;
+    }
+
+    const filtered = orderDetails.filter(order =>
+      order.id.toString().includes(searchTerm.trim())
+    );
+
+    setFilteredOrders(filtered);
+  };
+
+  // Limpiar búsqueda
+  const clearSearch = () => {
+    setSearchOrderId('');
+    setFilteredOrders(orderDetails);
+  };
+
   useEffect(() => {
     loadStateStats();
   }, [filters]);
+
+  useEffect(() => {
+    handleSearchOrder(searchOrderId);
+  }, [orderDetails]);
 
   // Formatear minutos a texto legible
   const formatMinutes = (minutes: number) => {
@@ -265,6 +384,97 @@ export const OrderStatesStatsPanel: React.FC<OrderStatesStatsPanelProps> = ({
     if (score >= 60) return 'bg-yellow-500';
     if (score >= 40) return 'bg-orange-500';
     return 'bg-red-500';
+  };
+
+  // Obtener color para el estado
+  const getStatusBadgeVariant = (status: string, isStuck: boolean) => {
+    if (isStuck) return 'destructive';
+
+    switch (status) {
+      case 'Recibidos': return 'secondary';
+      case 'Cocina': return 'default';
+      case 'Camino': return 'outline';
+      case 'Entregados': return 'secondary';
+      default: return 'outline';
+    }
+  };
+
+  // Formatear fecha
+  const formatDateTime = (dateString: string | null) => {
+    if (!dateString) return '-';
+    return new Date(dateString).toLocaleString('es-CO', {
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+  };
+
+  // Configuración de columnas para exportación de tabla de auditoría
+  const auditColumns: TableColumn[] = [
+    { key: 'id', header: 'ID Orden', width: 10 },
+    { key: 'status', header: 'Estado', width: 15 },
+    { key: 'sede_nombre', header: 'Sede', width: 20 },
+    { key: 'created_at', header: 'Creado', width: 18, format: formatters.datetime },
+    { key: 'recibidos_at', header: 'Recibido', width: 18, format: formatters.datetime },
+    { key: 'cocina_at', header: 'Cocina', width: 18, format: formatters.datetime },
+    { key: 'camino_at', header: 'Camino', width: 18, format: formatters.datetime },
+    { key: 'entregado_at', header: 'Entregado', width: 18, format: formatters.datetime },
+    { key: 'min_recibidos_a_cocina', header: 'R→C (min)', width: 12, format: formatters.minutes },
+    { key: 'min_cocina_a_camino', header: 'C→Ca (min)', width: 12, format: formatters.minutes },
+    { key: 'min_camino_a_fin', header: 'Ca→E (min)', width: 12, format: formatters.minutes },
+    { key: 'min_total_desde_recibidos', header: 'Total (min)', width: 12, format: formatters.minutes },
+    { key: 'current_stage_duration', header: 'En Estado (min)', width: 15, format: formatters.minutes },
+    { key: 'is_stuck', header: 'Atascada', width: 10, format: (value) => value ? 'SÍ' : 'NO' }
+  ];
+
+  // Generar secciones para PDF
+  const generatePDFSections = (): PDFSection[] => {
+    const sections: PDFSection[] = [];
+
+    // Resumen general
+    if (stateStats.length > 0) {
+      sections.push({
+        title: 'Resumen por Estados',
+        content: stateStats.map(stat =>
+          `${stat.state_label}: ${stat.total_orders} órdenes, tiempo promedio: ${formatMinutes(stat.avg_time_in_state)}, eficiencia: ${Math.round(stat.efficiency_score)}%`
+        )
+      });
+    }
+
+    // Transiciones
+    if (transitionStats.length > 0) {
+      sections.push({
+        title: 'Tiempos de Transición',
+        content: transitionStats.map(transition =>
+          `${transition.from_state} → ${transition.to_state}: ${formatMinutes(transition.avg_transition_time)} promedio (${transition.transition_count} transiciones)`
+        )
+      });
+    }
+
+    // Órdenes atascadas
+    const stuckOrders = orderDetails.filter(order => order.is_stuck);
+    if (stuckOrders.length > 0) {
+      sections.push({
+        title: 'Órdenes Atascadas (Atención Requerida)',
+        content: stuckOrders.map(order =>
+          `Orden #${order.id} - ${order.status} (${order.sede_nombre}) - ${formatMinutes(order.current_stage_duration)} en estado actual`
+        )
+      });
+    }
+
+    // Estadísticas generales
+    sections.push({
+      title: 'Estadísticas del Período',
+      content: [
+        `Período: ${filters.fecha_inicio} al ${filters.fecha_fin}`,
+        `Total de órdenes analizadas: ${orderDetails.length}`,
+        `Órdenes atascadas: ${stuckOrders.length}`,
+        `Distribución por estado: ${stateStats.map(s => `${s.state_label}: ${s.total_orders}`).join(', ')}`
+      ]
+    });
+
+    return sections;
   };
 
   if (error) {
@@ -308,7 +518,178 @@ export const OrderStatesStatsPanel: React.FC<OrderStatesStatsPanelProps> = ({
             {loading ? 'Cargando...' : 'Actualizar'}
           </Button>
         </div>
+        <div className="flex gap-2">
+          <Button
+            onClick={() => setShowDetailTable(!showDetailTable)}
+            variant={showDetailTable ? "default" : "outline"}
+            size="sm"
+          >
+            <TableIcon className="h-4 w-4 mr-2" />
+            {showDetailTable ? 'Ocultar Tabla' : 'Ver Tabla Detallada'}
+          </Button>
+
+          {/* Botón de exportación PDF para resumen ejecutivo */}
+          <ExportButton
+            pdfSections={generatePDFSections()}
+            formats={['pdf']}
+            filename={`reporte_estados_${filters.fecha_inicio}_${filters.fecha_fin}`}
+            title="Reporte de Estados de Órdenes"
+            subtitle={`Análisis del ${filters.fecha_inicio} al ${filters.fecha_fin}`}
+            variant="outline"
+            size="sm"
+          />
+
+          {/* Botón de exportación para tabla de auditoría */}
+          {showDetailTable && filteredOrders.length > 0 && (
+            <ExportButton
+              data={filteredOrders}
+              columns={auditColumns}
+              formats={['excel', 'csv']}
+              filename={`auditoria_ordenes_${filters.fecha_inicio}_${filters.fecha_fin}`}
+              title="Auditoría de Órdenes por Estado"
+              subtitle={`Detalle individual de órdenes del ${filters.fecha_inicio} al ${filters.fecha_fin}`}
+              sheetName="Auditoría"
+              variant="outline"
+              size="sm"
+            />
+          )}
+        </div>
       </div>
+
+      {/* Tabla de Auditoría Individual (mostrar/ocultar) */}
+      {showDetailTable && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Eye className="h-5 w-5" />
+              Auditoría Individual por Pedido
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            {/* Barra de búsqueda */}
+            <div className="flex gap-2 mb-4">
+              <div className="relative flex-1">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+                <Input
+                  placeholder="Buscar por ID de orden (ej: 123)"
+                  value={searchOrderId}
+                  onChange={(e) => handleSearchOrder(e.target.value)}
+                  className="pl-10"
+                />
+              </div>
+              {searchOrderId && (
+                <Button variant="outline" onClick={clearSearch}>
+                  <X className="h-4 w-4" />
+                </Button>
+              )}
+            </div>
+
+            {/* Información de resultados */}
+            {searchOrderId && (
+              <div className="mb-4">
+                {filteredOrders.length > 0 ? (
+                  <Alert>
+                    <Search className="h-4 w-4" />
+                    <AlertDescription>
+                      Se encontraron {filteredOrders.length} órdenes que coinciden con "{searchOrderId}"
+                    </AlertDescription>
+                  </Alert>
+                ) : (
+                  <Alert variant="destructive">
+                    <AlertTriangle className="h-4 w-4" />
+                    <AlertDescription>
+                      No se encontraron órdenes que coincidan con "{searchOrderId}"
+                    </AlertDescription>
+                  </Alert>
+                )}
+              </div>
+            )}
+
+            {/* Tabla de órdenes */}
+            <div className="rounded-md border max-h-96 overflow-y-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="w-20">ID</TableHead>
+                    <TableHead>Estado</TableHead>
+                    <TableHead>Sede</TableHead>
+                    <TableHead>Creado</TableHead>
+                    <TableHead>Recibido</TableHead>
+                    <TableHead>Cocina</TableHead>
+                    <TableHead>Camino</TableHead>
+                    <TableHead>Entregado</TableHead>
+                    <TableHead>R→C</TableHead>
+                    <TableHead>C→Ca</TableHead>
+                    <TableHead>Ca→E</TableHead>
+                    <TableHead>Total</TableHead>
+                    <TableHead>En Estado</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {filteredOrders.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={13} className="text-center py-4 text-muted-foreground">
+                        {searchOrderId ? 'No se encontraron órdenes' : 'No hay órdenes para mostrar'}
+                      </TableCell>
+                    </TableRow>
+                  ) : (
+                    filteredOrders.map((order) => (
+                      <TableRow key={order.id} className={order.is_stuck ? 'bg-red-50' : ''}>
+                        <TableCell className="font-medium">
+                          #{order.id}
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant={getStatusBadgeVariant(order.status, order.is_stuck)}>
+                            {order.status}
+                            {order.is_stuck && ' ⚠️'}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="text-sm">{order.sede_nombre}</TableCell>
+                        <TableCell className="text-sm">{formatDateTime(order.created_at)}</TableCell>
+                        <TableCell className="text-sm">{formatDateTime(order.recibidos_at)}</TableCell>
+                        <TableCell className="text-sm">{formatDateTime(order.cocina_at)}</TableCell>
+                        <TableCell className="text-sm">{formatDateTime(order.camino_at)}</TableCell>
+                        <TableCell className="text-sm">{formatDateTime(order.entregado_at)}</TableCell>
+                        <TableCell className="text-sm">
+                          {order.min_recibidos_a_cocina ? formatMinutes(order.min_recibidos_a_cocina) : '-'}
+                        </TableCell>
+                        <TableCell className="text-sm">
+                          {order.min_cocina_a_camino ? formatMinutes(order.min_cocina_a_camino) : '-'}
+                        </TableCell>
+                        <TableCell className="text-sm">
+                          {order.min_camino_a_fin ? formatMinutes(order.min_camino_a_fin) : '-'}
+                        </TableCell>
+                        <TableCell className="text-sm font-medium">
+                          {order.min_total_desde_recibidos ? formatMinutes(order.min_total_desde_recibidos) : '-'}
+                        </TableCell>
+                        <TableCell className={`text-sm font-medium ${
+                          order.is_stuck ? 'text-red-600' : 'text-blue-600'
+                        }`}>
+                          {order.status !== 'Entregados' ? formatMinutes(order.current_stage_duration) : '-'}
+                        </TableCell>
+                      </TableRow>
+                    ))
+                  )}
+                </TableBody>
+              </Table>
+            </div>
+
+            {/* Leyenda */}
+            <div className="mt-4 p-3 bg-gray-50 rounded-md">
+              <h4 className="text-sm font-medium mb-2">Leyenda:</h4>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-xs text-gray-600">
+                <div>• R→C: Recibido a Cocina</div>
+                <div>• C→Ca: Cocina a Camino</div>
+                <div>• Ca→E: Camino a Entregado</div>
+                <div>• En Estado: Tiempo en estado actual</div>
+                <div>• ⚠️: Orden atascada (tiempo excesivo)</div>
+                <div>• Total: Tiempo total desde recibido</div>
+                <div>• Fondo rojo: Órdenes atascadas</div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Estadísticas por Estado */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -407,6 +788,45 @@ export const OrderStatesStatsPanel: React.FC<OrderStatesStatsPanelProps> = ({
           </div>
         </CardContent>
       </Card>
+
+      {/* Resumen de órdenes atascadas */}
+      {orderDetails.some(order => order.is_stuck) && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-red-600">
+              <AlertTriangle className="h-5 w-5" />
+              Alerta: Órdenes Atascadas
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+              {orderDetails
+                .filter(order => order.is_stuck)
+                .slice(0, 8) // Mostrar máximo 8 órdenes atascadas
+                .map(order => (
+                  <div key={order.id} className="p-3 border border-red-200 bg-red-50 rounded-lg">
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="font-medium text-red-800">#{order.id}</span>
+                      <Badge variant="destructive" className="text-xs">{order.status}</Badge>
+                    </div>
+                    <div className="text-sm text-red-600">
+                      <div>{order.sede_nombre}</div>
+                      <div className="font-semibold">
+                        {formatMinutes(order.current_stage_duration)} en {order.status}
+                      </div>
+                    </div>
+                  </div>
+                ))
+              }
+            </div>
+            {orderDetails.filter(order => order.is_stuck).length > 8 && (
+              <div className="mt-3 text-center text-sm text-muted-foreground">
+                ... y {orderDetails.filter(order => order.is_stuck).length - 8} órdenes más atascadas
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 };

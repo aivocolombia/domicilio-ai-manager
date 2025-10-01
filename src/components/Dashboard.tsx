@@ -73,6 +73,8 @@ import { AlertTriangle, Pause, Store, Navigation, ShoppingCart } from 'lucide-re
 import { supabase } from '@/lib/supabase';
 import { useDebouncedCallback } from '@/hooks/useDebounce';
 import { useAgentDebug } from '@/hooks/useAgentDebug';
+import { ExportButton } from '@/components/ui/ExportButton';
+import { formatters, TableColumn } from '@/utils/exportUtils';
 
 interface DashboardProps {
   orders: Order[];
@@ -665,64 +667,42 @@ export const Dashboard: React.FC<DashboardProps> = ({
     }
   };
 
-  // Función para descargar órdenes como CSV (solo admins)
-  const downloadOrdersAsCSV = () => {
-    if (!orders || orders.length === 0) {
-      toast({
-        title: "No hay datos",
-        description: "No hay órdenes disponibles para descargar",
-        variant: "destructive"
-      });
-      return;
-    }
+  // Configuración de columnas para exportación
+  const exportColumns: TableColumn[] = [
+    { key: 'id_display', header: 'ID Pedido', width: 12 },
+    { key: 'orden_id', header: 'ID Interno', width: 12 },
+    { key: 'cliente_nombre', header: 'Cliente', width: 20 },
+    { key: 'cliente_telefono', header: 'Teléfono', width: 15 },
+    { key: 'address', header: 'Dirección', width: 30 },
+    { key: 'sede', header: 'Sede', width: 15 },
+    {
+      key: 'estado',
+      header: 'Estado',
+      width: 15,
+      format: (value) => getDisplayStatus(value || '', '')
+    },
+    {
+      key: 'total',
+      header: 'Total',
+      width: 12,
+      format: formatters.currency
+    },
+    { key: 'payment_display', header: 'Tipo Pago', width: 15 },
+    { key: 'pago_estado', header: 'Estado Pago', width: 15 },
+    { key: 'creado_fecha', header: 'Fecha Creación', width: 15 },
+    { key: 'creado_hora', header: 'Hora Creación', width: 12 },
+    { key: 'entrega_hora', header: 'Hora Entrega', width: 12 },
+    { key: 'repartidor', header: 'Repartidor', width: 15 },
+    { key: 'payment_id', header: 'Payment ID', width: 15 }
+  ];
 
-    // Preparar datos para CSV usando los campos correctos de la interfaz DashboardOrder
-    const csvData = orders.map(order => ({
-      'ID Pedido': order.id_display || '',
-      'ID Interno': order.orden_id || '',
-      'Cliente': order.cliente_nombre || '',
-      'Teléfono': order.cliente_telefono || '',
-      'Dirección': order.address || '',
-      'Sede': order.sede || '',
-      'Estado': getDisplayStatus(order.estado || '', order.type_order),
-      'Total': order.total ? `$${order.total.toLocaleString()}` : '$0',
-      'Tipo Pago': order.payment_display || order.pago_tipo || '',
-      'Estado Pago': order.pago_estado || '',
-      'Fecha Creación': order.creado_fecha || '',
-      'Hora Creación': order.creado_hora || '',
-      'Hora Entrega': order.entrega_hora || '',
-      'Repartidor': order.repartidor || '',
-      'Payment ID': order.payment_id || ''
-    }));
-
-    // Convertir a CSV
-    const csvHeaders = Object.keys(csvData[0]).join(',');
-    const csvRows = csvData.map(row => Object.values(row).map(val => `"${val}"`).join(','));
-    const csvContent = [csvHeaders, ...csvRows].join('\n');
-
-    // Descargar archivo
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const link = document.createElement('a');
-    const url = URL.createObjectURL(blob);
-    link.setAttribute('href', url);
-    link.setAttribute('download', `ordenes_${currentSedeName || 'sede'}_${format(new Date(), 'yyyy-MM-dd')}.csv`);
-    link.style.visibility = 'hidden';
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-
-    toast({
-      title: "Descarga completada",
-      description: `Se descargaron ${orders.length} órdenes en formato CSV`,
-    });
-  };
-  const { 
-    orders: realOrders, 
-    stats, 
-    loading, 
-    error, 
+  const {
+    orders: realOrders,
+    stats,
+    loading,
+    error,
     loadDashboardOrders,
-    filterOrdersByStatus, 
+    filterOrdersByStatus,
     refreshData,
     deleteOrder,
     realtimeStatus,
@@ -732,6 +712,12 @@ export const Dashboard: React.FC<DashboardProps> = ({
   // Usar SOLO datos reales - NUNCA datos legacy para evitar mostrar datos dummy
   // Una sede nueva debe mostrar dashboard vacío, no datos dummy
   const orders = realOrders;
+
+  // Preparar datos para exportación (mapeo para compatibilidad)
+  const exportData = orders?.map(order => ({
+    ...order,
+    payment_display: order.payment_display || order.pago_tipo || ''
+  })) || [];
 
   // Función debounced para aplicar filtros y evitar llamadas excesivas
   const debouncedLoadOrders = useDebouncedCallback(loadDashboardOrders, 500);
@@ -1820,18 +1806,19 @@ export const Dashboard: React.FC<DashboardProps> = ({
             </Button>
           )}
 
-          {/* Botón de descarga CSV - Solo para administradores */}
+          {/* Botón de exportación - Solo para administradores */}
           {profile?.role === 'admin' && (
-            <Button
-              onClick={downloadOrdersAsCSV}
-              disabled={loading || !orders || orders.length === 0}
+            <ExportButton
+              data={exportData}
+              columns={exportColumns}
+              formats={['excel', 'csv']}
+              filename={`ordenes_${currentSedeName || 'sede'}_${format(new Date(), 'yyyy-MM-dd')}`}
+              title={`Órdenes - ${currentSedeName || 'Sede'}`}
+              subtitle={`Reporte generado el ${format(new Date(), 'dd/MM/yyyy HH:mm', { locale: es })}`}
+              sheetName="Órdenes"
               variant="outline"
-              className="flex items-center gap-2"
-              title={`Descargar ${orders?.length || 0} órdenes como CSV`}
-            >
-              <Download className="h-4 w-4" />
-              Descargar CSV ({orders?.length || 0})
-            </Button>
+              size="sm"
+            />
           )}
           
           <Button
