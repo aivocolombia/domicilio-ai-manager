@@ -120,31 +120,49 @@ export const EditOrderModal: React.FC<EditOrderModalProps> = ({
 
   // Helpers para contador por producto disponible en grillas de agregar
   const getSelectedCount = (tipo: 'plato' | 'bebida' | 'topping', productoId: number) => {
-    const key = `${tipo}_${productoId}`;
-    const item = items.find(i => i.id === key);
-    return item?.cantidad ?? 0;
+    // Para los items cargados desde la BD, contar por producto_id (pueden tener múltiples instancias)
+    const count = items
+      .filter(item => item.tipo === tipo && item.producto_id === productoId)
+      .reduce((sum, item) => sum + item.cantidad, 0);
+
+    console.log(`🔍 [DEBUG] getSelectedCount(${tipo}, ${productoId}):`, count, 'items encontrados:', items.filter(item => item.tipo === tipo && item.producto_id === productoId));
+
+    return count;
   };
 
   const incrementSelected = (tipo: 'plato' | 'bebida' | 'topping', producto: { id: number; name: string; pricing?: number }) => {
-    const key = `${tipo}_${producto.id}`;
-    const existing = items.find(i => i.id === key);
-    if (existing) {
-      handleQuantityChange(existing.id, existing.cantidad + 1);
+    // Buscar items existentes del mismo producto
+    const existingItems = items.filter(item => item.tipo === tipo && item.producto_id === producto.id);
+
+    if (existingItems.length > 0) {
+      // Si hay items existentes, aumentar la cantidad del primero
+      const firstItem = existingItems[0];
+      handleQuantityChange(firstItem.id, firstItem.cantidad + 1);
+      console.log(`🔍 [DEBUG] incrementSelected: Incrementando cantidad de ${firstItem.id} a ${firstItem.cantidad + 1}`);
     } else {
+      // Si no hay items existentes, crear uno nuevo
       if (tipo === 'plato') handleAddPlato(producto as any);
       else if (tipo === 'bebida') handleAddBebida(producto as any);
       else handleAddTopping(producto as any);
+      console.log(`🔍 [DEBUG] incrementSelected: Creando nuevo item ${tipo}_${producto.id}`);
     }
   };
 
   const decrementSelected = (tipo: 'plato' | 'bebida' | 'topping', productoId: number) => {
-    const key = `${tipo}_${productoId}`;
-    const existing = items.find(i => i.id === key);
-    if (!existing) return;
-    if (existing.cantidad > 1) {
-      handleQuantityChange(existing.id, existing.cantidad - 1);
+    // Buscar items existentes del mismo producto
+    const existingItems = items.filter(item => item.tipo === tipo && item.producto_id === productoId);
+
+    if (existingItems.length === 0) return;
+
+    // Tomar el primer item para decrementar
+    const firstItem = existingItems[0];
+
+    if (firstItem.cantidad > 1) {
+      handleQuantityChange(firstItem.id, firstItem.cantidad - 1);
+      console.log(`🔍 [DEBUG] decrementSelected: Decrementando cantidad de ${firstItem.id} a ${firstItem.cantidad - 1}`);
     } else {
-      handleRemoveItem(existing.id);
+      handleRemoveItem(firstItem.id);
+      console.log(`🔍 [DEBUG] decrementSelected: Eliminando item ${firstItem.id}`);
     }
   };
 
