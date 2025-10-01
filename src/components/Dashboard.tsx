@@ -273,15 +273,10 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
   // Hook para datos reales del dashboard
   // Usar effectiveSedeId cuando esté disponible (admin) o sede_id del usuario (agente)
-  const sedeIdToUse = effectiveSedeId || profile?.sede_id;
-
-  // Debug: Verificar sedeIdToUse
-  console.log('🔍 [DASHBOARD] SedeId calculation:', {
-    effectiveSedeId,
-    profileSedeId: profile?.sede_id,
-    finalSedeIdToUse: sedeIdToUse,
-    timestamp: new Date().toISOString()
-  });
+  const sedeIdToUse = useMemo(() => {
+    const finalSedeId = effectiveSedeId || profile?.sede_id;
+    return finalSedeId;
+  }, [effectiveSedeId, profile?.sede_id]);
 
   // Hook para crear pedidos
   const {
@@ -289,6 +284,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
     loading: sedeOrdersLoading,
     searchCustomer,
     createOrder,
+    refreshData: refreshSedeOrders,
   } = useSedeOrders(sedeIdToUse);
 
   // Debug para agentes
@@ -708,7 +704,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
     deleteOrder,
     realtimeStatus,
     registerRefreshFunction
-  } = useDashboard(sedeIdToUse);
+  } = useDashboard(sedeIdToUse, refreshSedeOrders);
 
   // Usar SOLO datos reales - NUNCA datos legacy para evitar mostrar datos dummy
   // Una sede nueva debe mostrar dashboard vacío, no datos dummy

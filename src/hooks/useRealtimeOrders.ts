@@ -19,6 +19,11 @@ export const useRealtimeOrders = ({
   const isConnectedRef = useRef(false);
   const [connectionStatus, setConnectionStatus] = useState<'connecting' | 'connected' | 'disconnected' | 'error'>('disconnected');
   const [reconnectTrigger, setReconnectTrigger] = useState(0);
+  const heartbeatIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const [reconnectAttempts, setReconnectAttempts] = useState(0);
+  const maxReconnectAttempts = 5;
+  const isMountedRef = useRef(true);
   
   // Usar refs para callbacks para evitar recrear suscripciones
   const callbacksRef = useRef({
@@ -95,7 +100,80 @@ export const useRealtimeOrders = ({
     callbacksRef.current.onOrderUpdated?.();
   }, []); // Sin dependencias porque usa refs
 
+  // Función para iniciar heartbeat
+  const startHeartbeat = useCallback(() => {
+    if (heartbeatIntervalRef.current) {
+      clearInterval(heartbeatIntervalRef.current);
+    }
+
+    heartbeatIntervalRef.current = setInterval(async () => {
+      if (!isMountedRef.current) {
+        console.log('🚫 [HEARTBEAT] Componente desmontado, deteniendo heartbeat');
+        return;
+      }
+
+      if (isConnectedRef.current) {
+        try {
+          // Test básico de conectividad cada 30 segundos
+          const isStillConnected = await testSupabaseConnection();
+          if (!isStillConnected) {
+            console.warn('🔄 [HEARTBEAT] Conectividad perdida, forzando reconexión...');
+            setConnectionStatus('disconnected');
+            setReconnectTrigger(prev => prev + 1);
+          } else {
+            console.log('💓 [HEARTBEAT] Conexión saludable');
+          }
+        } catch (error) {
+          console.error('❌ [HEARTBEAT] Error en heartbeat:', error);
+          setConnectionStatus('error');
+          setReconnectTrigger(prev => prev + 1);
+        }
+      }
+    }, 30000); // Heartbeat cada 30 segundos
+  }, [testSupabaseConnection]);
+
+  // Función para detener heartbeat
+  const stopHeartbeat = useCallback(() => {
+    if (heartbeatIntervalRef.current) {
+      clearInterval(heartbeatIntervalRef.current);
+      heartbeatIntervalRef.current = null;
+    }
+  }, []);
+
+  // Función para reconexión automática con backoff exponencial
+  const scheduleReconnect = useCallback(() => {
+    // No reconectar si el componente está siendo desmontado
+    if (!isMountedRef.current || !sedeId) {
+      console.log('🚫 [RECONNECT] Componente desmontado, no programando reconexión');
+      return;
+    }
+
+    if (reconnectAttempts >= maxReconnectAttempts) {
+      console.error('❌ [RECONNECT] Máximo número de intentos alcanzado');
+      setConnectionStatus('error');
+      return;
+    }
+
+    if (reconnectTimeoutRef.current) {
+      clearTimeout(reconnectTimeoutRef.current);
+    }
+
+    // Backoff exponencial: 2^attempts * 1000ms, máximo 30 segundos
+    const delay = Math.min(Math.pow(2, reconnectAttempts) * 1000, 30000);
+    console.log(`🔄 [RECONNECT] Programando reconexión en ${delay}ms (intento ${reconnectAttempts + 1}/${maxReconnectAttempts})`);
+
+    reconnectTimeoutRef.current = setTimeout(() => {
+      // Verificar nuevamente antes de reconectar
+      if (isMountedRef.current && sedeId) {
+        setReconnectAttempts(prev => prev + 1);
+        setReconnectTrigger(prev => prev + 1);
+      }
+    }, delay);
+  }, [reconnectAttempts, maxReconnectAttempts, sedeId]);
+
   useEffect(() => {
+    isMountedRef.current = true; // Marcar como montado
+
     if (!sedeId) {
       logWarn('Realtime', 'No hay sede_id, no configurando realtime');
       return;
@@ -149,14 +227,22 @@ export const useRealtimeOrders = ({
     // Test 2: Intentar suscripción más simple primero
     console.log('🧪 [ORDERS] Testing simple subscription to ordenes table...');
 
-    // Timeout para la suscripción
-    const subscriptionTimeout = setTimeout(() => {
-      console.error('⏰ [ORDERS] Timeout de suscripción - forzando estado de error');
-      setConnectionStatus('error');
-    }, 10000); // 10 segundos timeout
+    // Configuración optimizada del canal con parámetros de conexión mejorados
+    const channelConfig = {
+      config: {
+        presence: {
+          key: `user_${sedeId}`,
+        },
+        broadcast: {
+          self: false,
+        },
+        timeout: 60000, // 60 segundos timeout más generoso
+        heartbeat_interval: 30000, // Heartbeat cada 30 segundos
+      }
+    };
 
     const ordersChannel = supabase
-      .channel(`simple_orders_test`)
+      .channel(`orders_${sedeId}`, channelConfig)
       .on(
         'postgres_changes',
         {
@@ -197,7 +283,6 @@ export const useRealtimeOrders = ({
 
         if (status === 'SUBSCRIBED') {
           console.log('✅ [ORDERS] Realtime conectado exitosamente para sede:', sedeId);
-          clearTimeout(subscriptionTimeout); // Limpiar timeout
           logDebug('Realtime', '[ORDERS] Realtime conectado exitosamente', {
             sedeId,
             channel: `orders_${sedeId}`,
@@ -205,9 +290,10 @@ export const useRealtimeOrders = ({
           });
           isConnectedRef.current = true;
           setConnectionStatus('connected');
+          setReconnectAttempts(0); // Reset intentos de reconexión
+          startHeartbeat(); // Iniciar heartbeat
         } else if (status === 'CHANNEL_ERROR') {
           console.error('❌ [ORDERS] Error en conexión realtime:', { status, error: err, sedeId });
-          clearTimeout(subscriptionTimeout); // Limpiar timeout
           logError('Realtime', '[ORDERS] Error en conexión realtime', {
             sedeId,
             status,
@@ -224,15 +310,24 @@ export const useRealtimeOrders = ({
           });
           isConnectedRef.current = false;
           setConnectionStatus('error');
+          stopHeartbeat();
+          scheduleReconnect(); // Programar reconexión automática
         } else if (status === 'CLOSED') {
           console.warn('⚠️ Conexión realtime cerrada para sede:', sedeId);
           logDebug('Realtime', 'Conexión realtime cerrada', { sedeId });
           isConnectedRef.current = false;
           setConnectionStatus('disconnected');
+          stopHeartbeat();
+          // No reconectar automáticamente en CLOSED - usar manual o heartbeat
         } else if (status === 'TIMED_OUT') {
           console.error('⏰ Conexión realtime timeout para sede:', sedeId);
           isConnectedRef.current = false;
           setConnectionStatus('error');
+          stopHeartbeat();
+          // Solo reconectar en timeout si no está siendo desmontado
+          if (isMountedRef.current) {
+            scheduleReconnect();
+          }
         } else {
           console.warn('🔄 Estado realtime desconocido:', { status, sedeId });
           setConnectionStatus('connecting');
@@ -241,12 +336,12 @@ export const useRealtimeOrders = ({
 
     // Suscripción a cambios en items de órdenes (platos)
     const orderPlatosChannel = supabase
-      .channel(`order_platos_${sedeId}`)
+      .channel(`order_platos_${sedeId}`, channelConfig)
       .on(
         'postgres_changes',
-        { 
-          event: '*', 
-          schema: 'public', 
+        {
+          event: '*',
+          schema: 'public',
           table: 'ordenes_platos'
         },
         (payload) => {
@@ -258,12 +353,12 @@ export const useRealtimeOrders = ({
 
     // Suscripción a cambios en items de órdenes (bebidas)
     const orderBebidasChannel = supabase
-      .channel(`order_bebidas_${sedeId}`)
+      .channel(`order_bebidas_${sedeId}`, channelConfig)
       .on(
         'postgres_changes',
-        { 
-          event: '*', 
-          schema: 'public', 
+        {
+          event: '*',
+          schema: 'public',
           table: 'ordenes_bebidas'
         },
         (payload) => {
@@ -277,8 +372,18 @@ export const useRealtimeOrders = ({
     channelsRef.current = [ordersChannel, orderPlatosChannel, orderBebidasChannel];
 
     return () => {
+      // Marcar como desmontado INMEDIATAMENTE para prevenir reconexiones
+      isMountedRef.current = false;
+
       logDebug('Realtime', 'Cerrando suscripciones realtime', { sedeId, channelCount: channelsRef.current.length });
-      
+
+      // Detener heartbeat y timers
+      stopHeartbeat();
+      if (reconnectTimeoutRef.current) {
+        clearTimeout(reconnectTimeoutRef.current);
+        reconnectTimeoutRef.current = null;
+      }
+
       // Intentar cerrar cada canal, pero continuar con la limpieza incluso si falla
       let closedSuccessfully = 0;
       let closedWithErrors = 0;
@@ -313,26 +418,32 @@ export const useRealtimeOrders = ({
     reconnect: useCallback(() => {
       console.log('🔄 Forzando reconexión realtime...');
       setConnectionStatus('connecting');
+      setReconnectAttempts(0); // Reset intentos
       setReconnectTrigger(prev => prev + 1);
     }, []),
-    
+
     // Función para verificar estado de conexión
     isConnected: useCallback(() => {
       return isConnectedRef.current;
     }, []),
-    
+
     // Estado de conexión actual
     connectionStatus,
-    
+
+    // Intentos de reconexión actuales
+    reconnectAttempts,
+
     // Función para obtener estado de los canales
     getChannelsStatus: useCallback(() => {
       return {
         totalChannels: channelsRef.current.length,
         isConnected: isConnectedRef.current,
         connectionStatus,
+        reconnectAttempts,
+        maxReconnectAttempts,
         sedeId
       };
-    }, [sedeId, connectionStatus]),
+    }, [sedeId, connectionStatus, reconnectAttempts]),
 
     // Función para testear conectividad
     testConnection: testSupabaseConnection

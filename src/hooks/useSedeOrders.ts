@@ -1,7 +1,6 @@
 import { useState, useCallback, useEffect } from 'react';
 import { sedeOrdersService, CustomerData, SedeOrder, CreateOrderData } from '@/services/sedeOrdersService';
 import { useToast } from '@/hooks/use-toast';
-import { useRealtimeOrders } from '@/hooks/useRealtimeOrders';
 
 export const useSedeOrders = (sedeId?: string) => {
   const [orders, setOrders] = useState<SedeOrder[]>([]);
@@ -220,35 +219,16 @@ export const useSedeOrders = (sedeId?: string) => {
     }
   }, [sedeId, loadSedeOrders, loadTodayOrders]);
 
-  // Configurar suscripción en tiempo real
-  useRealtimeOrders({
-    sedeId,
-    onOrderUpdated: () => {
-      console.log('🔄 SedeOrders: Orden actualizada, recargando datos...');
-      if (sedeId) {
-        loadSedeOrders();
-        loadTodayOrders(); // También recargar pedidos del día
-      }
-    },
-    onNewOrder: (order) => {
-      console.log('📝 SedeOrders: Nueva orden recibida:', order);
-      // Agregar directamente a la lista local para actualización inmediata
-      if (order.sede_id === sedeId) {
-        toast({
-          title: "Nueva orden",
-          description: `Orden #${order.id} recibida`,
-        });
-        // Recargar para obtener datos completos
-        if (sedeId) {
-          loadSedeOrders();
-          loadTodayOrders(); // También recargar pedidos del día
-        }
-      }
-    },
-    onOrderStatusChanged: (orderId, newStatus) => {
-      console.log(`📊 SedeOrders: Orden #${orderId} cambió a ${newStatus}`);
+  // NOTA: Realtime se maneja ahora exclusivamente en useDashboard
+  // para evitar conexiones duplicadas y conflictos
+
+  // Función para refrescar datos desde fuente externa (ej: Realtime)
+  const refreshData = useCallback(() => {
+    if (sedeId) {
+      loadSedeOrders();
+      loadTodayOrders();
     }
-  });
+  }, [sedeId, loadSedeOrders, loadTodayOrders]);
 
   return {
     orders,
@@ -262,6 +242,7 @@ export const useSedeOrders = (sedeId?: string) => {
     createOrder,
     transferOrder,
     clearCustomer,
-    clearError
+    clearError,
+    refreshData // Nueva función para refresh externo
   };
 };

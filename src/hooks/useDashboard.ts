@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useRef } from 'react';
+import { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import { dashboardService, DashboardOrder, DashboardFilters } from '@/services/dashboardService';
 import { useToast } from '@/hooks/use-toast';
 import { useRealtimeOrders } from '@/hooks/useRealtimeOrders';
@@ -22,7 +22,7 @@ export interface DashboardStats {
   cancelados: number;
 }
 
-export const useDashboard = (sede_id?: string | number) => {
+export const useDashboard = (sede_id?: string | number, onRealtimeUpdate?: () => void) => {
   const [orders, setOrders] = useState<DashboardOrder[]>([]);
   const [stats, setStats] = useState<DashboardStats>({
     total: 0,
@@ -190,42 +190,45 @@ export const useDashboard = (sede_id?: string | number) => {
     [loadDashboardOrders]
   );
 
-  // Debug: Log sede_id antes de pasar al hook de realtime
-  const currentSedeId = sedeIdRef.current?.toString();
-  console.log('🔍 [DASHBOARD] useDashboard - sedeId para realtime:', {
-    originalSedeId: sede_id,
-    sedeIdRef: sedeIdRef.current,
-    stringifiedSedeId: currentSedeId,
-    timestamp: new Date().toISOString()
-  });
+  // Estabilizar sedeId para evitar re-renders constantes
+  const currentSedeId = useMemo(() => {
+    return sedeIdRef.current?.toString();
+  }, [sedeIdRef.current]);
+
+  // Memoizar callbacks para evitar re-renders constantes
+  const onOrderUpdated = useCallback(() => {
+    console.log('🔄 Dashboard: Orden actualizada, forzando recarga inmediata...');
+    forceReload();
+    onRealtimeUpdate?.(); // También refrescar componentes externos
+  }, [forceReload, onRealtimeUpdate]);
+
+  const onNewOrder = useCallback((order: any) => {
+    console.log('📝 Dashboard: Nueva orden recibida:', order);
+    toast({
+      title: "Nueva orden",
+      description: `Orden #${order.id} recibida`,
+      duration: 3000,
+    });
+    forceReload();
+    onRealtimeUpdate?.(); // También refrescar componentes externos
+  }, [forceReload, toast, onRealtimeUpdate]);
+
+  const onOrderStatusChanged = useCallback((orderId: number, newStatus: string) => {
+    console.log(`📊 Dashboard: Orden #${orderId} cambió a ${newStatus}`);
+    toast({
+      title: "Estado actualizado",
+      description: `Orden #${orderId} → ${newStatus}`,
+      duration: 2000,
+    });
+    forceReload();
+    onRealtimeUpdate?.(); // También refrescar componentes externos
+  }, [forceReload, toast, onRealtimeUpdate]);
 
   const realtimeStatus = useRealtimeOrders({
     sedeId: currentSedeId,
-    onOrderUpdated: () => {
-      console.log('🔄 Dashboard: Orden actualizada, forzando recarga inmediata...');
-      // Usar recarga inmediata para cualquier cambio
-      forceReload();
-    },
-    onNewOrder: (order) => {
-      console.log('📝 Dashboard: Nueva orden recibida:', order);
-      toast({
-        title: "Nueva orden",
-        description: `Orden #${order.id} recibida`,
-        duration: 3000,
-      });
-      // Recarga inmediata para nuevas órdenes
-      forceReload();
-    },
-    onOrderStatusChanged: (orderId, newStatus) => {
-      console.log(`📊 Dashboard: Orden #${orderId} cambió a ${newStatus}`);
-      toast({
-        title: "Estado actualizado",
-        description: `Orden #${orderId} → ${newStatus}`,
-        duration: 2000,
-      });
-      // Para cambios de estado, recarga inmediata (crítico)
-      forceReload();
-    }
+    onOrderUpdated,
+    onNewOrder,
+    onOrderStatusChanged
   });
 
   // Función para registrar la función de refresh del Dashboard
