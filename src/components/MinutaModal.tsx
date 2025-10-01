@@ -75,6 +75,31 @@ export const MinutaModal: React.FC<MinutaModalProps> = ({
     });
   };
 
+  // Función para agrupar productos idénticos
+  const groupIdenticalProducts = (products: any[]) => {
+    const grouped: { [key: string]: any } = {};
+
+    products.forEach(product => {
+      // Crear una clave única basada en el nombre del producto y las sustituciones
+      const substitutionsKey = product.substitutions
+        ? product.substitutions.map((sub: any) => `${sub.original_name}->${sub.substitute_name}`).sort().join('|')
+        : 'no_substitutions';
+
+      const productKey = `${product.plato_nombre || product.bebida_nombre || product.topping_nombre}_${substitutionsKey}`;
+
+      if (grouped[productKey]) {
+        // Si ya existe, sumar cantidad y precio total
+        grouped[productKey].cantidad += product.cantidad;
+        grouped[productKey].precio_total += product.precio_total;
+      } else {
+        // Si es nuevo, crear entrada
+        grouped[productKey] = { ...product };
+      }
+    });
+
+    return Object.values(grouped);
+  };
+
   const generatePrintHTML = (details: MinutaOrderDetails): string => {
     const tipoPedidoLabel = {
       delivery: 'DOMICILIO',
@@ -102,6 +127,11 @@ export const MinutaModal: React.FC<MinutaModalProps> = ({
       minute: '2-digit',
       hour12: false
     });
+
+    // Agrupar productos idénticos
+    const groupedPlatos = groupIdenticalProducts(details.platos);
+    const groupedBebidas = groupIdenticalProducts(details.bebidas);
+    const groupedToppings = groupIdenticalProducts(details.toppings);
 
     return `
 <!DOCTYPE html>
@@ -365,9 +395,9 @@ export const MinutaModal: React.FC<MinutaModalProps> = ({
       <div style="margin: 5px 0;"><strong>🍴 Cubiertos:</strong> ${details.cubiertos}</div>
       ` : ''}
         
-        ${details.platos.length > 0 ? `
+        ${groupedPlatos.length > 0 ? `
         <div style="margin: 5px 0;"><strong>Platos:</strong></div>
-        ${details.platos.map(plato => {
+        ${groupedPlatos.map(plato => {
           console.log(`🖨️ HTML: Renderizando ${plato.plato_nombre}, substitutions:`, plato.substitutions);
           let platoHTML = `<div class="product-item">• ${plato.plato_nombre}${plato.cantidad > 1 ? ` x${plato.cantidad}` : ''} - $${plato.precio_total.toLocaleString()}</div>`;
 
@@ -384,9 +414,9 @@ export const MinutaModal: React.FC<MinutaModalProps> = ({
         }).join('')}
         ` : ''}
 
-        ${details.bebidas.length > 0 ? `
+        ${groupedBebidas.length > 0 ? `
         <div style="margin: 5px 0;"><strong>Bebidas:</strong></div>
-        ${details.bebidas.map(bebida => `
+        ${groupedBebidas.map(bebida => `
         <div class="product-item">• ${bebida.bebida_nombre}${bebida.cantidad > 1 ? ` x${bebida.cantidad}` : ''} - $${bebida.precio_total.toLocaleString()}</div>
         ${bebida.substitutions ? bebida.substitutions.map(sub => `
         <div class="substitution-info">
@@ -396,9 +426,9 @@ export const MinutaModal: React.FC<MinutaModalProps> = ({
         `).join('')}
         ` : ''}
 
-        ${details.toppings.length > 0 ? `
+        ${groupedToppings.length > 0 ? `
         <div style="margin: 5px 0;"><strong>★ Toppings Extra:</strong></div>
-        ${details.toppings.map(topping => `
+        ${groupedToppings.map(topping => `
         <div class="product-item" style="color: #000; font-style: italic;">★ ${topping.topping_nombre}${topping.cantidad > 1 ? ` x${topping.cantidad}` : ''} - $${topping.precio_total.toLocaleString()}</div>
         ${topping.substitutions ? topping.substitutions.map(sub => `
         <div class="substitution-info substitution-topping">
@@ -536,10 +566,10 @@ export const MinutaModal: React.FC<MinutaModalProps> = ({
                   <div className="mt-2 text-sm">
                     <span className="font-medium">🍴 Cubiertos:</span> {typeof orderDetails.cubiertos === 'number' ? orderDetails.cubiertos : 0}
                   </div>
-                  {orderDetails.platos.length > 0 && (
+                  {groupIdenticalProducts(orderDetails.platos).length > 0 && (
                     <div className="mt-2">
                       <div className="font-medium">Platos:</div>
-                      {orderDetails.platos.map((plato, index) => (
+                      {groupIdenticalProducts(orderDetails.platos).map((plato, index) => (
                         <div key={index}>
                           <div className="ml-2 text-base font-bold text-black">
                             • {plato.plato_nombre}{plato.cantidad > 1 ? ` x${plato.cantidad}` : ''} - ${plato.precio_total.toLocaleString()}
@@ -566,10 +596,10 @@ export const MinutaModal: React.FC<MinutaModalProps> = ({
                       ))}
                     </div>
                   )}
-                  {orderDetails.bebidas.length > 0 && (
+                  {groupIdenticalProducts(orderDetails.bebidas).length > 0 && (
                     <div className="mt-2">
                       <div className="font-medium">Bebidas:</div>
-                      {orderDetails.bebidas.map((bebida, index) => (
+                      {groupIdenticalProducts(orderDetails.bebidas).map((bebida, index) => (
                         <div key={index}>
                           <div className="ml-2 text-base font-bold text-black">
                             • {bebida.bebida_nombre}{bebida.cantidad > 1 ? ` x${bebida.cantidad}` : ''} - ${bebida.precio_total.toLocaleString()}
@@ -591,10 +621,10 @@ export const MinutaModal: React.FC<MinutaModalProps> = ({
                       ))}
                     </div>
                   )}
-                  {orderDetails.toppings.length > 0 && (
+                  {groupIdenticalProducts(orderDetails.toppings).length > 0 && (
                     <div className="mt-2">
                       <div className="font-medium text-black">★ Toppings Extra:</div>
-                      {orderDetails.toppings.map((topping, index) => (
+                      {groupIdenticalProducts(orderDetails.toppings).map((topping, index) => (
                         <div key={index}>
                           <div className="ml-2 text-base font-bold text-black italic">
                             ★ {topping.topping_nombre}{topping.cantidad > 1 ? ` x${topping.cantidad}` : ''} - ${topping.precio_total.toLocaleString()}
