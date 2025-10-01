@@ -197,7 +197,8 @@ export function DiscountDialog({
     return new Intl.NumberFormat('es-CO', {
       style: 'currency',
       currency: 'COP',
-      minimumFractionDigits: 0
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 2
     }).format(amount);
   };
 
@@ -320,7 +321,7 @@ export function DiscountDialog({
                     className="pl-8"
                     min="0"
                     max={getSelectedPaymentInfo()?.amount || order.total}
-                    step="1000"
+                    step="0.01"
                     required
                   />
                 </div>
