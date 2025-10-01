@@ -3181,11 +3181,14 @@ export const Dashboard: React.FC<DashboardProps> = ({
                     let itemTextColor = 'text-gray-600';
 
                     if (productType === 'plato') {
-                      product = platos.find(p => p.id.toString() === realProductId);
+                      product = sedeProducts.platos.find(p => p.id.toString() === realProductId) ||
+                               platos.find(p => p.id.toString() === realProductId);
                     } else if (productType === 'bebida') {
-                      product = bebidas.find(b => b.id.toString() === realProductId);
+                      product = sedeProducts.bebidas.find(b => b.id.toString() === realProductId) ||
+                               bebidas.find(b => b.id.toString() === realProductId);
                     } else if (productType === 'topping') {
-                      product = toppings.find(t => t.id.toString() === realProductId);
+                      product = sedeProducts.toppings.find(t => t.id.toString() === realProductId) ||
+                               toppings.find(t => t.id.toString() === realProductId);
                       itemBgColor = 'bg-orange-50';
                       itemTextColor = 'text-orange-600';
                     }
