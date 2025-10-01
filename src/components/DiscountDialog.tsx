@@ -13,8 +13,9 @@ import { Label } from '@/components/ui/label';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
-import { AlertTriangle, Check, Loader2, Calculator } from 'lucide-react';
-import { discountService, type DiscountRequest } from '@/services/discountService';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { AlertTriangle, Check, Loader2, Calculator, CreditCard } from 'lucide-react';
+import { discountService, type DiscountRequest, type PaymentOption } from '@/services/discountService';
 import { useAuth } from '@/hooks/useAuth';
 
 // Tipos para la orden
@@ -44,19 +45,58 @@ export function DiscountDialog({
   const { user } = useAuth();
   const [discountAmount, setDiscountAmount] = useState<string>('');
   const [discountComment, setDiscountComment] = useState<string>('');
+  const [selectedPaymentId, setSelectedPaymentId] = useState<number | null>(null);
+  const [paymentOptions, setPaymentOptions] = useState<PaymentOption[]>([]);
+  const [isLoadingPayments, setIsLoadingPayments] = useState(false);
   const [isApplying, setIsApplying] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
+
+  // Cargar opciones de pago cuando se abre el diálogo
+  useEffect(() => {
+    if (isOpen && order) {
+      loadPaymentOptions();
+    }
+  }, [isOpen, order]);
 
   // Reset form when dialog opens/closes
   useEffect(() => {
     if (isOpen) {
       setDiscountAmount('');
       setDiscountComment('');
+      setSelectedPaymentId(null);
+      setPaymentOptions([]);
       setError(null);
       setSuccess(false);
     }
   }, [isOpen]);
+
+  // Cargar opciones de pago para la orden
+  const loadPaymentOptions = async () => {
+    if (!order) return;
+
+    setIsLoadingPayments(true);
+    try {
+      const options = await discountService.getOrderPaymentOptions(order.orden_id);
+      setPaymentOptions(options);
+
+      // Auto-seleccionar el primer pago si solo hay uno
+      if (options.length === 1) {
+        setSelectedPaymentId(options[0].paymentId);
+      } else if (options.length > 1) {
+        // Auto-seleccionar el pago principal si hay múltiples
+        const primaryPayment = options.find(p => p.isPrimary);
+        if (primaryPayment) {
+          setSelectedPaymentId(primaryPayment.paymentId);
+        }
+      }
+    } catch (error) {
+      console.error('❌ Error cargando opciones de pago:', error);
+      setError('Error cargando información de pagos');
+    } finally {
+      setIsLoadingPayments(false);
+    }
+  };
 
   // Validar entrada de descuento
   const validateInput = () => {
@@ -67,7 +107,14 @@ export function DiscountDialog({
       return false;
     }
 
-    if (amount > (order?.total || 0)) {
+    // Validar contra el método de pago seleccionado
+    const selectedPayment = paymentOptions.find(p => p.paymentId === selectedPaymentId);
+    if (selectedPayment && amount > selectedPayment.amount) {
+      setError(`El descuento no puede ser mayor al monto del pago seleccionado (${formatCurrency(selectedPayment.amount)})`);
+      return false;
+    }
+
+    if (!selectedPayment && amount > (order?.total || 0)) {
       setError('El descuento no puede ser mayor al total de la orden');
       return false;
     }
@@ -125,7 +172,8 @@ export function DiscountDialog({
         discountComment: discountComment.trim(),
         userId: user.id,
         userRole: user.role,
-        userSedeId: user.sede_id
+        userSedeId: user.sede_id,
+        targetPaymentId: selectedPaymentId || undefined
       };
 
       await discountService.applyDiscount(request);
@@ -153,11 +201,20 @@ export function DiscountDialog({
     }).format(amount);
   };
 
-  // Calcular nuevo total
-  const calculateNewTotal = () => {
+  // Calcular nuevo total del pago seleccionado
+  const calculateNewPaymentAmount = () => {
     const discount = parseFloat(discountAmount) || 0;
-    const originalTotal = order?.total || 0;
-    return Math.max(0, originalTotal - discount);
+    const selectedPayment = paymentOptions.find(p => p.paymentId === selectedPaymentId);
+    if (selectedPayment) {
+      return Math.max(0, selectedPayment.amount - discount);
+    }
+    return 0;
+  };
+
+  // Obtener información del pago seleccionado
+  const getSelectedPaymentInfo = () => {
+    const selectedPayment = paymentOptions.find(p => p.paymentId === selectedPaymentId);
+    return selectedPayment;
   };
 
   if (!order) {
@@ -208,6 +265,42 @@ export function DiscountDialog({
               </div>
             </div>
 
+            {/* Selector de método de pago (solo si hay múltiples) */}
+            {paymentOptions.length > 1 && (
+              <div className="bg-blue-50 p-4 rounded-lg space-y-3">
+                <div className="flex items-center gap-2">
+                  <CreditCard className="h-4 w-4 text-blue-600" />
+                  <span className="font-medium text-blue-800">Métodos de Pago Disponibles</span>
+                </div>
+
+                <div>
+                  <Label htmlFor="paymentMethod">
+                    Selecciona el método de pago al que aplicar el descuento *
+                  </Label>
+                  <Select
+                    value={selectedPaymentId?.toString() || ''}
+                    onValueChange={(value) => setSelectedPaymentId(parseInt(value))}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Seleccionar método de pago" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {paymentOptions.map((payment) => (
+                        <SelectItem key={payment.paymentId} value={payment.paymentId.toString()}>
+                          <div className="flex items-center justify-between w-full">
+                            <span>{payment.displayName}</span>
+                            {payment.isPrimary && (
+                              <Badge variant="secondary" className="ml-2 text-xs">Principal</Badge>
+                            )}
+                          </div>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+            )}
+
             {/* Campos del descuento */}
             <div className="space-y-4">
               <div>
@@ -226,15 +319,34 @@ export function DiscountDialog({
                     placeholder="0"
                     className="pl-8"
                     min="0"
-                    max={order.total}
+                    max={getSelectedPaymentInfo()?.amount || order.total}
                     step="1000"
                     required
                   />
                 </div>
-                {discountAmount && !isNaN(parseFloat(discountAmount)) && (
-                  <p className="text-sm text-gray-600 mt-1">
-                    Nuevo total: {formatCurrency(calculateNewTotal())}
-                  </p>
+
+                {/* Mostrar información del pago seleccionado */}
+                {getSelectedPaymentInfo() && discountAmount && !isNaN(parseFloat(discountAmount)) && (
+                  <div className="mt-2 p-3 bg-gray-50 rounded-md">
+                    <div className="text-sm space-y-1">
+                      <div className="flex justify-between">
+                        <span className="text-gray-600">Método seleccionado:</span>
+                        <span className="font-medium">{getSelectedPaymentInfo()?.displayName}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-gray-600">Monto original:</span>
+                        <span>{formatCurrency(getSelectedPaymentInfo()?.amount || 0)}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-gray-600">Descuento:</span>
+                        <span className="text-red-600">-{formatCurrency(parseFloat(discountAmount))}</span>
+                      </div>
+                      <div className="flex justify-between border-t pt-1 font-medium">
+                        <span>Nuevo monto:</span>
+                        <span className="text-green-600">{formatCurrency(calculateNewPaymentAmount())}</span>
+                      </div>
+                    </div>
+                  </div>
                 )}
               </div>
 
@@ -257,6 +369,14 @@ export function DiscountDialog({
               </div>
             </div>
 
+            {/* Indicador de carga de pagos */}
+            {isLoadingPayments && (
+              <Alert>
+                <Loader2 className="h-4 w-4 animate-spin" />
+                <AlertDescription>Cargando métodos de pago...</AlertDescription>
+              </Alert>
+            )}
+
             {error && (
               <Alert variant="destructive">
                 <AlertTriangle className="h-4 w-4" />
@@ -268,7 +388,16 @@ export function DiscountDialog({
               <Button type="button" variant="outline" onClick={onClose}>
                 Cancelar
               </Button>
-              <Button type="submit" disabled={!discountAmount || !discountComment.trim() || isApplying}>
+              <Button
+                type="submit"
+                disabled={
+                  !discountAmount ||
+                  !discountComment.trim() ||
+                  isApplying ||
+                  isLoadingPayments ||
+                  (paymentOptions.length > 1 && !selectedPaymentId)
+                }
+              >
                 {isApplying ? (
                   <>
                     <Loader2 className="w-4 h-4 mr-2 animate-spin" />

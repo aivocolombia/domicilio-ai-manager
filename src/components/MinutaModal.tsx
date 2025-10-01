@@ -162,8 +162,8 @@ export const MinutaModal: React.FC<MinutaModalProps> = ({
             font-weight: bold;
             margin: 3px 0;
             padding: 2px 6px;
-            background: #f0f0f0;
-            border: 1px solid #000;
+            background: white;
+            border: 2px solid #000;
             display: inline-block;
         }
         
@@ -211,9 +211,10 @@ export const MinutaModal: React.FC<MinutaModalProps> = ({
         }
         
         .products-table th {
-            background-color: #f0f0f0;
+            background-color: white;
             font-weight: bold;
             text-transform: uppercase;
+            border: 2px solid #000;
         }
         
         .products-table .qty {
@@ -228,8 +229,8 @@ export const MinutaModal: React.FC<MinutaModalProps> = ({
         .total-section {
             margin-top: 6px;
             padding: 4px;
-            background-color: #f9f9f9;
-            border: 1px solid #000;
+            background-color: white;
+            border: 3px solid #000;
             text-align: center;
         }
         
@@ -241,8 +242,8 @@ export const MinutaModal: React.FC<MinutaModalProps> = ({
         .observations {
             margin-top: 4px;
             padding: 3px;
-            background-color: #fff9c4;
-            border: 1px solid #000;
+            background-color: white;
+            border: 2px dashed #000;
             font-size: 8px;
         }
         
@@ -250,42 +251,47 @@ export const MinutaModal: React.FC<MinutaModalProps> = ({
             margin-top: 6px;
             text-align: center;
             font-size: 7px;
-            color: #666;
+            color: #000;
             border-top: 1px solid #000;
             padding-top: 2px;
         }
         
         .delivery-info {
-            background-color: #e8f5e8;
-            border-left: 4px solid #4caf50;
+            background-color: white;
+            border-left: 4px solid #000;
+            border-style: solid;
         }
-        
+
         .pickup-info {
-            background-color: #fff3e0;
-            border-left: 4px solid #ff9800;
+            background-color: white;
+            border-left: 4px double #000;
+            border-style: double;
         }
-        
+
         .dine-in-info {
-            background-color: #f3e5f5;
-            border-left: 4px solid #9c27b0;
+            background-color: white;
+            border-left: 4px dashed #000;
+            border-style: dashed;
         }
 
         .substitution-info {
             font-size: 8px;
             margin-left: 10px;
-            color: #007acc;
+            color: #000;
             font-weight: bold;
             padding: 1px 0;
-            border-left: 2px solid #007acc;
+            border-left: 2px solid #000;
             padding-left: 5px;
             margin-top: 2px;
-            background-color: #f0f8ff;
+            background-color: white;
+            border: 1px solid #000;
         }
 
         .substitution-topping {
-            color: #ff6b35;
-            border-left-color: #ff6b35;
-            background-color: #fff8f0;
+            color: #000;
+            border-left: 3px solid #000;
+            background-color: white;
+            font-style: italic;
         }
     </style>
 </head>
@@ -391,9 +397,9 @@ export const MinutaModal: React.FC<MinutaModalProps> = ({
         ` : ''}
 
         ${details.toppings.length > 0 ? `
-        <div style="margin: 5px 0;"><strong>Toppings Extra:</strong></div>
+        <div style="margin: 5px 0;"><strong>★ Toppings Extra:</strong></div>
         ${details.toppings.map(topping => `
-        <div class="product-item" style="color: #ff6b35;">• ${topping.topping_nombre}${topping.cantidad > 1 ? ` x${topping.cantidad}` : ''} - $${topping.precio_total.toLocaleString()}</div>
+        <div class="product-item" style="color: #000; font-style: italic;">★ ${topping.topping_nombre}${topping.cantidad > 1 ? ` x${topping.cantidad}` : ''} - $${topping.precio_total.toLocaleString()}</div>
         ${topping.substitutions ? topping.substitutions.map(sub => `
         <div class="substitution-info substitution-topping">
           🔄 Topping: ${sub.original_name} → ${sub.substitute_name}
@@ -430,8 +436,8 @@ export const MinutaModal: React.FC<MinutaModalProps> = ({
     ${details.observaciones ? `
     <!-- Observaciones -->
     <div class="observations">
-        <div class="info-header" style="border: none; color: #f57f17;">💬 Observaciones</div>
-        <p>${details.observaciones}</p>
+        <div class="info-header" style="border: none; color: #000; font-weight: bold;">💬 OBSERVACIONES IMPORTANTES</div>
+        <p style="font-weight: bold;">${details.observaciones}</p>
     </div>
     ` : ''}
 
@@ -519,7 +525,7 @@ export const MinutaModal: React.FC<MinutaModalProps> = ({
                 </div>
 
                 {orderDetails.tipo_pedido === 'delivery' && orderDetails.repartidor_nombre && (
-                  <div className="border p-2 bg-green-50 rounded">
+                  <div className="border-2 border-black p-2 bg-white rounded">
                     <strong>🚚 Repartidor</strong>
                     <div>Nombre: {orderDetails.repartidor_nombre}</div>
                   </div>
@@ -543,11 +549,13 @@ export const MinutaModal: React.FC<MinutaModalProps> = ({
                               {plato.substitutions.map((sub, subIdx) => (
                                 <div
                                   key={subIdx}
-                                  className={`text-xs font-bold px-2 py-1 rounded border-l-2 ${
-                                    sub.type === 'topping_substitution'
-                                      ? 'bg-orange-50 border-orange-400 text-orange-700'
-                                      : 'bg-blue-50 border-blue-400 text-blue-700'
+                                  className={`text-xs font-bold px-2 py-1 rounded border-l-2 bg-white border-black text-black ${
+                                    sub.type === 'topping_substitution' ? 'italic' : ''
                                   }`}
+                                  style={{
+                                    border: sub.type === 'topping_substitution' ? '2px solid #000' : '1px solid #000',
+                                    backgroundColor: 'white'
+                                  }}
                                 >
                                   🔄 {sub.type === 'topping_substitution' ? 'Topping' : 'Producto'}: {sub.original_name} → {sub.substitute_name}
                                 </div>
@@ -571,7 +579,8 @@ export const MinutaModal: React.FC<MinutaModalProps> = ({
                               {bebida.substitutions.map((sub, subIdx) => (
                                 <div
                                   key={subIdx}
-                                  className="text-xs font-bold px-2 py-1 rounded border-l-2 bg-blue-50 border-blue-400 text-blue-700"
+                                  className="text-xs font-bold px-2 py-1 rounded border-l-2 bg-white border-black text-black"
+                                  style={{ border: '1px solid #000', backgroundColor: 'white' }}
                                 >
                                   🔄 Producto: {sub.original_name} → {sub.substitute_name}
                                 </div>
@@ -584,18 +593,19 @@ export const MinutaModal: React.FC<MinutaModalProps> = ({
                   )}
                   {orderDetails.toppings.length > 0 && (
                     <div className="mt-2">
-                      <div className="font-medium text-orange-600">Toppings Extra:</div>
+                      <div className="font-medium text-black">★ Toppings Extra:</div>
                       {orderDetails.toppings.map((topping, index) => (
                         <div key={index}>
-                          <div className="ml-2 text-base font-bold text-orange-600">
-                            • {topping.topping_nombre}{topping.cantidad > 1 ? ` x${topping.cantidad}` : ''} - ${topping.precio_total.toLocaleString()}
+                          <div className="ml-2 text-base font-bold text-black italic">
+                            ★ {topping.topping_nombre}{topping.cantidad > 1 ? ` x${topping.cantidad}` : ''} - ${topping.precio_total.toLocaleString()}
                           </div>
                           {topping.substitutions && topping.substitutions.length > 0 && (
                             <div className="ml-4 space-y-1">
                               {topping.substitutions.map((sub, subIdx) => (
                                 <div
                                   key={subIdx}
-                                  className="text-xs font-bold px-2 py-1 rounded border-l-2 bg-orange-50 border-orange-400 text-orange-700"
+                                  className="text-xs font-bold px-2 py-1 rounded border-l-2 bg-white border-black text-black italic"
+                                  style={{ border: '2px solid #000', backgroundColor: 'white' }}
                                 >
                                   🔄 Topping: {sub.original_name} → {sub.substitute_name}
                                 </div>
@@ -631,9 +641,9 @@ export const MinutaModal: React.FC<MinutaModalProps> = ({
                 </div>
 
                 {orderDetails.observaciones && (
-                  <div className="border p-2 bg-yellow-50 rounded">
-                    <strong>💬 Observaciones</strong>
-                    <div>{orderDetails.observaciones}</div>
+                  <div className="border-2 border-dashed border-black p-2 bg-white rounded">
+                    <strong>💬 OBSERVACIONES IMPORTANTES</strong>
+                    <div className="font-bold">{orderDetails.observaciones}</div>
                   </div>
                 )}
               </div>

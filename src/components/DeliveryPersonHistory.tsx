@@ -62,16 +62,31 @@ export const DeliveryPersonHistory: React.FC<DeliveryPersonHistoryProps> = ({
     entregado_otros: deliveryPerson.entregado_otros || 0
   };
   
-  // Filter by today if toggle is active
+  // Filter by today if toggle is active (Colombia timezone)
   const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const tomorrow = new Date(today);
-  tomorrow.setDate(tomorrow.getDate() + 1);
+  // Convertir a zona horaria de Colombia (UTC-5)
+  const colombiaOffset = -5 * 60; // -5 horas en minutos
+  const colombiaToday = new Date(today.getTime() + (colombiaOffset - today.getTimezoneOffset()) * 60000);
+  colombiaToday.setHours(0, 0, 0, 0);
+  const colombiaTomorrow = new Date(colombiaToday);
+  colombiaTomorrow.setDate(colombiaTomorrow.getDate() + 1);
+
+  console.log('🕐 [DEBUG] Fecha filters para historial:', {
+    original: today.toISOString(),
+    colombiaToday: colombiaToday.toISOString(),
+    colombiaTomorrow: colombiaTomorrow.toISOString()
+  });
   
-  const filteredOrders = showTodayOnly 
+  const filteredOrders = showTodayOnly
     ? historialPedidos.filter(order => {
         const orderDate = new Date(order.created_at);
-        return orderDate >= today && orderDate < tomorrow;
+        console.log(`🔍 [DEBUG] Comparando orden ${order.id}:`, {
+          orderDate: orderDate.toISOString(),
+          colombiaToday: colombiaToday.toISOString(),
+          colombiaTomorrow: colombiaTomorrow.toISOString(),
+          isInRange: orderDate >= colombiaToday && orderDate < colombiaTomorrow
+        });
+        return orderDate >= colombiaToday && orderDate < colombiaTomorrow;
       })
     : historialPedidos;
 
@@ -81,10 +96,10 @@ export const DeliveryPersonHistory: React.FC<DeliveryPersonHistoryProps> = ({
   const totalAssigned = filteredOrders.length; // Todos los pedidos asignados
   const totalDelivered = completedOrders.reduce((sum, order) => sum + (order.pagos?.total_pago || 0), 0);
 
-  // Calculate today's metrics
+  // Calculate today's metrics (using Colombia timezone)
   const todayOrders = historialPedidos.filter(order => {
     const orderDate = new Date(order.created_at);
-    return orderDate >= today && orderDate < tomorrow;
+    return orderDate >= colombiaToday && orderDate < colombiaTomorrow;
   });
   const todayCompleted = todayOrders.filter(order => order.status === 'Entregados');
   

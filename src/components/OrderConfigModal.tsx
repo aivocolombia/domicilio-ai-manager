@@ -69,7 +69,10 @@ export const OrderConfigModal: React.FC<OrderConfigModalProps> = ({
       setIsLoading(true);
       
       // Cargar repartidores disponibles (filtrado por sede)
+      console.log('🔧 [DEBUG OrderConfigModal] Cargando repartidores para sede:', currentSedeId);
       const personnel = await orderStatusService.getAvailableDeliveryPersonnel(currentSedeId);
+      console.log('🔧 [DEBUG OrderConfigModal] Repartidores recibidos:', personnel.length);
+      console.log('🔧 [DEBUG OrderConfigModal] Lista de repartidores:', personnel.map(p => ({ id: p.id, nombre: p.nombre })));
       setAvailableDeliveryPersonnel(personnel);
       
       // Obtener estados actuales y tipos de los pedidos seleccionados

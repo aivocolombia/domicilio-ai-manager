@@ -136,16 +136,19 @@ class DeliveryService {
             const endOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 23, 59, 59, 999);
 
             // Query SQL directo para obtener estadísticas del repartidor
+            console.log(`🔍 [DEBUG] Obteniendo órdenes para repartidor ${repartidor.id}`);
             const { data: stats, error: errorStats } = await supabase
               .from('ordenes')
               .select(`
                 id,
                 status,
                 payment_id,
-                created_at,
-                pagos!inner(total_pago, type)
+                payment_id_2,
+                created_at
               `)
               .eq('repartidor_id', repartidor.id);
+
+            console.log(`📊 [DEBUG] Órdenes encontradas para repartidor ${repartidor.id}:`, stats?.length || 0);
 
             if (errorStats) {
               console.error(`❌ Error al obtener estadísticas para repartidor ${repartidor.id}:`, errorStats);
@@ -168,27 +171,58 @@ class DeliveryService {
             }) || [];
 
             // Calcular estadísticas manualmente (activos de cualquier día)
-            const pedidosActivos = stats?.filter(order => 
+            const pedidosActivos = stats?.filter(order =>
               ['Recibidos', 'Cocina', 'Camino'].includes(order.status)
             ).length || 0;
-            
+
             // Entregados solo del día de hoy
-            const entregadosHoy = ordersToday.filter(order => 
+            const entregadosHoy = ordersToday.filter(order =>
               order.status === 'Entregados'
             );
-            
+
             const totalAsignados = stats?.length || 0;
-            
-            // Calcular totales por método de pago (solo entregas de hoy)
-            const entregadosEfectivo = entregadosHoy
-              .filter(order => order.pagos?.type === 'efectivo')
-              .reduce((sum, order) => sum + (order.pagos?.total_pago || 0), 0);
-              
-            const entregadosOtros = entregadosHoy
-              .filter(order => order.pagos?.type !== 'efectivo')
-              .reduce((sum, order) => sum + (order.pagos?.total_pago || 0), 0);
-            
+
+            // Obtener información de pagos para las órdenes entregadas hoy
+            let entregadosEfectivo = 0;
+            let entregadosOtros = 0;
+
+            if (entregadosHoy.length > 0) {
+              // Obtener payment_ids de las órdenes entregadas hoy
+              const paymentIds = [];
+              entregadosHoy.forEach(order => {
+                if (order.payment_id) paymentIds.push(order.payment_id);
+                if (order.payment_id_2) paymentIds.push(order.payment_id_2);
+              });
+
+              if (paymentIds.length > 0) {
+                console.log(`💳 [DEBUG] Consultando ${paymentIds.length} pagos para repartidor ${repartidor.id}`);
+                const { data: pagos, error: errorPagos } = await supabase
+                  .from('pagos')
+                  .select('total_pago, type')
+                  .in('id', paymentIds);
+
+                if (!errorPagos && pagos) {
+                  entregadosEfectivo = pagos
+                    .filter(pago => pago.type === 'efectivo')
+                    .reduce((sum, pago) => sum + (pago.total_pago || 0), 0);
+
+                  entregadosOtros = pagos
+                    .filter(pago => pago.type !== 'efectivo')
+                    .reduce((sum, pago) => sum + (pago.total_pago || 0), 0);
+                } else {
+                  console.warn(`⚠️ [DEBUG] Error obteniendo pagos para repartidor ${repartidor.id}:`, errorPagos);
+                }
+              }
+            }
+
             const totalEntregadoHoy = entregadosEfectivo + entregadosOtros;
+
+            console.log(`💰 [DEBUG] Cálculos financieros para repartidor ${repartidor.id}:`, {
+              entregadosHoy: entregadosHoy.length,
+              totalEntregadoHoy,
+              entregadosEfectivo,
+              entregadosOtros
+            });
 
             const estadisticas = {
               pedidos_activos: pedidosActivos,
@@ -367,9 +401,10 @@ class DeliveryService {
   // Obtener historial de pedidos de un repartidor
   async getHistorialRepartidor(repartidorId: number): Promise<any[]> {
     try {
-      console.log('📋 Consultando historial del repartidor:', repartidorId);
-      
-      const { data, error } = await supabase
+      console.log('📋 [DEBUG] Consultando historial del repartidor:', repartidorId);
+
+      // Primero obtener todas las órdenes del repartidor
+      const { data: ordenes, error: ordenesError } = await supabase
         .from('ordenes')
         .select(`
           *,
@@ -377,22 +412,68 @@ class DeliveryService {
             nombre,
             telefono,
             direccion
-          ),
-          pagos (
-            total_pago,
-            type
           )
         `)
         .eq('repartidor_id', repartidorId)
         .order('created_at', { ascending: false });
 
-      if (error) {
-        console.error('❌ Error al obtener historial del repartidor:', error);
-        throw new Error(`Error al obtener historial: ${error.message}`);
+      if (ordenesError) {
+        console.error('❌ Error al obtener órdenes del repartidor:', ordenesError);
+        throw new Error(`Error al obtener historial: ${ordenesError.message}`);
       }
 
-      console.log('✅ Historial obtenido:', data?.length || 0, 'pedidos');
-      return data || [];
+      console.log('📋 [DEBUG] Órdenes obtenidas:', ordenes?.length || 0);
+
+      // Para cada orden, obtener información de pagos si existe
+      const ordenesConPagos = await Promise.all(
+        (ordenes || []).map(async (orden) => {
+          try {
+            let pagos = null;
+
+            // Intentar obtener pago principal
+            if (orden.payment_id) {
+              const { data: pagoData, error: pagoError } = await supabase
+                .from('pagos')
+                .select('total_pago, type')
+                .eq('id', orden.payment_id)
+                .single();
+
+              if (!pagoError && pagoData) {
+                pagos = pagoData;
+              }
+            }
+
+            // Si no hay pago principal, intentar con payment_id_2
+            if (!pagos && orden.payment_id_2) {
+              const { data: pagoData2, error: pagoError2 } = await supabase
+                .from('pagos')
+                .select('total_pago, type')
+                .eq('id', orden.payment_id_2)
+                .single();
+
+              if (!pagoError2 && pagoData2) {
+                pagos = pagoData2;
+              }
+            }
+
+            console.log(`💳 [DEBUG] Pago para orden ${orden.id}:`, pagos);
+
+            return {
+              ...orden,
+              pagos: pagos
+            };
+          } catch (error) {
+            console.warn(`⚠️ [DEBUG] Error obteniendo pago para orden ${orden.id}:`, error);
+            return {
+              ...orden,
+              pagos: null
+            };
+          }
+        })
+      );
+
+      console.log('✅ [DEBUG] Historial completo obtenido:', ordenesConPagos.length, 'pedidos con información de pagos');
+      return ordenesConPagos;
     } catch (error) {
       console.error('❌ Error en getHistorialRepartidor:', error);
       throw error;

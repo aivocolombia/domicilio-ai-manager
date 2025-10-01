@@ -22,6 +22,15 @@ export interface DiscountRequest {
   userId: string;
   userRole: string;
   userSedeId: string;
+  targetPaymentId?: number; // ID específico del pago al que aplicar el descuento
+}
+
+export interface PaymentOption {
+  paymentId: number;
+  type: string;
+  amount: number;
+  isPrimary: boolean;
+  displayName: string;
 }
 
 export interface DiscountMetrics {
@@ -216,48 +225,66 @@ export class DiscountService {
         throw new Error(`Solicitud Inválida - ${requestValidation.error}`);
       }
 
-      // Primero obtener la orden para conocer el total original
-      const { data: orderData, error: orderError } = await supabase
-        .from('ordenes')
-        .select(`
-          id,
-          payment_id,
-          pagos!payment_id(total_pago)
-        `)
-        .eq('id', request.orderId)
-        .single();
+      // Obtener opciones de pago disponibles
+      const paymentOptions = await this.getOrderPaymentOptions(request.orderId);
 
-      if (orderError || !orderData) {
-        console.error('❌ Error obteniendo orden:', orderError);
-        throw new Error('Error obteniendo información de la orden');
+      if (paymentOptions.length === 0) {
+        throw new Error('No se encontraron métodos de pago para esta orden');
       }
 
-      const originalTotal = orderData.pagos?.total_pago || 0;
+      // Determinar a qué pago aplicar el descuento
+      let targetPayment: PaymentOption;
 
-      // Validar descuento contra el total de la orden
-      const totalValidation = this.validateDiscountAgainstTotal(request.discountAmount, originalTotal);
-      if (!totalValidation.isValid) {
-        console.log('❌ Descuento inválido contra total:', totalValidation.error);
-        throw new Error(`Descuento Inválido - ${totalValidation.error}`);
+      if (request.targetPaymentId) {
+        // Buscar el pago específico seleccionado
+        const selectedPayment = paymentOptions.find(p => p.paymentId === request.targetPaymentId);
+        if (!selectedPayment) {
+          throw new Error('El método de pago seleccionado no existe para esta orden');
+        }
+        targetPayment = selectedPayment;
+      } else {
+        // Si no se especificó, usar el pago principal (o el único si hay uno solo)
+        targetPayment = paymentOptions.find(p => p.isPrimary) || paymentOptions[0];
       }
 
-      const newTotal = Math.max(0, originalTotal - request.discountAmount);
+      console.log('💳 Aplicando descuento a pago:', {
+        paymentId: targetPayment.paymentId,
+        type: targetPayment.type,
+        amount: targetPayment.amount
+      });
 
-      console.log('💰 Calculando nuevo total:', {
-        originalTotal,
+      // Validar descuento contra el monto del pago seleccionado
+      const paymentValidation = this.validateDiscountAgainstTotal(request.discountAmount, targetPayment.amount);
+      if (!paymentValidation.isValid) {
+        console.log('❌ Descuento inválido contra pago:', paymentValidation.error);
+        throw new Error(`Descuento Inválido - ${paymentValidation.error}`);
+      }
+
+      const newPaymentAmount = Math.max(0, targetPayment.amount - request.discountAmount);
+
+      console.log('💰 Calculando nuevo monto de pago:', {
+        originalAmount: targetPayment.amount,
         discountAmount: request.discountAmount,
-        newTotal
+        newAmount: newPaymentAmount,
+        paymentType: targetPayment.type
       });
 
       // Aplicar descuento en la base de datos (transacción)
       const appliedDate = new Date().toISOString();
+
+      // Preparar comentario con información del método de pago
+      const paymentInfo = paymentOptions.length > 1
+        ? ` (aplicado a ${targetPayment.type}: $${targetPayment.amount.toLocaleString()})`
+        : '';
+
+      const fullComment = `${request.discountComment.trim()}${paymentInfo}`;
 
       // Actualizar campos de descuento en la orden
       const { error: updateOrderError } = await supabase
         .from('ordenes')
         .update({
           descuento_valor: request.discountAmount,
-          descuento_comentario: request.discountComment.trim(),
+          descuento_comentario: fullComment,
           descuento_aplicado_por: request.userId,
           descuento_aplicado_fecha: appliedDate
         })
@@ -268,30 +295,31 @@ export class DiscountService {
         throw new Error(`Error aplicando descuento en orden: ${updateOrderError.message}`);
       }
 
-      // Actualizar el total en la tabla de pagos
-      if (orderData.payment_id) {
-        const { error: updatePaymentError } = await supabase
-          .from('pagos')
-          .update({
-            total_pago: newTotal
-          })
-          .eq('id', orderData.payment_id);
+      // Actualizar el monto del pago específico
+      const { error: updatePaymentError } = await supabase
+        .from('pagos')
+        .update({
+          total_pago: newPaymentAmount
+        })
+        .eq('id', targetPayment.paymentId);
 
-        if (updatePaymentError) {
-          console.error('❌ Error actualizando total de pago:', updatePaymentError);
-          throw new Error(`Error actualizando total de pago: ${updatePaymentError.message}`);
-        }
-
-        console.log('✅ Total de pago actualizado:', {
-          paymentId: orderData.payment_id,
-          newTotal
-        });
+      if (updatePaymentError) {
+        console.error('❌ Error actualizando monto de pago:', updatePaymentError);
+        throw new Error(`Error actualizando monto de pago: ${updatePaymentError.message}`);
       }
+
+      console.log('✅ Monto de pago actualizado:', {
+        paymentId: targetPayment.paymentId,
+        paymentType: targetPayment.type,
+        originalAmount: targetPayment.amount,
+        newAmount: newPaymentAmount,
+        discount: request.discountAmount
+      });
 
       const discountApplication: DiscountApplication = {
         orderId: request.orderId,
         discountAmount: request.discountAmount,
-        discountComment: request.discountComment.trim(),
+        discountComment: fullComment,
         appliedBy: request.userId,
         appliedDate
       };
@@ -394,6 +422,74 @@ export class DiscountService {
       console.error('❌ Error en getDiscountMetrics:', error);
       throw error;
     }
+  }
+
+  // Obtener opciones de pago disponibles para una orden
+  async getOrderPaymentOptions(orderId: number): Promise<PaymentOption[]> {
+    try {
+      console.log('💳 Obteniendo opciones de pago para orden:', orderId);
+
+      const { data: orderData, error: orderError } = await supabase
+        .from('ordenes')
+        .select(`
+          id,
+          payment_id,
+          payment_id_2,
+          pagos!payment_id(id, type, total_pago),
+          pagos_secondary:pagos!payment_id_2(id, type, total_pago)
+        `)
+        .eq('id', orderId)
+        .single();
+
+      if (orderError || !orderData) {
+        console.error('❌ Error obteniendo orden:', orderError);
+        return [];
+      }
+
+      const options: PaymentOption[] = [];
+
+      // Pago principal
+      if (orderData.pagos) {
+        const payment = orderData.pagos as any;
+        options.push({
+          paymentId: payment.id,
+          type: payment.type || 'efectivo',
+          amount: payment.total_pago || 0,
+          isPrimary: true,
+          displayName: `${this.getPaymentDisplayName(payment.type)} - $${(payment.total_pago || 0).toLocaleString()}`
+        });
+      }
+
+      // Pago secundario
+      if (orderData.pagos_secondary) {
+        const payment = orderData.pagos_secondary as any;
+        options.push({
+          paymentId: payment.id,
+          type: payment.type || 'efectivo',
+          amount: payment.total_pago || 0,
+          isPrimary: false,
+          displayName: `${this.getPaymentDisplayName(payment.type)} - $${(payment.total_pago || 0).toLocaleString()}`
+        });
+      }
+
+      console.log('✅ Opciones de pago obtenidas:', options);
+      return options;
+    } catch (error) {
+      console.error('❌ Error en getOrderPaymentOptions:', error);
+      return [];
+    }
+  }
+
+  // Obtener nombre de visualización para método de pago
+  private getPaymentDisplayName(type: string): string {
+    const displayNames: Record<string, string> = {
+      'efectivo': 'Efectivo',
+      'tarjeta': 'Tarjeta',
+      'transferencia': 'Transferencia',
+      'nequi': 'Nequi',
+      'daviplata': 'Daviplata'
+    };
+    return displayNames[type] || type;
   }
 
   // Validar si una orden puede recibir descuento

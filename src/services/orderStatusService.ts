@@ -219,7 +219,8 @@ export class OrderStatusService {
     ordenes_activas: number;
   }>> {
     try {
-      console.log('👥 Obteniendo repartidores disponibles para sede:', sede_id);
+      console.log('👥 [DEBUG] Obteniendo repartidores disponibles para sede:', sede_id);
+      console.log('👥 [DEBUG] Tipo de sede_id:', typeof sede_id, 'Valor:', sede_id);
 
       let query = supabase
         .from('repartidores')
@@ -241,6 +242,9 @@ export class OrderStatusService {
       }
 
       const { data, error } = await query;
+
+      console.log('👥 [DEBUG] Query ejecutada, datos recibidos:', data?.length || 0, 'repartidores');
+      console.log('👥 [DEBUG] Primeros 3 repartidores:', data?.slice(0, 3));
 
       if (error) {
         console.error('❌ Error obteniendo repartidores:', error);
@@ -271,7 +275,8 @@ export class OrderStatusService {
         })
       );
 
-      console.log('✅ Repartidores obtenidos:', repartidoresConStats.length);
+      console.log('✅ [DEBUG] Repartidores finales obtenidos:', repartidoresConStats.length);
+      console.log('👥 [DEBUG] Lista final de repartidores:', repartidoresConStats.map(r => ({ id: r.id, nombre: r.nombre })));
       return repartidoresConStats;
     } catch (error) {
       console.error('❌ Error en getAvailableDeliveryPersonnel:', error);
