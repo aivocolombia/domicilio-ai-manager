@@ -40,15 +40,15 @@ export const getEndOfDay = (date: Date): Date => {
 
 /**
  * Formatea una fecha para consultas de base de datos
- * Solución simplificada que funciona correctamente con la zona horaria local
+ * Corregido para manejar correctamente la zona horaria de Colombia
  */
 export const formatDateForQuery = (date: Date, isEndOfDay: boolean = false): string => {
   // Crear una nueva fecha basada en la fecha de entrada
   const year = date.getFullYear();
   const month = date.getMonth(); // 0-based
   const day = date.getDate();
-  
-  // Crear fecha en zona horaria local  
+
+  // Crear fecha en zona horaria local
   let targetDate: Date;
   if (isEndOfDay) {
     // Fin del día: 23:59:59.999
@@ -57,7 +57,7 @@ export const formatDateForQuery = (date: Date, isEndOfDay: boolean = false): str
     // Inicio del día: 00:00:00.000
     targetDate = new Date(year, month, day, 0, 0, 0, 0);
   }
-  
+
   // Crear manualmente la fecha en formato ISO sin conversión automática de zona horaria
   const localYear = targetDate.getFullYear();
   const localMonth = String(targetDate.getMonth() + 1).padStart(2, '0');
@@ -65,16 +65,16 @@ export const formatDateForQuery = (date: Date, isEndOfDay: boolean = false): str
   const localHour = String(targetDate.getHours()).padStart(2, '0');
   const localMinute = String(targetDate.getMinutes()).padStart(2, '0');
   const localSecond = String(targetDate.getSeconds()).padStart(2, '0');
-  
-  // Formato: YYYY-MM-DDTHH:mm:ssZ (agregamos Z para indicar UTC)
-  const result = `${localYear}-${localMonth}-${localDay}T${localHour}:${localMinute}:${localSecond}Z`;
-  
+
+  // Formato sin Z para evitar problemas de zona horaria - Colombia UTC-5
+  const result = `${localYear}-${localMonth}-${localDay}T${localHour}:${localMinute}:${localSecond}-05:00`;
+
   console.log(`🔍 formatDateForQuery: ${isEndOfDay ? 'Final' : 'Inicio'} del día`, {
     inputDate: date.toLocaleDateString('es-CO'),
     targetLocal: `${localDay}/${localMonth}/${localYear} ${localHour}:${localMinute}:${localSecond}`,
     result
   });
-  
+
   return result;
 };
 

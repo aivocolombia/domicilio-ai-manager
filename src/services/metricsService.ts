@@ -209,27 +209,30 @@ export class MetricsService {
       });
 
       // Procesar datos para agrupar por día
-      const metricasPorDia = new Map<string, { pedidos: number; ingresos: number }>();
+      const metricasPorDia = new Map<string, { pedidos: number; pedidos_entregados: number; ingresos: number }>();
 
       ordenesData?.forEach((orden) => {
         const fecha = new Date(orden.created_at).toISOString().split('T')[0];
-        const ingresos = pagosMap.get(orden.id) || 0;
+        // Solo contar ingresos de órdenes entregadas
+        const ingresos = orden.status === 'Entregados' ? (pagosMap.get(orden.id) || 0) : 0;
+        const esEntregado = orden.status === 'Entregados' ? 1 : 0;
 
         if (metricasPorDia.has(fecha)) {
           const existing = metricasPorDia.get(fecha)!;
-          existing.pedidos += 1;
-          existing.ingresos += ingresos;
+          existing.pedidos += 1; // Contar todos los pedidos
+          existing.pedidos_entregados += esEntregado; // Contar solo entregados
+          existing.ingresos += ingresos; // Solo ingresos de entregados
         } else {
-          metricasPorDia.set(fecha, { pedidos: 1, ingresos });
+          metricasPorDia.set(fecha, { pedidos: 1, pedidos_entregados: esEntregado, ingresos });
         }
       });
 
-      // Convertir a array y calcular promedios
+      // Convertir a array y calcular promedios basados en pedidos entregados
       const resultado: MetricsByDay[] = Array.from(metricasPorDia.entries()).map(([fecha, datos]) => ({
         fecha,
         total_pedidos: datos.pedidos,
         total_ingresos: datos.ingresos,
-        promedio_por_pedido: datos.pedidos > 0 ? datos.ingresos / datos.pedidos : 0
+        promedio_por_pedido: datos.pedidos_entregados > 0 ? datos.ingresos / datos.pedidos_entregados : 0
       }));
 
       console.log('✅ Métricas por día calculadas:', resultado.length, 'días');
@@ -258,8 +261,8 @@ export class MetricsService {
             bebidas(id, name, pricing)
           )
         `)
-        .gte('created_at', `${filters.fecha_inicio}T00:00:00`)
-        .lte('created_at', `${filters.fecha_fin}T23:59:59`);
+        .gte('created_at', formatDateForQuery(new Date(`${filters.fecha_inicio}T00:00:00`), false))
+        .lte('created_at', formatDateForQuery(new Date(`${filters.fecha_fin}T23:59:59`), true));
 
       if (filters.sede_id) {
         query = query.eq('sede_id', filters.sede_id);
@@ -359,8 +362,8 @@ export class MetricsService {
           created_at,
           sede_nombre
         `)
-        .gte('created_at', `${filters.fecha_inicio}T00:00:00`)
-        .lte('created_at', `${filters.fecha_fin}T23:59:59`);
+        .gte('created_at', formatDateForQuery(new Date(`${filters.fecha_inicio}T00:00:00`), false))
+        .lte('created_at', formatDateForQuery(new Date(`${filters.fecha_fin}T23:59:59`), true));
 
       if (sedeError) {
         console.error('❌ Error obteniendo métricas por sede:', sedeError);
@@ -463,8 +466,8 @@ export class MetricsService {
           created_at,
           sede_id
         `)
-        .gte('created_at', `${filters.fecha_inicio}T00:00:00`)
-        .lte('created_at', `${filters.fecha_fin}T23:59:59`);
+        .gte('created_at', formatDateForQuery(new Date(`${filters.fecha_inicio}T00:00:00`), false))
+        .lte('created_at', formatDateForQuery(new Date(`${filters.fecha_fin}T23:59:59`), true));
 
       if (filters.sede_id) {
         query = query.eq('sede_id', filters.sede_id);
@@ -529,11 +532,16 @@ export class MetricsService {
         .eq('status', 'Cancelado')
         .order('created_at', { ascending: false });
 
-      // Aplicar filtros de fecha
+      // Aplicar filtros de fecha con formato correcto de zona horaria
       if (filters.fecha_inicio && filters.fecha_fin) {
+        const startDate = new Date(`${filters.fecha_inicio}T00:00:00`);
+        const endDate = new Date(`${filters.fecha_fin}T23:59:59`);
+        const startQuery = formatDateForQuery(startDate, false);
+        const endQuery = formatDateForQuery(endDate, true);
+
         query = query
-          .gte('created_at', filters.fecha_inicio)
-          .lte('created_at', filters.fecha_fin);
+          .gte('created_at', startQuery)
+          .lte('created_at', endQuery);
       }
 
       // Las métricas de cancelación son globales - no se filtra por sede
@@ -553,9 +561,14 @@ export class MetricsService {
 
       // Solo aplicar filtros de fecha (las métricas de cancelación son globales)
       if (filters.fecha_inicio && filters.fecha_fin) {
+        const startDate = new Date(`${filters.fecha_inicio}T00:00:00`);
+        const endDate = new Date(`${filters.fecha_fin}T23:59:59`);
+        const startQuery = formatDateForQuery(startDate, false);
+        const endQuery = formatDateForQuery(endDate, true);
+
         totalQuery = totalQuery
-          .gte('created_at', filters.fecha_inicio)
-          .lte('created_at', filters.fecha_fin);
+          .gte('created_at', startQuery)
+          .lte('created_at', endQuery);
       }
 
       const { data: totalPedidos, error: totalError } = await totalQuery;
@@ -700,12 +713,12 @@ export class MetricsService {
 
       if (filters.fecha_inicio) {
         console.log('📅 MetricsService: Filtrando desde fecha:', filters.fecha_inicio);
-        query = query.gte('created_at', `${filters.fecha_inicio}T00:00:00`);
+        query = query.gte('created_at', formatDateForQuery(new Date(`${filters.fecha_inicio}T00:00:00`), false));
       }
-      
+
       if (filters.fecha_fin) {
         console.log('📅 MetricsService: Filtrando hasta fecha:', filters.fecha_fin);
-        query = query.lte('created_at', `${filters.fecha_fin}T23:59:59`);
+        query = query.lte('created_at', formatDateForQuery(new Date(`${filters.fecha_fin}T23:59:59`), true));
       }
 
       const { data, error } = await query.limit(500); // Incrementar límite para más datos
@@ -873,19 +886,16 @@ export class MetricsService {
         .not('repartidor_id', 'is', null)
         .order('created_at', { ascending: false });
 
-      // Aplicar filtros de fecha
+      // Aplicar filtros de fecha con formato correcto de zona horaria
       if (filters.fecha_inicio && filters.fecha_fin) {
-        // Asegurar formato correcto para rangos de fecha
-        const fechaInicio = filters.fecha_inicio.includes('T') 
-          ? filters.fecha_inicio 
-          : `${filters.fecha_inicio}T00:00:00Z`;
-        const fechaFin = filters.fecha_fin.includes('T') 
-          ? filters.fecha_fin 
-          : `${filters.fecha_fin}T23:59:59Z`;
-          
+        const startDate = new Date(`${filters.fecha_inicio}T00:00:00`);
+        const endDate = new Date(`${filters.fecha_fin}T23:59:59`);
+        const startQuery = formatDateForQuery(startDate, false);
+        const endQuery = formatDateForQuery(endDate, true);
+
         query = query
-          .gte('created_at', fechaInicio)
-          .lte('created_at', fechaFin);
+          .gte('created_at', startQuery)
+          .lte('created_at', endQuery);
       }
 
       // Aplicar filtro de sede si se especifica

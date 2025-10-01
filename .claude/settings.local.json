@@ -14,7 +14,8 @@
       "Bash(npx tsc:*)",
       "Bash(npm run build:dev:*)",
       "Bash(npm install:*)",
-      "Bash(psql:*)"
+      "Bash(psql:*)",
+      "Bash(del test_crm_payments.cjs)"
     ],
     "deny": [],
     "ask": [],

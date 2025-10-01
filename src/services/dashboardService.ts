@@ -260,6 +260,7 @@ export class DashboardService {
         estado: order.status || 'Desconocido',
         pago_tipo: order.pagos?.type || 'Sin pago',
         pago_estado: this.mapPaymentStatus(order.pagos?.status),
+        pago_metodo: this.mapPaymentMethod(order.pagos?.type),
         repartidor: order.repartidores?.nombre || 'Sin asignar',
         total: !!order.payment_id_2
           ? (order.pagos?.total_pago || 0) + (order.pagos2?.total_pago || 0)
@@ -304,6 +305,17 @@ export class DashboardService {
       case 'pending': return 'Pendiente';
       case 'failed': return 'Fallido';
       default: return 'Desconocido';
+    }
+  }
+
+  // Mapear método de pago a formato estándar
+  private mapPaymentMethod(type?: string): string {
+    switch (type) {
+      case 'efectivo': return 'cash';
+      case 'tarjeta': return 'card';
+      case 'nequi': return 'nequi';
+      case 'transferencia': return 'transfer';
+      default: return type || 'cash'; // Default a cash si no se especifica
     }
   }
 

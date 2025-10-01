@@ -35,7 +35,8 @@ import {
   Edit,
   Printer,
   Plus,
-  Calculator
+  Calculator,
+  Repeat
 } from 'lucide-react';
 import { Calendar as CalendarComponent } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
@@ -49,6 +50,7 @@ import { createDateRangeForQuery, formatDateTimeForDisplay, debugTodayFilter } f
 import { Order, OrderStatus, OrderSource, DeliverySettings, DeliveryPerson, PaymentMethod } from '@/types/delivery';
 import { OrderConfigModal } from './OrderConfigModal';
 import { OrderDetailsModal } from './OrderDetailsModal';
+import { ChangePaymentMethodModal } from './ChangePaymentMethodModal';
 import { EditOrderModal } from './EditOrderModal';
 import { MinutaModal } from './MinutaModal';
 import { DiscountDialog } from './DiscountDialog';
@@ -253,6 +255,13 @@ export const Dashboard: React.FC<DashboardProps> = ({
   const [editingOrderId, setEditingOrderId] = useState<string | null>(null);
   const [selectedOrderForMinuta, setSelectedOrderForMinuta] = useState<DashboardOrder | null>(null);
 
+  // Estados para modal de cambiar método de pago
+  const [changePaymentModalOpen, setChangePaymentModalOpen] = useState(false);
+  const [selectedOrderForPaymentChange, setSelectedOrderForPaymentChange] = useState<{
+    orderId: string;
+    currentPaymentMethod: PaymentMethod;
+  } | null>(null);
+
   // Estados para modal de descuento
   const [isDiscountDialogOpen, setIsDiscountDialogOpen] = useState(false);
   const [selectedOrderForDiscount, setSelectedOrderForDiscount] = useState<DashboardOrder | null>(null);
@@ -440,6 +449,20 @@ export const Dashboard: React.FC<DashboardProps> = ({
     logDebug('Dashboard', 'Abriendo modal de descuento', { orderId: order.orden_id });
     setSelectedOrderForDiscount(order);
     setIsDiscountDialogOpen(true);
+  };
+
+  // Función para cambiar método de pago (solo órdenes entregadas)
+  const handleChangePaymentMethod = (order: DashboardOrder) => {
+    console.log('🔄 Abriendo modal para cambiar método de pago', {
+      orderId: order.orden_id,
+      currentMethod: order.pago_metodo
+    });
+
+    setSelectedOrderForPaymentChange({
+      orderId: order.orden_id.toString(),
+      currentPaymentMethod: (order.pago_metodo || 'cash') as PaymentMethod
+    });
+    setChangePaymentModalOpen(true);
   };
 
   const handleDiscountApplied = (orderId: number, discountAmount: number) => {
@@ -867,23 +890,16 @@ export const Dashboard: React.FC<DashboardProps> = ({
         fechaSistema: today.toLocaleDateString('es-CO')
       });
     } else if (dateFilter === 'custom' && dateRange.from && dateRange.to) {
-      // Filtro personalizado con rango de fechas
-      const fromYear = dateRange.from.getFullYear();
-      const fromMonth = String(dateRange.from.getMonth() + 1).padStart(2, '0');
-      const fromDay = String(dateRange.from.getDate()).padStart(2, '0');
-      
-      const toYear = dateRange.to.getFullYear();
-      const toMonth = String(dateRange.to.getMonth() + 1).padStart(2, '0');
-      const toDay = String(dateRange.to.getDate()).padStart(2, '0');
-      
-      filters.fechaInicio = `${fromYear}-${fromMonth}-${fromDay}T00:00:00Z`;
-      filters.fechaFin = `${toYear}-${toMonth}-${toDay}T23:59:59Z`;
-      
-      logDebug('Dashboard', 'Aplicando filtro personalizado', { 
+      // Filtro personalizado con rango de fechas usando utilidades de fecha
+      const customRange = createDateRangeForQuery(dateRange.from, dateRange.to);
+      filters.fechaInicio = customRange.fechaInicio;
+      filters.fechaFin = customRange.fechaFin;
+
+      logDebug('Dashboard', 'Aplicando filtro personalizado', {
         desde: dateRange.from.toLocaleDateString('es-CO'),
         hasta: dateRange.to.toLocaleDateString('es-CO'),
-        fechaInicio: filters.fechaInicio, 
-        fechaFin: filters.fechaFin 
+        fechaInicio: filters.fechaInicio,
+        fechaFin: filters.fechaFin
       });
     }
     
@@ -2258,6 +2274,19 @@ export const Dashboard: React.FC<DashboardProps> = ({
                               </Button>
                             )}
 
+                            {/* Botón de cambiar método de pago - solo para pedidos entregados y administradores */}
+                            {realOrder.estado === 'Entregados' && profile && ['admin_punto', 'admin_global'].includes(profile.role) && (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => handleChangePaymentMethod(realOrder)}
+                                className="h-8 w-8 p-0 border-purple-300 text-purple-600 hover:bg-purple-50"
+                                title={`Cambiar método de pago de ${realOrder.id_display}`}
+                              >
+                                <Repeat className="h-4 w-4" />
+                              </Button>
+                            )}
+
                             {/* Botón de cancelar - solo para pedidos que no estén cancelados o entregados */}
                             {realOrder.estado !== 'Cancelado' && realOrder.estado !== 'Entregados' && (
                               <Button
@@ -2708,6 +2737,23 @@ export const Dashboard: React.FC<DashboardProps> = ({
         } : null}
         onDiscountApplied={handleDiscountApplied}
       />
+
+      {/* Modal para cambiar método de pago */}
+      {selectedOrderForPaymentChange && (
+        <ChangePaymentMethodModal
+          isOpen={changePaymentModalOpen}
+          onClose={() => {
+            setChangePaymentModalOpen(false);
+            setSelectedOrderForPaymentChange(null);
+          }}
+          orderId={selectedOrderForPaymentChange.orderId}
+          currentPaymentMethod={selectedOrderForPaymentChange.currentPaymentMethod}
+          onPaymentMethodChanged={() => {
+            // Recargar datos después del cambio
+            refreshDataWithCurrentFilters();
+          }}
+        />
+      )}
 
       {/* Modal para crear nuevo pedido */}
       <Dialog open={showCreateOrderModal} onOpenChange={(open) => {
