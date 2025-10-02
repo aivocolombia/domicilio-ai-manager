@@ -17,7 +17,8 @@
       "Bash(psql:*)",
       "Bash(del test_crm_payments.cjs)",
       "Bash(del debug_repartidores.js)",
-      "Bash(del create_platanitos_substitution.cjs)"
+      "Bash(del create_platanitos_substitution.cjs)",
+      "Bash(powershell:*)"
     ],
     "deny": [],
     "ask": [],

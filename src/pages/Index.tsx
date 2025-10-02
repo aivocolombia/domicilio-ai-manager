@@ -557,9 +557,10 @@ const Index = () => {
         <div className="flex items-center gap-2 text-xs text-gray-600">
           <span>Powered by</span>
           <img
-            src="/logo_omnion_sin_fondo.png"
+            src="https://hcyxhuvyqvtlvfsnrhjw.supabase.co/storage/v1/object/public/omnion/logo/logo_omnion_sin_fondo.png"
             alt="Omnion"
             className="h-4 w-auto"
+            onError={(e) => e.currentTarget.style.display = 'none'}
           />
           <span className="font-semibold">Omnion</span>
         </div>

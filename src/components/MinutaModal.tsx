@@ -474,6 +474,12 @@ export const MinutaModal: React.FC<MinutaModalProps> = ({
     <div class="footer">
         <p>Minuta generada el ${new Date().toLocaleString('es-CO')}</p>
         <p>📍 Restaurante Ajiaco - Sistema de Gestión de Pedidos</p>
+        <div style="text-align: center; margin-top: 8px; padding-top: 8px; border-top: 1px solid #000; font-size: 8px; display: flex; align-items: center; justify-content: center; gap: 2px;">
+            <span>Powered by </span>
+            <img src="https://hcyxhuvyqvtlvfsnrhjw.supabase.co/storage/v1/object/public/omnion/logo/logo_omnion_sin_fondo.png" alt="OMNION" style="height: 10px; width: auto; max-width: 30px;" onerror="this.style.display='none';this.nextElementSibling.style.display='inline';" />
+            <span style="font-weight: bold; background: #000; color: #fff; padding: 1px 3px; border-radius: 2px; display: none;">OMNION</span>
+            <span style="font-weight: bold;">Omnion</span>
+        </div>
     </div>
 </body>
 </html>`;
@@ -682,10 +688,11 @@ export const MinutaModal: React.FC<MinutaModalProps> = ({
                   <div className="flex items-center justify-center gap-1 text-xs text-black print:text-black">
                     <span>Powered by</span>
                     <img
-                      src="/logo_omnion_sin_fondo.png"
+                      src="https://hcyxhuvyqvtlvfsnrhjw.supabase.co/storage/v1/object/public/omnion/logo/logo_omnion_sin_fondo.png"
                       alt="Omnion"
                       className="h-3 w-auto print:h-3 print:opacity-100"
                       style={{ printColorAdjust: 'exact' }}
+                      onError={(e) => e.currentTarget.style.display = 'none'}
                     />
                     <span className="font-semibold">Omnion</span>
                   </div>
