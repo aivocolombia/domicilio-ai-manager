@@ -88,7 +88,7 @@ class DeliveryService {
   }
 
   // Obtener repartidores con estadísticas usando SQL personalizado
-  async getRepartidoresConEstadisticas(sedeId?: string): Promise<RepartidorConEstadisticas[]> {
+  async getRepartidoresConEstadisticas(sedeId?: string, filterDate?: Date): Promise<RepartidorConEstadisticas[]> {
     try {
       console.log('📊 Consultando repartidores con estadísticas...', sedeId ? `para sede: ${sedeId}` : 'todas las sedes');
       
@@ -125,12 +125,12 @@ class DeliveryService {
           try {
             console.log(`📊 Obteniendo estadísticas para repartidor ${repartidor.id}...`);
             
-            // Crear rango de fechas del día actual (Colombia timezone UTC-5)
-            const today = new Date();
+            // Crear rango de fechas (Colombia timezone UTC-5)
+            const targetDate = filterDate || new Date();
             const colombiaOffset = -5 * 60; // -5 horas en minutos
-            const colombiaToday = new Date(today.getTime() + (colombiaOffset - today.getTimezoneOffset()) * 60000);
-            const startOfDay = new Date(colombiaToday.getFullYear(), colombiaToday.getMonth(), colombiaToday.getDate());
-            const endOfDay = new Date(colombiaToday.getFullYear(), colombiaToday.getMonth(), colombiaToday.getDate(), 23, 59, 59, 999);
+            const colombiaDate = new Date(targetDate.getTime() + (colombiaOffset - targetDate.getTimezoneOffset()) * 60000);
+            const startOfDay = new Date(colombiaDate.getFullYear(), colombiaDate.getMonth(), colombiaDate.getDate());
+            const endOfDay = new Date(colombiaDate.getFullYear(), colombiaDate.getMonth(), colombiaDate.getDate(), 23, 59, 59, 999);
 
             // Query SQL directo para obtener estadísticas del repartidor
             console.log(`🔍 [DEBUG] Obteniendo órdenes para repartidor ${repartidor.id}${sedeId && repartidor.id === 1 ? ` filtradas por sede ${sedeId}` : ''}`);

@@ -676,6 +676,20 @@ export const MinutaModal: React.FC<MinutaModalProps> = ({
                     <div className="font-bold">{orderDetails.observaciones}</div>
                   </div>
                 )}
+
+                {/* Omnion Branding Footer */}
+                <div className="text-center mt-4 pt-2 border-t border-black print:border-black">
+                  <div className="flex items-center justify-center gap-1 text-xs text-black print:text-black">
+                    <span>Powered by</span>
+                    <img
+                      src="/logo_omnion_sin_fondo.png"
+                      alt="Omnion"
+                      className="h-3 w-auto print:h-3 print:opacity-100"
+                      style={{ printColorAdjust: 'exact' }}
+                    />
+                    <span className="font-semibold">Omnion</span>
+                  </div>
+                </div>
               </div>
             </div>
 

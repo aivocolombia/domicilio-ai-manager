@@ -5,8 +5,12 @@ import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Calendar } from '@/components/ui/calendar';
 import { Label } from '@/components/ui/label';
-import { Search, Plus, User, Phone, History, Loader2, AlertCircle } from 'lucide-react';
+import { Search, Plus, User, Phone, History, Loader2, AlertCircle, Calendar as CalendarIcon, Filter } from 'lucide-react';
+import { format } from 'date-fns';
+import { es } from 'date-fns/locale';
 import { useDelivery } from '@/hooks/useDelivery';
 import { toast } from '@/hooks/use-toast';
 import { DeliveryPersonHistory } from './DeliveryPersonHistory';
@@ -65,6 +69,10 @@ export const DeliveryPersonnel: React.FC<DeliveryPersonnelProps> = ({
   effectiveSedeId,
   currentSedeName
 }) => {
+  // Estados para filtros de fecha
+  const [selectedDate, setSelectedDate] = useState<Date>(new Date());
+  const [isDatePickerOpen, setIsDatePickerOpen] = useState(false);
+
   const {
     repartidores,
     totalOrdenesAsignadas,
@@ -72,8 +80,9 @@ export const DeliveryPersonnel: React.FC<DeliveryPersonnelProps> = ({
     error,
     crearRepartidor,
     cambiarDisponibilidad,
-    clearError
-  } = useDelivery(effectiveSedeId);
+    clearError,
+    refreshWithDate
+  } = useDelivery(effectiveSedeId, selectedDate);
 
   const [searchTerm, setSearchTerm] = useState('');
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
@@ -169,6 +178,32 @@ export const DeliveryPersonnel: React.FC<DeliveryPersonnelProps> = ({
     setIsHistoryModalOpen(true);
   };
 
+  // Función para volver a "hoy"
+  const handleTodayClick = () => {
+    const today = new Date();
+    setSelectedDate(today);
+    if (refreshWithDate) {
+      refreshWithDate(today);
+    }
+  };
+
+  // Función para cambiar fecha
+  const handleDateChange = (date: Date | undefined) => {
+    if (date) {
+      setSelectedDate(date);
+      setIsDatePickerOpen(false);
+      if (refreshWithDate) {
+        refreshWithDate(date);
+      }
+    }
+  };
+
+  // Verificar si la fecha seleccionada es hoy
+  const isToday = (date: Date) => {
+    const today = new Date();
+    return date.toDateString() === today.toDateString();
+  };
+
   // Manejar error
   if (error) {
     return (
@@ -260,6 +295,58 @@ export const DeliveryPersonnel: React.FC<DeliveryPersonnelProps> = ({
         </Dialog>
         </div>
       </div>
+
+      {/* Filtros de fecha */}
+      <Card>
+        <CardContent className="p-4">
+          <div className="flex items-center gap-4">
+            <div className="flex items-center gap-2">
+              <Filter className="h-4 w-4 text-muted-foreground" />
+              <span className="text-sm font-medium">Filtrar por fecha:</span>
+            </div>
+
+            <Popover open={isDatePickerOpen} onOpenChange={setIsDatePickerOpen}>
+              <PopoverTrigger asChild>
+                <Button
+                  variant="outline"
+                  className="justify-start text-left font-normal"
+                >
+                  <CalendarIcon className="mr-2 h-4 w-4" />
+                  {format(selectedDate, 'PPP', { locale: es })}
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-auto p-0" align="start">
+                <Calendar
+                  mode="single"
+                  selected={selectedDate}
+                  onSelect={handleDateChange}
+                  disabled={(date) =>
+                    date > new Date() || date < new Date('2000-01-01')
+                  }
+                  initialFocus
+                  locale={es}
+                />
+              </PopoverContent>
+            </Popover>
+
+            <Button
+              variant={isToday(selectedDate) ? "default" : "outline"}
+              size="sm"
+              onClick={handleTodayClick}
+              disabled={isToday(selectedDate)}
+            >
+              Hoy
+            </Button>
+
+            <div className="text-sm text-muted-foreground">
+              {isToday(selectedDate) ?
+                "Mostrando métricas de hoy" :
+                `Mostrando métricas del ${format(selectedDate, 'dd/MM/yyyy')}`
+              }
+            </div>
+          </div>
+        </CardContent>
+      </Card>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
         <Card>

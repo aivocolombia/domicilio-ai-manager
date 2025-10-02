@@ -551,7 +551,20 @@ const Index = () => {
       
       {/* Performance Monitor - solo en desarrollo */}
       <PerformanceMonitor />
-      
+
+      {/* Omnion Branding - Fixed in corner */}
+      <div className="fixed bottom-4 right-4 z-50 bg-white/90 backdrop-blur-sm rounded-lg shadow-md px-3 py-2 border">
+        <div className="flex items-center gap-2 text-xs text-gray-600">
+          <span>Powered by</span>
+          <img
+            src="/logo_omnion_sin_fondo.png"
+            alt="Omnion"
+            className="h-4 w-auto"
+          />
+          <span className="font-semibold">Omnion</span>
+        </div>
+      </div>
+
       </InventoryProvider>
     </SedeProvider>
   );

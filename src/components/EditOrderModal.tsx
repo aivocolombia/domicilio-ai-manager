@@ -53,6 +53,7 @@ export const EditOrderModal: React.FC<EditOrderModalProps> = ({
   const [sedeAddress, setSedeAddress] = useState<string>('');
   const [sedeId, setSedeId] = useState<string>('');
   const [cutleryCount, setCutleryCount] = useState<number>(0);
+  const [observations, setObservations] = useState<string>('');
 
   // Estado para el diálogo de sustituciones
   const [substitutionDialogOpen, setSubstitutionDialogOpen] = useState(false);
@@ -398,9 +399,14 @@ export const EditOrderModal: React.FC<EditOrderModalProps> = ({
   useEffect(() => {
     const loadOrderItems = async () => {
       if (!isOpen || !order || !orderId) {
-        // Limpiar historial cuando se cierra el modal
+        // Limpiar historial y observaciones cuando se cierra el modal
         if (!isOpen) {
           setSubstitutionHistory([]);
+          setObservations('');
+          setItems([]);
+          setNewAddress('');
+          setDeliveryCost(0);
+          setCutleryCount(0);
         }
         return;
       }
@@ -409,16 +415,17 @@ export const EditOrderModal: React.FC<EditOrderModalProps> = ({
         setLoading(true);
         // Limpiar historial al cargar una nueva orden
         setSubstitutionHistory([]);
-        // Cargar campos adicionales de orden (cubiertos, address, precio_envio)
+        // Cargar campos adicionales de orden (cubiertos, address, precio_envio, observaciones)
         const { data: baseOrder, error: baseOrderErr } = await supabase
           .from('ordenes')
-          .select('cubiertos, address, precio_envio')
+          .select('cubiertos, address, precio_envio, observaciones')
           .eq('id', orderId)
           .single();
         if (!baseOrderErr && baseOrder) {
           setCutleryCount(typeof baseOrder.cubiertos === 'number' ? baseOrder.cubiertos : (baseOrder.cubiertos ? Number(baseOrder.cubiertos) : 0));
           setNewAddress(baseOrder.address || order.address || '');
           setDeliveryCost(typeof baseOrder.precio_envio === 'number' ? baseOrder.precio_envio : (baseOrder.precio_envio ? Number(baseOrder.precio_envio) : 0));
+          setObservations(baseOrder.observaciones || '');
         }
         
         // Cargar platos de la orden
@@ -598,12 +605,13 @@ export const EditOrderModal: React.FC<EditOrderModalProps> = ({
         }
       }
 
-      // 2. Actualizar precio de envío o cubiertos si cambiaron
+      // 2. Actualizar precio de envío, cubiertos u observaciones si cambiaron
       const updates: Record<string, any> = {};
       if (deliveryCost !== order.precio_envio) {
         updates.precio_envio = deliveryCost;
       }
       updates.cubiertos = cutleryCount; // siempre actualizar (puede ser 0)
+      updates.observaciones = observations; // siempre actualizar las observaciones
 
       if (Object.keys(updates).length > 0) {
         const { error: orderError } = await supabase
@@ -842,6 +850,29 @@ export const EditOrderModal: React.FC<EditOrderModalProps> = ({
             >
               <Plus className="h-4 w-4" />
             </Button>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+
+    {/* Observaciones */}
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-lg">📝 Observaciones</CardTitle>
+      </CardHeader>
+      <CardContent>
+        <div className="space-y-2">
+          <Label htmlFor="observations">Observaciones especiales del cliente</Label>
+          <textarea
+            id="observations"
+            value={observations}
+            onChange={(e) => setObservations(e.target.value)}
+            placeholder="Escribe las observaciones o solicitudes especiales del cliente..."
+            className="w-full min-h-[80px] p-3 border border-gray-300 rounded-md resize-vertical focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            rows={3}
+          />
+          <div className="text-xs text-gray-500">
+            Ejemplo: Sin cebolla, extra salsa, entregar en la portería, etc.
           </div>
         </div>
       </CardContent>

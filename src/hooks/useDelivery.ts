@@ -4,9 +4,9 @@ import { toast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/useAuth';
 import { useRealtime } from '@/hooks/useRealtime';
 
-export const useDelivery = (sedeId?: string) => {
+export const useDelivery = (sedeId?: string, filterDate?: Date) => {
   const { profile } = useAuth();
-  
+
   // Usar la sede pasada como parámetro o la del profile
   const effectiveSedeId = sedeId || profile?.sede_id;
   const [repartidores, setRepartidores] = useState<RepartidorConEstadisticas[]>([]);
@@ -34,7 +34,7 @@ export const useDelivery = (sedeId?: string) => {
       await deliveryService.testData();
 
       const [data, totalAsignadas] = await Promise.all([
-        deliveryService.getRepartidoresConEstadisticas(effectiveSedeId),
+        deliveryService.getRepartidoresConEstadisticas(effectiveSedeId, filterDate),
         deliveryService.getTotalOrdenesAsignadasPendientes(effectiveSedeId)
       ]);
       
@@ -56,7 +56,7 @@ export const useDelivery = (sedeId?: string) => {
     } finally {
       setLoading(false);
     }
-  }, [effectiveSedeId]);
+  }, [effectiveSedeId, filterDate]);
 
   // Crear nuevo repartidor
   const crearRepartidor = useCallback(async (repartidorData: {
@@ -241,6 +241,39 @@ export const useDelivery = (sedeId?: string) => {
     }
   });
 
+  // Función para refrescar con nueva fecha
+  const refreshWithDate = useCallback(async (newDate: Date) => {
+    try {
+      setLoading(true);
+      setError(null);
+      console.log('🔄 Refrescando repartidores con nueva fecha:', newDate);
+
+      if (!effectiveSedeId) {
+        console.log('⚠️ No hay sede seleccionada');
+        setRepartidores([]);
+        setTotalOrdenesAsignadas(0);
+        setLoading(false);
+        return;
+      }
+
+      const [data, totalAsignadas] = await Promise.all([
+        deliveryService.getRepartidoresConEstadisticas(effectiveSedeId, newDate),
+        deliveryService.getTotalOrdenesAsignadasPendientes(effectiveSedeId)
+      ]);
+
+      setRepartidores(data);
+      setTotalOrdenesAsignadas(totalAsignadas);
+
+      console.log('✅ Repartidores actualizados con nueva fecha:', data.length);
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Error al refrescar con nueva fecha';
+      console.error('❌ Error al refrescar con nueva fecha:', err);
+      setError(errorMessage);
+    } finally {
+      setLoading(false);
+    }
+  }, [effectiveSedeId]);
+
   return {
     repartidores,
     totalOrdenesAsignadas,
@@ -250,6 +283,7 @@ export const useDelivery = (sedeId?: string) => {
     crearRepartidor,
     actualizarRepartidor,
     cambiarDisponibilidad,
-    clearError
+    clearError,
+    refreshWithDate
   };
 }; 
