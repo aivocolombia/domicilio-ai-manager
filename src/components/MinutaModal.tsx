@@ -474,11 +474,11 @@ export const MinutaModal: React.FC<MinutaModalProps> = ({
     <div class="footer">
         <p>Minuta generada el ${new Date().toLocaleString('es-CO')}</p>
         <p>📍 Restaurante Ajiaco - Sistema de Gestión de Pedidos</p>
-        <div style="text-align: center; margin-top: 8px; padding-top: 8px; border-top: 1px solid #000; font-size: 8px; display: flex; align-items: center; justify-content: center; gap: 2px;">
-            <span>Powered by </span>
-            <img src="https://hcyxhuvyqvtlvfsnrhjw.supabase.co/storage/v1/object/public/omnion/logo/logo_omnion_sin_fondo.png" alt="OMNION" style="height: 10px; width: auto; max-width: 30px;" onerror="this.style.display='none';this.nextElementSibling.style.display='inline';" />
-            <span style="font-weight: bold; background: #000; color: #fff; padding: 1px 3px; border-radius: 2px; display: none;">OMNION</span>
-            <span style="font-weight: bold;">Omnion</span>
+        <div style="text-align: center; margin-top: 4px; padding-top: 4px; border-top: 2px solid #000; font-size: 12px; display: flex; align-items: center; justify-content: center; gap: 4px;">
+            <span style="font-size: 12px;">Powered by </span>
+            <img src="https://hcyxhuvyqvtlvfsnrhjw.supabase.co/storage/v1/object/public/omnion/logo/logo_omnion_sin_fondo.png" alt="OMNION" style="height: 16px; width: auto; max-width: 50px;" onerror="this.style.display='none';this.nextElementSibling.style.display='inline';" />
+            <span style="font-weight: bold; background: #000; color: #fff; padding: 2px 6px; border-radius: 3px; display: none; font-size: 12px;">OMNION</span>
+            <span style="font-weight: bold; font-size: 12px;">Omnion</span>
         </div>
     </div>
 </body>
