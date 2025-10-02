@@ -128,7 +128,8 @@ export const useExport = (props: UseExportProps = {}) => {
   const exportReportToPDF = async (
     sections: PDFSection[],
     options: Partial<ExportOptions> = {},
-    chartElement?: HTMLElement
+    chartElement?: HTMLElement,
+    data: any[] = []
   ) => {
     try {
       setIsExporting(true);
@@ -141,7 +142,7 @@ export const useExport = (props: UseExportProps = {}) => {
         filename,
         title: options.title,
         subtitle: options.subtitle
-      }, chartElement);
+      }, chartElement, data);
 
       toast({
         title: "Exportación exitosa",
@@ -185,7 +186,7 @@ export const useExport = (props: UseExportProps = {}) => {
         return exportTableToCSV(data as any[], columns, options);
 
       case 'pdf':
-        return exportReportToPDF(data as PDFSection[], options, chartElement);
+        return exportReportToPDF(data as PDFSection[], options, chartElement, []);
 
       default:
         throw new Error(`Formato no soportado: ${format}`);

@@ -104,7 +104,7 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
           break;
 
         case 'pdf':
-          await exportReportToPDF(pdfSections, options, chartElement);
+          await exportReportToPDF(pdfSections, options, chartElement, data);
           break;
 
         default:

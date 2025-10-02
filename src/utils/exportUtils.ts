@@ -19,8 +19,10 @@ export interface TableColumn {
 
 export interface PDFSection {
   title: string;
-  content: string | string[];
-  type?: 'text' | 'table' | 'chart';
+  content?: string | string[];
+  type?: 'text' | 'table' | 'chart' | 'summary';
+  columns?: TableColumn[];
+  calculate?: (data: any[]) => Record<string, any>;
 }
 
 // Exportar tabla a Excel
@@ -165,7 +167,8 @@ export const exportToCSV = (data: any[], columns: TableColumn[], options: Export
 export const exportToPDF = async (
   sections: PDFSection[],
   options: ExportOptions,
-  chartElement?: HTMLElement
+  chartElement?: HTMLElement,
+  data: any[] = []
 ) => {
   try {
     console.log('📊 Generando PDF:', options.filename);
@@ -243,31 +246,55 @@ export const exportToPDF = async (
       pdf.text(section.title, margin, yPosition);
       yPosition += 10;
 
-      // Contenido
+      // Contenido según el tipo
       pdf.setFontSize(10);
       pdf.setFont('helvetica', 'normal');
 
-      if (Array.isArray(section.content)) {
-        // Contenido como lista
-        section.content.forEach(item => {
+      if (section.type === 'summary' && section.calculate) {
+        // Calcular datos para resumen
+        const summaryData = section.calculate(data);
+        Object.entries(summaryData).forEach(([key, value]) => {
           if (yPosition > pageHeight - 20) {
             pdf.addPage();
             yPosition = margin;
           }
-          pdf.text(`• ${item}`, margin + 5, yPosition);
+          pdf.setFont('helvetica', 'bold');
+          pdf.text(`${key}:`, margin + 5, yPosition);
+          pdf.setFont('helvetica', 'normal');
+          pdf.text(`${value}`, margin + 80, yPosition);
           yPosition += 8;
         });
-      } else {
-        // Contenido como texto
-        const lines = pdf.splitTextToSize(section.content, pageWidth - (margin * 2));
-        lines.forEach((line: string) => {
-          if (yPosition > pageHeight - 20) {
-            pdf.addPage();
-            yPosition = margin;
-          }
-          pdf.text(line, margin, yPosition);
-          yPosition += 6;
-        });
+      } else if (section.type === 'table' && section.columns) {
+        // Renderizar tabla simple
+        if (yPosition > pageHeight - 60) {
+          pdf.addPage();
+          yPosition = margin;
+        }
+        pdf.text('Ver datos detallados en exportación Excel/CSV', margin + 5, yPosition);
+        yPosition += 15;
+      } else if (section.content) {
+        if (Array.isArray(section.content)) {
+          // Contenido como lista
+          section.content.forEach(item => {
+            if (yPosition > pageHeight - 20) {
+              pdf.addPage();
+              yPosition = margin;
+            }
+            pdf.text(`• ${item}`, margin + 5, yPosition);
+            yPosition += 8;
+          });
+        } else {
+          // Contenido como texto
+          const lines = pdf.splitTextToSize(section.content, pageWidth - (margin * 2));
+          lines.forEach((line: string) => {
+            if (yPosition > pageHeight - 20) {
+              pdf.addPage();
+              yPosition = margin;
+            }
+            pdf.text(line, margin, yPosition);
+            yPosition += 6;
+          });
+        }
       }
 
       yPosition += 10;

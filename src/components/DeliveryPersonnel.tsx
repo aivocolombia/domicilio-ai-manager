@@ -10,6 +10,51 @@ import { Search, Plus, User, Phone, History, Loader2, AlertCircle } from 'lucide
 import { useDelivery } from '@/hooks/useDelivery';
 import { toast } from '@/hooks/use-toast';
 import { DeliveryPersonHistory } from './DeliveryPersonHistory';
+import { ExportButton } from '@/components/ui/ExportButton';
+import { TableColumn, PDFSection } from '@/utils/exportUtils';
+
+const deliveryColumns: TableColumn[] = [
+  { key: 'nombre', header: 'Nombre' },
+  { key: 'telefono', header: 'Teléfono' },
+  { key: 'placas', header: 'Placas' },
+  { key: 'disponible', header: 'Disponible', format: (value) => value ? 'Sí' : 'No' },
+  { key: 'pedidos_activos', header: 'Pedidos Activos', format: (value) => String(value || 0) },
+  { key: 'entregados', header: 'Entregas', format: (value) => String(value || 0) },
+  { key: 'total_asignados', header: 'Total Asignados', format: (value) => String(value || 0) },
+  { key: 'total_entregado', header: 'Total Entregado', format: (value) => `$${(value || 0).toLocaleString()}` },
+  { key: 'entregado_efectivo', header: 'Efectivo', format: (value) => `$${(value || 0).toLocaleString()}` },
+  { key: 'entregado_tarjeta', header: 'Tarjeta', format: (value) => `$${(value || 0).toLocaleString()}` },
+  { key: 'entregado_nequi', header: 'Nequi', format: (value) => `$${(value || 0).toLocaleString()}` },
+  { key: 'entregado_transferencia', header: 'Transferencia', format: (value) => `$${(value || 0).toLocaleString()}` }
+];
+
+const deliveryPDFSections: PDFSection[] = [
+  {
+    title: 'Resumen General',
+    type: 'summary',
+    calculate: (data: any[]) => ({
+      'Total Repartidores': data.length,
+      'Repartidores Activos': data.filter(r => r.disponible).length,
+      'Total Entregas': data.reduce((sum, r) => sum + (r.entregados || 0), 0),
+      'Total Entregado': `$${data.reduce((sum, r) => sum + (r.total_entregado || 0), 0).toLocaleString()}`
+    })
+  },
+  {
+    title: 'Desglose por Método de Pago',
+    type: 'summary',
+    calculate: (data: any[]) => ({
+      'Efectivo Total': `$${data.reduce((sum, r) => sum + (r.entregado_efectivo || 0), 0).toLocaleString()}`,
+      'Tarjeta Total': `$${data.reduce((sum, r) => sum + (r.entregado_tarjeta || 0), 0).toLocaleString()}`,
+      'Nequi Total': `$${data.reduce((sum, r) => sum + (r.entregado_nequi || 0), 0).toLocaleString()}`,
+      'Transferencia Total': `$${data.reduce((sum, r) => sum + (r.entregado_transferencia || 0), 0).toLocaleString()}`
+    })
+  },
+  {
+    title: 'Listado Completo de Repartidores',
+    type: 'table',
+    columns: deliveryColumns
+  }
+];
 
 interface DeliveryPersonnelProps {
   effectiveSedeId: string;
@@ -119,8 +164,6 @@ export const DeliveryPersonnel: React.FC<DeliveryPersonnelProps> = ({
     }
   };
 
-
-
   const handlePersonClick = (person: any) => {
     setSelectedPerson(person);
     setIsHistoryModalOpen(true);
@@ -148,15 +191,25 @@ export const DeliveryPersonnel: React.FC<DeliveryPersonnelProps> = ({
             {activePersonnelCount} activos • {repartidores.length} total
           </p>
         </div>
-        
-        <Dialog open={isAddModalOpen} onOpenChange={setIsAddModalOpen}>
-          <DialogTrigger asChild>
-            <Button className="flex items-center gap-2">
-              <Plus className="h-4 w-4" />
-              Agregar Repartidor
-            </Button>
-          </DialogTrigger>
-          <DialogContent>
+
+        <div className="flex items-center gap-2">
+          <ExportButton
+            data={filteredPersonnel}
+            filename={`repartidores_${currentSedeName}_${new Date().toISOString().split('T')[0]}`}
+            columns={deliveryColumns}
+            pdfSections={deliveryPDFSections}
+            title={`Reporte de Repartidores - ${currentSedeName}`}
+            subtitle={`Fecha: ${new Date().toLocaleDateString('es-CO')} | Total: ${filteredPersonnel.length} repartidores`}
+          />
+
+          <Dialog open={isAddModalOpen} onOpenChange={setIsAddModalOpen}>
+            <DialogTrigger asChild>
+              <Button className="flex items-center gap-2">
+                <Plus className="h-4 w-4" />
+                Agregar Repartidor
+              </Button>
+            </DialogTrigger>
+            <DialogContent>
             <DialogHeader>
               <DialogTitle>Agregar Nuevo Repartidor</DialogTitle>
             </DialogHeader>
@@ -205,6 +258,7 @@ export const DeliveryPersonnel: React.FC<DeliveryPersonnelProps> = ({
             </div>
           </DialogContent>
         </Dialog>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
