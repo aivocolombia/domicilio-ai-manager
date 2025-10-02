@@ -2235,8 +2235,9 @@ export const Dashboard: React.FC<DashboardProps> = ({
                               </Button>
                             )}
                             
-                            {/* Botón de editar - solo para pedidos en estado 'Recibidos' */}
-                            {(realOrder.estado === 'Recibidos' || realOrder.estado === 'recibidos') && (
+                            {/* Botón de editar - disponible para agentes hasta estado 'Cocina' */}
+                            {(realOrder.estado === 'Recibidos' || realOrder.estado === 'recibidos' ||
+                              realOrder.estado === 'Cocina' || realOrder.estado === 'cocina') && (
                               <Button
                                 variant="outline"
                                 size="sm"
