@@ -453,7 +453,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
     setIsDiscountDialogOpen(true);
   };
 
-  // Función para cambiar método de pago (solo órdenes entregadas)
+  // Función para editar método de pago (disponible para todos los usuarios)
   const handleChangePaymentMethod = (order: DashboardOrder) => {
     console.log('🔄 Abriendo modal para cambiar método de pago', {
       orderId: order.orden_id,
@@ -2261,18 +2261,16 @@ export const Dashboard: React.FC<DashboardProps> = ({
                               </Button>
                             )}
 
-                            {/* Botón de cambiar método de pago - solo para pedidos entregados y administradores */}
-                            {realOrder.estado === 'Entregados' && profile && ['admin_punto', 'admin_global'].includes(profile.role) && (
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() => handleChangePaymentMethod(realOrder)}
-                                className="h-8 w-8 p-0 border-purple-300 text-purple-600 hover:bg-purple-50"
-                                title={`Cambiar método de pago de ${realOrder.id_display}`}
-                              >
-                                <Repeat className="h-4 w-4" />
-                              </Button>
-                            )}
+                            {/* Botón de editar pago - disponible para todos los usuarios */}
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => handleChangePaymentMethod(realOrder)}
+                              className="h-8 w-8 p-0 border-purple-300 text-purple-600 hover:bg-purple-50"
+                              title={`Editar método de pago de ${realOrder.id_display}`}
+                            >
+                              <Repeat className="h-4 w-4" />
+                            </Button>
 
                             {/* Botón de cancelar - solo para pedidos que no estén cancelados o entregados */}
                             {realOrder.estado !== 'Cancelado' && realOrder.estado !== 'Entregados' && (

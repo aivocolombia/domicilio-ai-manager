@@ -16,7 +16,10 @@ export interface RepartidorConEstadisticas extends Repartidor {
   total_asignados: number;
   total_entregado: number;
   entregado_efectivo: number; // Dinero en efectivo del día
-  entregado_otros: number; // Dinero por otros métodos del día
+  entregado_tarjeta: number; // Dinero por tarjeta del día
+  entregado_nequi: number; // Dinero por Nequi del día
+  entregado_transferencia: number; // Dinero por transferencia del día
+  entregado_otros: number; // Dinero por otros métodos del día (para compatibilidad)
 }
 
 class DeliveryService {
@@ -115,17 +118,9 @@ class DeliveryService {
       // Para cada repartidor, obtenemos sus estadísticas usando SQL directo
       const repartidoresConStats = await Promise.all(
         repartidores.map(async (repartidor) => {
-          // Para el repartidor especial id=1, no calcular estadísticas
-          if (repartidor.id === 1) {
-            return {
-              ...repartidor,
-              pedidos_activos: 0,
-              entregados: 0,
-              total_asignados: 0,
-              total_entregado: 0,
-              entregado_efectivo: 0,
-              entregado_otros: 0
-            } as RepartidorConEstadisticas;
+          // Para el repartidor especial id=1 (Pickap), calcular estadísticas filtradas por sede
+          if (repartidor.id === 1 && sedeId) {
+            console.log(`📊 Calculando estadísticas de Pickap para sede específica: ${sedeId}`);
           }
           try {
             console.log(`📊 Obteniendo estadísticas para repartidor ${repartidor.id}...`);
@@ -138,17 +133,26 @@ class DeliveryService {
             const endOfDay = new Date(colombiaToday.getFullYear(), colombiaToday.getMonth(), colombiaToday.getDate(), 23, 59, 59, 999);
 
             // Query SQL directo para obtener estadísticas del repartidor
-            console.log(`🔍 [DEBUG] Obteniendo órdenes para repartidor ${repartidor.id}`);
-            const { data: stats, error: errorStats } = await supabase
+            console.log(`🔍 [DEBUG] Obteniendo órdenes para repartidor ${repartidor.id}${sedeId && repartidor.id === 1 ? ` filtradas por sede ${sedeId}` : ''}`);
+
+            let query = supabase
               .from('ordenes')
               .select(`
                 id,
                 status,
                 payment_id,
                 payment_id_2,
-                created_at
+                created_at,
+                sede_id
               `)
               .eq('repartidor_id', repartidor.id);
+
+            // Para el repartidor especial (id=1, Pickap), filtrar también por sede si se especifica
+            if (repartidor.id === 1 && sedeId) {
+              query = query.eq('sede_id', sedeId);
+            }
+
+            const { data: stats, error: errorStats } = await query;
 
             console.log(`📊 [DEBUG] Órdenes encontradas para repartidor ${repartidor.id}:`, stats?.length || 0);
 
@@ -162,6 +166,9 @@ class DeliveryService {
                 total_asignados: 0,
                 total_entregado: 0,
                 entregado_efectivo: 0,
+                entregado_tarjeta: 0,
+                entregado_nequi: 0,
+                entregado_transferencia: 0,
                 entregado_otros: 0
               };
             }
@@ -185,8 +192,11 @@ class DeliveryService {
             // Total asignados solo del día de hoy
             const totalAsignados = ordersToday.length;
 
-            // Obtener información de pagos para las órdenes entregadas hoy
+            // Obtener información de pagos para las órdenes entregadas hoy con desglose detallado
             let entregadosEfectivo = 0;
+            let entregadosTarjeta = 0;
+            let entregadosNequi = 0;
+            let entregadosTransferencia = 0;
             let entregadosOtros = 0;
 
             if (entregadosHoy.length > 0) {
@@ -205,12 +215,26 @@ class DeliveryService {
                   .in('id', paymentIds);
 
                 if (!errorPagos && pagos) {
+                  // Desglosar por tipo específico de pago
                   entregadosEfectivo = pagos
                     .filter(pago => pago.type === 'efectivo')
                     .reduce((sum, pago) => sum + (pago.total_pago || 0), 0);
 
+                  entregadosTarjeta = pagos
+                    .filter(pago => pago.type === 'tarjeta')
+                    .reduce((sum, pago) => sum + (pago.total_pago || 0), 0);
+
+                  entregadosNequi = pagos
+                    .filter(pago => pago.type === 'nequi')
+                    .reduce((sum, pago) => sum + (pago.total_pago || 0), 0);
+
+                  entregadosTransferencia = pagos
+                    .filter(pago => pago.type === 'transferencia')
+                    .reduce((sum, pago) => sum + (pago.total_pago || 0), 0);
+
+                  // Otros métodos de pago no clasificados
                   entregadosOtros = pagos
-                    .filter(pago => pago.type !== 'efectivo')
+                    .filter(pago => !['efectivo', 'tarjeta', 'nequi', 'transferencia'].includes(pago.type))
                     .reduce((sum, pago) => sum + (pago.total_pago || 0), 0);
                 } else {
                   console.warn(`⚠️ [DEBUG] Error obteniendo pagos para repartidor ${repartidor.id}:`, errorPagos);
@@ -218,12 +242,15 @@ class DeliveryService {
               }
             }
 
-            const totalEntregadoHoy = entregadosEfectivo + entregadosOtros;
+            const totalEntregadoHoy = entregadosEfectivo + entregadosTarjeta + entregadosNequi + entregadosTransferencia + entregadosOtros;
 
             console.log(`💰 [DEBUG] Cálculos financieros para repartidor ${repartidor.id}:`, {
               entregadosHoy: entregadosHoy.length,
               totalEntregadoHoy,
               entregadosEfectivo,
+              entregadosTarjeta,
+              entregadosNequi,
+              entregadosTransferencia,
               entregadosOtros
             });
 
@@ -232,8 +259,11 @@ class DeliveryService {
               entregados: entregadosHoy.length, // Solo entregas de hoy
               total_asignados: totalAsignados,
               total_entregado: totalEntregadoHoy, // Solo del día de hoy
-              entregado_efectivo: entregadosEfectivo, // Nuevo campo
-              entregado_otros: entregadosOtros // Nuevo campo
+              entregado_efectivo: entregadosEfectivo,
+              entregado_tarjeta: entregadosTarjeta,
+              entregado_nequi: entregadosNequi,
+              entregado_transferencia: entregadosTransferencia,
+              entregado_otros: entregadosOtros
             };
 
             console.log(`📊 Estadísticas calculadas para repartidor ${repartidor.id}:`, estadisticas);
@@ -245,6 +275,9 @@ class DeliveryService {
               total_asignados: estadisticas.total_asignados,
               total_entregado: estadisticas.total_entregado,
               entregado_efectivo: estadisticas.entregado_efectivo,
+              entregado_tarjeta: estadisticas.entregado_tarjeta,
+              entregado_nequi: estadisticas.entregado_nequi,
+              entregado_transferencia: estadisticas.entregado_transferencia,
               entregado_otros: estadisticas.entregado_otros
             };
           } catch (error) {
@@ -256,6 +289,9 @@ class DeliveryService {
               total_asignados: 0,
               total_entregado: 0,
               entregado_efectivo: 0,
+              entregado_tarjeta: 0,
+              entregado_nequi: 0,
+              entregado_transferencia: 0,
               entregado_otros: 0
             };
           }
@@ -402,12 +438,12 @@ class DeliveryService {
   }
 
   // Obtener historial de pedidos de un repartidor
-  async getHistorialRepartidor(repartidorId: number): Promise<any[]> {
+  async getHistorialRepartidor(repartidorId: number, sedeId?: string): Promise<any[]> {
     try {
-      console.log('📋 [DEBUG] Consultando historial del repartidor:', repartidorId);
+      console.log('📋 [DEBUG] Consultando historial del repartidor:', repartidorId, sedeId && repartidorId === 1 ? `filtrado por sede ${sedeId}` : '');
 
-      // Primero obtener todas las órdenes del repartidor
-      const { data: ordenes, error: ordenesError } = await supabase
+      // Construir query para obtener órdenes del repartidor
+      let query = supabase
         .from('ordenes')
         .select(`
           *,
@@ -417,8 +453,14 @@ class DeliveryService {
             direccion
           )
         `)
-        .eq('repartidor_id', repartidorId)
-        .order('created_at', { ascending: false });
+        .eq('repartidor_id', repartidorId);
+
+      // Para el repartidor especial (id=1, Pickap), filtrar también por sede si se especifica
+      if (repartidorId === 1 && sedeId) {
+        query = query.eq('sede_id', sedeId);
+      }
+
+      const { data: ordenes, error: ordenesError } = await query.order('created_at', { ascending: false });
 
       if (ordenesError) {
         console.error('❌ Error al obtener órdenes del repartidor:', ordenesError);

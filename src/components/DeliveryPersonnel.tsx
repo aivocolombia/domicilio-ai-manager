@@ -253,13 +253,24 @@ export const DeliveryPersonnel: React.FC<DeliveryPersonnelProps> = ({
             <div>
               <p className="text-2xl font-bold text-green-600">${totalDelivered.toLocaleString()}</p>
               <p className="text-sm text-muted-foreground">Total Entregado (Hoy)</p>
-              <div className="flex gap-4 mt-2">
-                <div className="text-xs">
-                  <span className="text-green-600 font-medium">Efectivo: ${repartidores.reduce((sum, person) => sum + (person.entregado_efectivo || 0), 0).toLocaleString()}</span>
+              <div className="grid grid-cols-2 gap-2 mt-2 text-xs">
+                <div>
+                  <span className="text-green-600 font-medium">💵 Efectivo: ${repartidores.reduce((sum, person) => sum + (person.entregado_efectivo || 0), 0).toLocaleString()}</span>
                 </div>
-                <div className="text-xs">
-                  <span className="text-blue-600 font-medium">Otros: ${repartidores.reduce((sum, person) => sum + (person.entregado_otros || 0), 0).toLocaleString()}</span>
+                <div>
+                  <span className="text-blue-600 font-medium">💳 Tarjeta: ${repartidores.reduce((sum, person) => sum + (person.entregado_tarjeta || 0), 0).toLocaleString()}</span>
                 </div>
+                <div>
+                  <span className="text-purple-600 font-medium">📱 Nequi: ${repartidores.reduce((sum, person) => sum + (person.entregado_nequi || 0), 0).toLocaleString()}</span>
+                </div>
+                <div>
+                  <span className="text-orange-600 font-medium">🏦 Transfer: ${repartidores.reduce((sum, person) => sum + (person.entregado_transferencia || 0), 0).toLocaleString()}</span>
+                </div>
+                {repartidores.reduce((sum, person) => sum + (person.entregado_otros || 0), 0) > 0 && (
+                  <div className="col-span-2">
+                    <span className="text-gray-600 font-medium">🔄 Otros: ${repartidores.reduce((sum, person) => sum + (person.entregado_otros || 0), 0).toLocaleString()}</span>
+                  </div>
+                )}
               </div>
             </div>
             <User className="h-8 w-8 text-green-600" />
@@ -359,13 +370,27 @@ export const DeliveryPersonnel: React.FC<DeliveryPersonnelProps> = ({
                       <span className="font-medium text-green-600">${(person.total_entregado || 0).toLocaleString()}</span>
                     </div>
                     <div className="flex justify-between">
-                      <span className="text-sm text-muted-foreground">Efectivo (hoy):</span>
+                      <span className="text-sm text-muted-foreground">💵 Efectivo (hoy):</span>
                       <span className="font-medium text-green-600">${(person.entregado_efectivo || 0).toLocaleString()}</span>
                     </div>
                     <div className="flex justify-between">
-                      <span className="text-sm text-muted-foreground">Otros métodos (hoy):</span>
-                      <span className="font-medium text-blue-600">${(person.entregado_otros || 0).toLocaleString()}</span>
+                      <span className="text-sm text-muted-foreground">💳 Tarjeta (hoy):</span>
+                      <span className="font-medium text-blue-600">${(person.entregado_tarjeta || 0).toLocaleString()}</span>
                     </div>
+                    <div className="flex justify-between">
+                      <span className="text-sm text-muted-foreground">📱 Nequi (hoy):</span>
+                      <span className="font-medium text-purple-600">${(person.entregado_nequi || 0).toLocaleString()}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-sm text-muted-foreground">🏦 Transferencia (hoy):</span>
+                      <span className="font-medium text-orange-600">${(person.entregado_transferencia || 0).toLocaleString()}</span>
+                    </div>
+                    {(person.entregado_otros || 0) > 0 && (
+                      <div className="flex justify-between">
+                        <span className="text-sm text-muted-foreground">🔄 Otros (hoy):</span>
+                        <span className="font-medium text-gray-600">${(person.entregado_otros || 0).toLocaleString()}</span>
+                      </div>
+                    )}
                   </>
                 ) : (
                   <div className="text-sm text-muted-foreground">Repartidor pedido por el usuario</div>
@@ -396,6 +421,7 @@ export const DeliveryPersonnel: React.FC<DeliveryPersonnelProps> = ({
         onClose={() => setIsHistoryModalOpen(false)}
         deliveryPerson={selectedPerson}
         orders={[]}
+        sedeId={effectiveSedeId}
       />
     </div>
   );

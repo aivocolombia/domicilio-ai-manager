@@ -12,13 +12,15 @@ interface DeliveryPersonHistoryProps {
   onClose: () => void;
   deliveryPerson: any;
   orders: any[];
+  sedeId?: string;
 }
 
 export const DeliveryPersonHistory: React.FC<DeliveryPersonHistoryProps> = ({
   isOpen,
   onClose,
   deliveryPerson,
-  orders
+  orders,
+  sedeId
 }) => {
   const [showTodayOnly, setShowTodayOnly] = useState(true);
   const [historialPedidos, setHistorialPedidos] = useState<any[]>([]);
@@ -38,7 +40,7 @@ export const DeliveryPersonHistory: React.FC<DeliveryPersonHistoryProps> = ({
       setLoading(true);
       console.log('🔄 Cargando historial para repartidor:', deliveryPerson.id);
       
-      const data = await deliveryService.getHistorialRepartidor(deliveryPerson.id);
+      const data = await deliveryService.getHistorialRepartidor(deliveryPerson.id, sedeId);
       setHistorialPedidos(data);
       
       console.log('✅ Historial cargado:', data.length, 'pedidos');

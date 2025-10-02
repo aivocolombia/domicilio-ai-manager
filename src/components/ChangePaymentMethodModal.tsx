@@ -128,10 +128,10 @@ export function ChangePaymentMethodModal({
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <CreditCard className="h-5 w-5" />
-            Cambiar Método de Pago
+            Editar Método de Pago
           </DialogTitle>
           <DialogDescription>
-            Orden #{orderId} - Solo para pedidos ya entregados
+            Orden #{orderId} - Cambiar método de pago existente o agregar método adicional
           </DialogDescription>
         </DialogHeader>
 
