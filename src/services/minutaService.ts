@@ -196,6 +196,282 @@ export class MinutaService {
   // NOTA: groupProducts ya no se usa - ahora mantenemos items individuales con IDs únicos
   // private groupProducts() - REMOVIDO
 
+  /**
+   * Agregar precios específicos por sede a los platos
+   */
+  private async addSedePricesToPlatos(platosData: any[], sedeId: string): Promise<OrderItemPlato[]> {
+    try {
+      console.log(`🍽️ MinutaService: Obteniendo precios por sede para ${platosData.length} platos en sede ${sedeId}`);
+
+      if (!platosData || platosData.length === 0) {
+        return [];
+      }
+
+      // Obtener los IDs de los platos únicos desde el campo plato_id
+      const platoIds = [...new Set(platosData.map(item => item.plato_id).filter(id => id))];
+
+      if (platoIds.length === 0) {
+        console.warn('⚠️ MinutaService: No se encontraron IDs de platos válidos');
+        return platosData.map(item => ({
+          plato_nombre: item.platos?.name || 'Plato sin nombre',
+          cantidad: 1,
+          precio_unitario: item.platos?.pricing || 0,
+          precio_total: item.platos?.pricing || 0,
+          orden_item_id: item.id
+        }));
+      }
+
+      // Consultar precios específicos por sede
+      const { data: sedePlatos, error } = await supabase
+        .from('sede_platos')
+        .select('plato_id, price_override')
+        .eq('sede_id', sedeId)
+        .in('plato_id', platoIds);
+
+      if (error) {
+        console.error('❌ MinutaService: Error obteniendo precios de sede_platos:', error);
+        // Fallback a precios base si hay error
+        return platosData.map(item => ({
+          plato_nombre: item.platos?.name || 'Plato sin nombre',
+          cantidad: 1,
+          precio_unitario: item.platos?.pricing || 0,
+          precio_total: item.platos?.pricing || 0,
+          orden_item_id: item.id
+        }));
+      }
+
+      // Crear mapa de precios por sede
+      const sedePricesMap = new Map();
+      sedePlatos?.forEach(sedePlato => {
+        if (sedePlato.price_override !== null && sedePlato.price_override !== undefined) {
+          sedePricesMap.set(sedePlato.plato_id, sedePlato.price_override);
+        }
+      });
+
+      console.log(`💰 MinutaService: Precios por sede encontrados para platos:`, Object.fromEntries(sedePricesMap));
+
+      // Mapear platos con precios correctos usando plato_id
+      const result = platosData.map(item => {
+        const platoId = item.plato_id;
+        const precioBase = item.platos?.pricing || 0;
+        const precioSede = sedePricesMap.get(platoId);
+        const precioFinal = precioSede !== undefined ? precioSede : precioBase;
+
+        console.log(`🍽️ MinutaService: Plato ${item.platos?.name} (ID: ${platoId}):`, {
+          precioBase,
+          precioSede,
+          precioFinal,
+          tieneOverride: precioSede !== undefined
+        });
+
+        return {
+          plato_nombre: item.platos?.name || 'Plato sin nombre',
+          cantidad: 1,
+          precio_unitario: precioFinal,
+          precio_total: precioFinal,
+          orden_item_id: item.id
+        };
+      });
+
+      console.log(`✅ MinutaService: ${result.length} platos procesados con precios por sede`);
+      return result;
+    } catch (error) {
+      console.error('❌ MinutaService: Error en addSedePricesToPlatos:', error);
+      // Fallback a precios base en caso de error
+      return platosData.map(item => ({
+        plato_nombre: item.platos?.name || 'Plato sin nombre',
+        cantidad: 1,
+        precio_unitario: item.platos?.pricing || 0,
+        precio_total: item.platos?.pricing || 0,
+        orden_item_id: item.id
+      }));
+    }
+  }
+
+  /**
+   * Agregar precios específicos por sede a las bebidas
+   */
+  private async addSedePricesToBebidas(bebidasData: any[], sedeId: string): Promise<OrderItemBebida[]> {
+    try {
+      console.log(`🥤 MinutaService: Obteniendo precios por sede para ${bebidasData.length} bebidas en sede ${sedeId}`);
+
+      if (!bebidasData || bebidasData.length === 0) {
+        return [];
+      }
+
+      // Obtener los IDs de las bebidas únicas desde el campo bebidas_id
+      const bebidaIds = [...new Set(bebidasData.map(item => item.bebidas_id).filter(id => id))];
+
+      if (bebidaIds.length === 0) {
+        console.warn('⚠️ MinutaService: No se encontraron IDs de bebidas válidos');
+        return bebidasData.map(item => ({
+          bebida_nombre: item.bebidas?.name || 'Bebida sin nombre',
+          cantidad: 1,
+          precio_unitario: item.bebidas?.pricing || 0,
+          precio_total: item.bebidas?.pricing || 0,
+          orden_item_id: item.id
+        }));
+      }
+
+      // Consultar precios específicos por sede
+      const { data: sedeBebidas, error } = await supabase
+        .from('sede_bebidas')
+        .select('bebida_id, price_override')
+        .eq('sede_id', sedeId)
+        .in('bebida_id', bebidaIds);
+
+      if (error) {
+        console.error('❌ MinutaService: Error obteniendo precios de sede_bebidas:', error);
+        // Fallback a precios base si hay error
+        return bebidasData.map(item => ({
+          bebida_nombre: item.bebidas?.name || 'Bebida sin nombre',
+          cantidad: 1,
+          precio_unitario: item.bebidas?.pricing || 0,
+          precio_total: item.bebidas?.pricing || 0,
+          orden_item_id: item.id
+        }));
+      }
+
+      // Crear mapa de precios por sede
+      const sedePricesMap = new Map();
+      sedeBebidas?.forEach(sedeBebida => {
+        if (sedeBebida.price_override !== null && sedeBebida.price_override !== undefined) {
+          sedePricesMap.set(sedeBebida.bebida_id, sedeBebida.price_override);
+        }
+      });
+
+      console.log(`💰 MinutaService: Precios por sede encontrados:`, Object.fromEntries(sedePricesMap));
+
+      // Mapear bebidas con precios correctos usando bebidas_id
+      const result = bebidasData.map(item => {
+        const bebidaId = item.bebidas_id;
+        const precioBase = item.bebidas?.pricing || 0;
+        const precioSede = sedePricesMap.get(bebidaId);
+        const precioFinal = precioSede !== undefined ? precioSede : precioBase;
+
+        console.log(`🥤 MinutaService: Bebida ${item.bebidas?.name} (ID: ${bebidaId}):`, {
+          precioBase,
+          precioSede,
+          precioFinal,
+          tieneOverride: precioSede !== undefined
+        });
+
+        return {
+          bebida_nombre: item.bebidas?.name || 'Bebida sin nombre',
+          cantidad: 1,
+          precio_unitario: precioFinal,
+          precio_total: precioFinal,
+          orden_item_id: item.id
+        };
+      });
+
+      console.log(`✅ MinutaService: ${result.length} bebidas procesadas con precios por sede`);
+      return result;
+    } catch (error) {
+      console.error('❌ MinutaService: Error en addSedePricesToBebidas:', error);
+      // Fallback a precios base en caso de error
+      return bebidasData.map(item => ({
+        bebida_nombre: item.bebidas?.name || 'Bebida sin nombre',
+        cantidad: 1,
+        precio_unitario: item.bebidas?.pricing || 0,
+        precio_total: item.bebidas?.pricing || 0,
+        orden_item_id: item.id
+      }));
+    }
+  }
+
+  /**
+   * Agregar precios específicos por sede a los toppings
+   */
+  private async addSedePricesToToppings(toppingsData: any[], sedeId: string): Promise<OrderItemTopping[]> {
+    try {
+      console.log(`⭐ MinutaService: Obteniendo precios por sede para ${toppingsData.length} toppings en sede ${sedeId}`);
+
+      if (!toppingsData || toppingsData.length === 0) {
+        return [];
+      }
+
+      // Obtener los IDs de los toppings únicos desde el campo topping_id
+      const toppingIds = [...new Set(toppingsData.map(item => item.topping_id).filter(id => id))];
+
+      if (toppingIds.length === 0) {
+        console.warn('⚠️ MinutaService: No se encontraron IDs de toppings válidos');
+        return toppingsData.map(item => ({
+          topping_nombre: item.toppings?.name || 'Topping sin nombre',
+          cantidad: 1,
+          precio_unitario: item.toppings?.pricing || 0,
+          precio_total: item.toppings?.pricing || 0,
+          orden_item_id: item.id
+        }));
+      }
+
+      // Consultar precios específicos por sede
+      const { data: sedeToppings, error } = await supabase
+        .from('sede_toppings')
+        .select('topping_id, price_override')
+        .eq('sede_id', sedeId)
+        .in('topping_id', toppingIds);
+
+      if (error) {
+        console.error('❌ MinutaService: Error obteniendo precios de sede_toppings:', error);
+        // Fallback a precios base si hay error
+        return toppingsData.map(item => ({
+          topping_nombre: item.toppings?.name || 'Topping sin nombre',
+          cantidad: 1,
+          precio_unitario: item.toppings?.pricing || 0,
+          precio_total: item.toppings?.pricing || 0,
+          orden_item_id: item.id
+        }));
+      }
+
+      // Crear mapa de precios por sede
+      const sedePricesMap = new Map();
+      sedeToppings?.forEach(sedeTopping => {
+        if (sedeTopping.price_override !== null && sedeTopping.price_override !== undefined) {
+          sedePricesMap.set(sedeTopping.topping_id, sedeTopping.price_override);
+        }
+      });
+
+      console.log(`💰 MinutaService: Precios por sede encontrados para toppings:`, Object.fromEntries(sedePricesMap));
+
+      // Mapear toppings con precios correctos usando topping_id
+      const result = toppingsData.map(item => {
+        const toppingId = item.topping_id;
+        const precioBase = item.toppings?.pricing || 0;
+        const precioSede = sedePricesMap.get(toppingId);
+        const precioFinal = precioSede !== undefined ? precioSede : precioBase;
+
+        console.log(`⭐ MinutaService: Topping ${item.toppings?.name} (ID: ${toppingId}):`, {
+          precioBase,
+          precioSede,
+          precioFinal,
+          tieneOverride: precioSede !== undefined
+        });
+
+        return {
+          topping_nombre: item.toppings?.name || 'Topping sin nombre',
+          cantidad: 1,
+          precio_unitario: precioFinal,
+          precio_total: precioFinal,
+          orden_item_id: item.id
+        };
+      });
+
+      console.log(`✅ MinutaService: ${result.length} toppings procesados con precios por sede`);
+      return result;
+    } catch (error) {
+      console.error('❌ MinutaService: Error en addSedePricesToToppings:', error);
+      // Fallback a precios base en caso de error
+      return toppingsData.map(item => ({
+        topping_nombre: item.toppings?.name || 'Topping sin nombre',
+        cantidad: 1,
+        precio_unitario: item.toppings?.pricing || 0,
+        precio_total: item.toppings?.pricing || 0,
+        orden_item_id: item.id
+      }));
+    }
+  }
+
   async getOrderDetailsForMinuta(orderId: number): Promise<MinutaOrderDetails | null> {
     try {
       // Timeout de 10 segundos para evitar cuelgues
@@ -217,6 +493,7 @@ export class MinutaService {
             precio_envio,
             address,
             payment_id_2,
+            sede_id,
             clientes!cliente_id(nombre, telefono),
             pagos!payment_id(type, total_pago),
             pagos2:pagos!payment_id_2(type, total_pago),
@@ -232,25 +509,28 @@ export class MinutaService {
           .from('ordenes_platos')
           .select(`
             id,
-            platos!inner(name, pricing)
+            plato_id,
+            platos!inner(id, name, pricing)
           `)
           .eq('orden_id', orderId),
-        
+
         // Consulta de bebidas en paralelo
         supabase
           .from('ordenes_bebidas')
           .select(`
             id,
-            bebidas!inner(name, pricing)
+            bebidas_id,
+            bebidas!inner(id, name, pricing)
           `)
           .eq('orden_id', orderId),
-        
+
         // Consulta de toppings en paralelo
         supabase
           .from('ordenes_toppings')
           .select(`
             id,
-            toppings!inner(name, pricing)
+            topping_id,
+            toppings!inner(id, name, pricing)
           `)
           .eq('orden_id', orderId)
       ]);
@@ -326,23 +606,17 @@ export class MinutaService {
         toppings: []
       };
 
-      // COPIADO EXACTAMENTE DE OrderDetailsModal que funciona
-      const mappedPlatos = (platosData || []).map(item => ({
-        plato_nombre: item.platos?.name || 'Producto sin nombre',
-        cantidad: 1, // Cada item individual
-        precio_unitario: item.platos?.pricing || 0,
-        precio_total: item.platos?.pricing || 0,
-        orden_item_id: item.id // ID único del item en ordenes_platos
-      }));
+      // Obtener precios específicos por sede para platos
+      const platosWithSedePrice = await this.addSedePricesToPlatos(platosData || [], orderData.sede_id);
 
-      console.log('🔍 DEBUG MinutaService: Mapped platos with orden_item_id:', mappedPlatos);
+      console.log('🔍 DEBUG MinutaService: Platos con precios por sede:', platosWithSedePrice);
 
       // Obtener historial de sustituciones para esta orden (igual que OrderDetailsModal)
       const substitutionHistory = await substitutionHistoryService.getOrderSubstitutionHistory(orderData.id);
       console.log(`📋 MinutaService: Historial de sustituciones:`, substitutionHistory);
 
       // Aplicar sustituciones usando la MISMA lógica que OrderDetailsModal
-      minutaDetails.platos = mappedPlatos.map(product => ({
+      minutaDetails.platos = platosWithSedePrice.map(product => ({
         ...product,
         substitutions: substitutionHistory
           .filter(sub => {
@@ -375,26 +649,20 @@ export class MinutaService {
           }))
       }));
 
+      // Obtener precios específicos por sede para bebidas
+      const bebidasWithSedePrice = await this.addSedePricesToBebidas(bebidasData || [], orderData.sede_id);
+
       minutaDetails.bebidas = await this.addSubstitutionsToProducts(
-        bebidasData?.map(item => ({
-          bebida_nombre: item.bebidas?.name || 'Bebida sin nombre',
-          cantidad: 1, // Cada item individual
-          precio_unitario: item.bebidas?.pricing || 0,
-          precio_total: item.bebidas?.pricing || 0,
-          orden_item_id: item.id // Mantener ID único del item en la orden
-        })) || [],
+        bebidasWithSedePrice,
         orderData.id,
         'bebida'
       );
 
+      // Obtener precios específicos por sede para toppings
+      const toppingsWithSedePrice = await this.addSedePricesToToppings(toppingsData || [], orderData.sede_id);
+
       minutaDetails.toppings = await this.addSubstitutionsToProducts(
-        toppingsData?.map(item => ({
-          topping_nombre: item.toppings?.name || 'Topping sin nombre',
-          cantidad: 1, // Cada item individual
-          precio_unitario: item.toppings?.pricing || 0,
-          precio_total: item.toppings?.pricing || 0,
-          orden_item_id: item.id // Mantener ID único del item en la orden
-        })) || [],
+        toppingsWithSedePrice,
         orderData.id,
         'topping'
       );

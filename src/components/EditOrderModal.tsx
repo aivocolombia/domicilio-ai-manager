@@ -473,53 +473,180 @@ export const EditOrderModal: React.FC<EditOrderModalProps> = ({
         // NUEVO: Mantener items individuales sin agrupar (para sustituciones específicas)
         const finalItems: OrderItem[] = [];
 
-        // Procesar platos individualmente
-        (platosData || []).forEach((item, index) => {
-          if (item.platos) {
-            finalItems.push({
-              id: `plato_${item.id}_${index}`, // Usar ID único del registro
-              tipo: 'plato',
-              nombre: item.platos.name,
-              cantidad: 1, // Siempre 1 para items individuales
-              precio_unitario: item.platos.pricing || 0,
-              precio_total: item.platos.pricing || 0,
-              producto_id: item.platos.id,
-              orden_item_id: item.id // ID específico del item en ordenes_platos
-            });
-          }
-        });
+        // Obtener precios específicos por sede para todos los productos
+        if (sedeId) {
+          // Obtener IDs únicos de productos
+          const platoIds = [...new Set((platosData || []).map(item => item.platos?.id).filter(id => id))];
+          const bebidaIds = [...new Set((bebidasData || []).map(item => item.bebidas?.id).filter(id => id))];
+          const toppingIds = [...new Set((toppingsData || []).map(item => item.toppings?.id).filter(id => id))];
 
-        // Procesar bebidas individualmente
-        (bebidasData || []).forEach((item, index) => {
-          if (item.bebidas) {
-            finalItems.push({
-              id: `bebida_${item.id}_${index}`, // Usar ID único del registro
-              tipo: 'bebida',
-              nombre: item.bebidas.name,
-              cantidad: 1, // Siempre 1 para items individuales
-              precio_unitario: item.bebidas.pricing || 0,
-              precio_total: item.bebidas.pricing || 0,
-              producto_id: item.bebidas.id,
-              orden_item_id: item.id // ID específico del item en ordenes_bebidas
-            });
-          }
-        });
+          console.log('🔍 EditOrderModal: Obteniendo precios por sede para:', { platoIds, bebidaIds, toppingIds, sedeId });
 
-        // Procesar toppings individualmente
-        (toppingsData || []).forEach((item, index) => {
-          if (item.toppings) {
-            finalItems.push({
-              id: `topping_${item.id}_${index}`, // Usar ID único del registro
-              tipo: 'topping',
-              nombre: item.toppings.name,
-              cantidad: 1, // Siempre 1 para items individuales
-              precio_unitario: item.toppings.pricing || 0,
-              precio_total: item.toppings.pricing || 0,
-              producto_id: item.toppings.id,
-              orden_item_id: item.id // ID específico del item en ordenes_toppings
-            });
-          }
-        });
+          // Obtener precios por sede en paralelo
+          const [sedePlatosResult, sedeBebidasResult, sedeToppingsResult] = await Promise.all([
+            platoIds.length > 0 ? supabase
+              .from('sede_platos')
+              .select('plato_id, price_override')
+              .eq('sede_id', sedeId)
+              .in('plato_id', platoIds) : Promise.resolve({ data: [], error: null }),
+
+            bebidaIds.length > 0 ? supabase
+              .from('sede_bebidas')
+              .select('bebida_id, price_override')
+              .eq('sede_id', sedeId)
+              .in('bebida_id', bebidaIds) : Promise.resolve({ data: [], error: null }),
+
+            toppingIds.length > 0 ? supabase
+              .from('sede_toppings')
+              .select('topping_id, price_override')
+              .eq('sede_id', sedeId)
+              .in('topping_id', toppingIds) : Promise.resolve({ data: [], error: null })
+          ]);
+
+          // Crear mapas de precios por sede
+          const platoPricesMap = new Map();
+          sedePlatosResult.data?.forEach(item => {
+            if (item.price_override !== null && item.price_override !== undefined) {
+              platoPricesMap.set(item.plato_id, item.price_override);
+            }
+          });
+
+          const bebidaPricesMap = new Map();
+          sedeBebidasResult.data?.forEach(item => {
+            if (item.price_override !== null && item.price_override !== undefined) {
+              bebidaPricesMap.set(item.bebida_id, item.price_override);
+            }
+          });
+
+          const toppingPricesMap = new Map();
+          sedeToppingsResult.data?.forEach(item => {
+            if (item.price_override !== null && item.price_override !== undefined) {
+              toppingPricesMap.set(item.topping_id, item.price_override);
+            }
+          });
+
+          console.log('💰 EditOrderModal: Precios por sede encontrados:', {
+            platos: Object.fromEntries(platoPricesMap),
+            bebidas: Object.fromEntries(bebidaPricesMap),
+            toppings: Object.fromEntries(toppingPricesMap)
+          });
+
+          // Procesar platos individualmente con precios por sede
+          (platosData || []).forEach((item, index) => {
+            if (item.platos) {
+              const precioBase = item.platos.pricing || 0;
+              const precioSede = platoPricesMap.get(item.platos.id);
+              const precioFinal = precioSede !== undefined ? precioSede : precioBase;
+
+              console.log(`🍽️ EditOrderModal: Plato ${item.platos.name} - Base: ${precioBase}, Sede: ${precioSede}, Final: ${precioFinal}`);
+
+              finalItems.push({
+                id: `plato_${item.id}_${index}`,
+                tipo: 'plato',
+                nombre: item.platos.name,
+                cantidad: 1,
+                precio_unitario: precioFinal,
+                precio_total: precioFinal,
+                producto_id: item.platos.id,
+                orden_item_id: item.id
+              });
+            }
+          });
+
+          // Procesar bebidas individualmente con precios por sede
+          (bebidasData || []).forEach((item, index) => {
+            if (item.bebidas) {
+              const precioBase = item.bebidas.pricing || 0;
+              const precioSede = bebidaPricesMap.get(item.bebidas.id);
+              const precioFinal = precioSede !== undefined ? precioSede : precioBase;
+
+              console.log(`🥤 EditOrderModal: Bebida ${item.bebidas.name} - Base: ${precioBase}, Sede: ${precioSede}, Final: ${precioFinal}`);
+
+              finalItems.push({
+                id: `bebida_${item.id}_${index}`,
+                tipo: 'bebida',
+                nombre: item.bebidas.name,
+                cantidad: 1,
+                precio_unitario: precioFinal,
+                precio_total: precioFinal,
+                producto_id: item.bebidas.id,
+                orden_item_id: item.id
+              });
+            }
+          });
+
+          // Procesar toppings individualmente con precios por sede
+          (toppingsData || []).forEach((item, index) => {
+            if (item.toppings) {
+              const precioBase = item.toppings.pricing || 0;
+              const precioSede = toppingPricesMap.get(item.toppings.id);
+              const precioFinal = precioSede !== undefined ? precioSede : precioBase;
+
+              console.log(`⭐ EditOrderModal: Topping ${item.toppings.name} - Base: ${precioBase}, Sede: ${precioSede}, Final: ${precioFinal}`);
+
+              finalItems.push({
+                id: `topping_${item.id}_${index}`,
+                tipo: 'topping',
+                nombre: item.toppings.name,
+                cantidad: 1,
+                precio_unitario: precioFinal,
+                precio_total: precioFinal,
+                producto_id: item.toppings.id,
+                orden_item_id: item.id
+              });
+            }
+          });
+        } else {
+          console.warn('⚠️ EditOrderModal: No se pudo determinar sede_id, usando precios base');
+          // Fallback a precios base si no hay sede_id
+          // Procesar platos individualmente
+          (platosData || []).forEach((item, index) => {
+            if (item.platos) {
+              finalItems.push({
+                id: `plato_${item.id}_${index}`,
+                tipo: 'plato',
+                nombre: item.platos.name,
+                cantidad: 1,
+                precio_unitario: item.platos.pricing || 0,
+                precio_total: item.platos.pricing || 0,
+                producto_id: item.platos.id,
+                orden_item_id: item.id
+              });
+            }
+          });
+
+          // Procesar bebidas individualmente
+          (bebidasData || []).forEach((item, index) => {
+            if (item.bebidas) {
+              finalItems.push({
+                id: `bebida_${item.id}_${index}`,
+                tipo: 'bebida',
+                nombre: item.bebidas.name,
+                cantidad: 1,
+                precio_unitario: item.bebidas.pricing || 0,
+                precio_total: item.bebidas.pricing || 0,
+                producto_id: item.bebidas.id,
+                orden_item_id: item.id
+              });
+            }
+          });
+
+          // Procesar toppings individualmente
+          (toppingsData || []).forEach((item, index) => {
+            if (item.toppings) {
+              finalItems.push({
+                id: `topping_${item.id}_${index}`,
+                tipo: 'topping',
+                nombre: item.toppings.name,
+                cantidad: 1,
+                precio_unitario: item.toppings.pricing || 0,
+                precio_total: item.toppings.pricing || 0,
+                producto_id: item.toppings.id,
+                orden_item_id: item.id
+              });
+            }
+          });
+        }
         console.log('🔍 EditOrderModal: Items procesados:', {
           platosData: platosData?.length || 0,
           bebidasData: bebidasData?.length || 0,

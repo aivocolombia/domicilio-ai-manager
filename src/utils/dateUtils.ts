@@ -43,10 +43,33 @@ export const getEndOfDay = (date: Date): Date => {
  * Corregido para manejar correctamente la zona horaria de Colombia
  */
 export const formatDateForQuery = (date: Date, isEndOfDay: boolean = false): string => {
+  // Validar que la fecha sea válida
+  if (!date || isNaN(date.getTime())) {
+    console.error('❌ formatDateForQuery: Fecha inválida recibida:', date);
+    // Usar fecha actual como fallback
+    date = new Date();
+  }
+
   // Crear una nueva fecha basada en la fecha de entrada
   const year = date.getFullYear();
   const month = date.getMonth(); // 0-based
   const day = date.getDate();
+
+  // Validar que los valores extraídos sean válidos
+  if (isNaN(year) || isNaN(month) || isNaN(day)) {
+    console.error('❌ formatDateForQuery: Valores de fecha inválidos:', { year, month, day });
+    // Usar fecha actual como fallback
+    const now = new Date();
+    const fallbackYear = now.getFullYear();
+    const fallbackMonth = now.getMonth();
+    const fallbackDay = now.getDate();
+
+    const targetDate = isEndOfDay
+      ? new Date(fallbackYear, fallbackMonth, fallbackDay, 23, 59, 59, 999)
+      : new Date(fallbackYear, fallbackMonth, fallbackDay, 0, 0, 0, 0);
+
+    return targetDate.toISOString();
+  }
 
   // Crear fecha en zona horaria local
   let targetDate: Date;
@@ -58,6 +81,12 @@ export const formatDateForQuery = (date: Date, isEndOfDay: boolean = false): str
     targetDate = new Date(year, month, day, 0, 0, 0, 0);
   }
 
+  // Validar que la fecha target sea válida
+  if (isNaN(targetDate.getTime())) {
+    console.error('❌ formatDateForQuery: targetDate inválida:', targetDate);
+    return new Date().toISOString();
+  }
+
   // Crear manualmente la fecha en formato ISO sin conversión automática de zona horaria
   const localYear = targetDate.getFullYear();
   const localMonth = String(targetDate.getMonth() + 1).padStart(2, '0');
@@ -65,6 +94,12 @@ export const formatDateForQuery = (date: Date, isEndOfDay: boolean = false): str
   const localHour = String(targetDate.getHours()).padStart(2, '0');
   const localMinute = String(targetDate.getMinutes()).padStart(2, '0');
   const localSecond = String(targetDate.getSeconds()).padStart(2, '0');
+
+  // Validar que todos los componentes sean válidos
+  if (isNaN(Number(localYear)) || isNaN(Number(localMonth)) || isNaN(Number(localDay))) {
+    console.error('❌ formatDateForQuery: Componentes locales inválidos:', { localYear, localMonth, localDay });
+    return new Date().toISOString();
+  }
 
   // Formato sin Z para evitar problemas de zona horaria - Colombia UTC-5
   const result = `${localYear}-${localMonth}-${localDay}T${localHour}:${localMinute}:${localSecond}-05:00`;
@@ -82,10 +117,30 @@ export const formatDateForQuery = (date: Date, isEndOfDay: boolean = false): str
  * Crea un rango de fechas para filtros de consulta
  */
 export const createDateRangeForQuery = (fromDate: Date, toDate: Date) => {
-  return {
+  // Validar fechas de entrada
+  if (!fromDate || isNaN(fromDate.getTime())) {
+    console.error('❌ createDateRangeForQuery: fromDate inválida:', fromDate);
+    fromDate = new Date(); // Usar hoy como fallback
+  }
+
+  if (!toDate || isNaN(toDate.getTime())) {
+    console.error('❌ createDateRangeForQuery: toDate inválida:', toDate);
+    toDate = new Date(); // Usar hoy como fallback
+  }
+
+  console.log('📅 createDateRangeForQuery: Creando rango', {
+    fromDate: fromDate.toLocaleDateString('es-CO'),
+    toDate: toDate.toLocaleDateString('es-CO')
+  });
+
+  const result = {
     fechaInicio: formatDateForQuery(fromDate, false), // Inicio del día
     fechaFin: formatDateForQuery(toDate, true)        // Final del día
   };
+
+  console.log('📅 createDateRangeForQuery: Resultado', result);
+
+  return result;
 };
 
 /**

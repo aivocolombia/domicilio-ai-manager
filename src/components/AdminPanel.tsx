@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { Plus, Search, Edit, Trash2, Users, Building2, UserCheck, UserX, TrendingUp, DollarSign, Package, Clock, LayoutDashboard, Phone, MapPin, Settings, RefreshCw, Cog, ChartLine, Timer, BarChart3, Truck, Eye, AlertTriangle, ChevronLeft, ChevronRight, XCircle, Star, BarChart } from 'lucide-react'
+import { Plus, Search, Edit, Trash2, Users, Building2, UserCheck, UserX, TrendingUp, DollarSign, Package, Clock, LayoutDashboard, Phone, MapPin, Settings, RefreshCw, Cog, ChartLine, Timer, BarChart3, Truck, Eye, AlertTriangle, ChevronLeft, ChevronRight, XCircle, Star, BarChart, Download } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -28,6 +28,7 @@ import { CalendarIcon } from 'lucide-react'
 import { format } from 'date-fns'
 import { es } from 'date-fns/locale'
 import { logger } from '@/utils/logger'
+import { createDateRangeForQuery } from '@/utils/dateUtils'
 import { CancelledOrdersModal } from '@/components/CancelledOrdersModal'
 import { useRealtimeMetrics } from '@/hooks/useRealtimeMetrics'
 import { DeliveryPersonMetrics } from '@/components/DeliveryPersonMetrics'
@@ -242,11 +243,30 @@ export function AdminPanel({ onBack, onNavigateToTimeMetrics }: AdminPanelProps)
   // Optimized metrics loading with debouncing and caching
   const loadMetricsOptimized = useCallback(async () => {
     startLoading('metrics')
-    
+
     try {
+      // Validar fechas antes de procesar
+      if (!dateRange.from || isNaN(dateRange.from.getTime())) {
+        console.error('❌ loadMetricsOptimized: dateRange.from inválida:', dateRange.from);
+        setDateRange(prev => ({ ...prev, from: new Date() }));
+        return;
+      }
+
+      if (!dateRange.to || isNaN(dateRange.to.getTime())) {
+        console.error('❌ loadMetricsOptimized: dateRange.to inválida:', dateRange.to);
+        setDateRange(prev => ({ ...prev, to: new Date() }));
+        return;
+      }
+
+      console.log('📅 loadMetricsOptimized: Fechas válidas', {
+        from: dateRange.from.toLocaleDateString('es-CO'),
+        to: dateRange.to.toLocaleDateString('es-CO')
+      });
+
+      const dateRangeQuery = createDateRangeForQuery(dateRange.from, dateRange.to)
       const filters: MetricsFilters = {
-        fecha_inicio: format(dateRange.from, 'yyyy-MM-dd'),
-        fecha_fin: format(dateRange.to, 'yyyy-MM-dd'),
+        fecha_inicio: dateRangeQuery.fechaInicio,
+        fecha_fin: dateRangeQuery.fechaFin,
         sede_id: selectedSedeFilter === 'all' ? undefined : selectedSedeFilter
       }
       
@@ -2205,35 +2225,78 @@ export function AdminPanel({ onBack, onNavigateToTimeMetrics }: AdminPanelProps)
                   {/* Domicilios por Día */}
                   <Card>
                     <CardHeader>
-                      <CardTitle className="flex items-center gap-2">
-                        <TrendingUp className="h-5 w-5" />
-                        Domicilios por Día
+                      <CardTitle className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <TrendingUp className="h-5 w-5" />
+                          Domicilios por Día
+                        </div>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            const startDate = format(dateRange.from, 'yyyy-MM-dd');
+                            const endDate = format(dateRange.to, 'yyyy-MM-dd');
+                            const filteredData = metricsData.metricasPorDia.filter(item => {
+                              const itemDate = format(new Date(item.fecha), 'yyyy-MM-dd');
+                              return itemDate >= startDate && itemDate <= endDate;
+                            });
+
+                            const csvContent = [
+                              ['Fecha', 'Pedidos', 'Ingresos'],
+                              ...filteredData.map(item => [
+                                format(new Date(item.fecha), 'dd/MM/yyyy', { locale: es }),
+                                item.total_pedidos,
+                                `$${item.total_ingresos.toLocaleString()}`
+                              ])
+                            ].map(row => row.join(',')).join('\n');
+
+                            const blob = new Blob([csvContent], { type: 'text/csv' });
+                            const url = window.URL.createObjectURL(blob);
+                            const a = document.createElement('a');
+                            a.href = url;
+                            a.download = `domicilios_por_dia_${startDate}_${endDate}.csv`;
+                            a.click();
+                            window.URL.revokeObjectURL(url);
+                          }}
+                        >
+                          <Download className="h-4 w-4" />
+                        </Button>
                       </CardTitle>
                       <CardDescription>
                         Tendencia de domicilios y ganancias diarias
                       </CardDescription>
                     </CardHeader>
                     <CardContent>
-                      <div className="space-y-4">
-                        {metricsData.metricasPorDia.map((item, index) => (
-                          <div key={index} className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
-                            <div className="flex items-center gap-3">
-                              <div className="w-3 h-3 bg-primary rounded-full"></div>
-                              <span className="font-medium">{format(new Date(item.fecha), 'dd/MM', { locale: es })}</span>
-                            </div>
-                            <div className="text-right">
-                              <div className="font-bold text-lg">{item.total_pedidos} pedidos</div>
-                              <div className="text-sm text-muted-foreground">
-                                ${(item.total_ingresos / 1000).toFixed(0)}k ingresos
+                      <div className="max-h-80 overflow-y-auto space-y-2">
+                        {(() => {
+                          const startDate = format(dateRange.from, 'yyyy-MM-dd');
+                          const endDate = format(dateRange.to, 'yyyy-MM-dd');
+                          const filteredData = metricsData.metricasPorDia.filter(item => {
+                            const itemDate = format(new Date(item.fecha), 'yyyy-MM-dd');
+                            return itemDate >= startDate && itemDate <= endDate;
+                          });
+
+                          return filteredData.length > 0 ? (
+                            filteredData.map((item, index) => (
+                              <div key={index} className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
+                                <div className="flex items-center gap-3">
+                                  <div className="w-3 h-3 bg-primary rounded-full"></div>
+                                  <span className="font-medium">{format(new Date(item.fecha), 'dd/MM', { locale: es })}</span>
+                                </div>
+                                <div className="text-right">
+                                  <div className="font-bold text-lg">{item.total_pedidos} pedidos</div>
+                                  <div className="text-sm text-muted-foreground">
+                                    ${(item.total_ingresos / 1000).toFixed(0)}k ingresos
+                                  </div>
+                                </div>
                               </div>
+                            ))
+                          ) : (
+                            <div className="text-center py-8 text-muted-foreground">
+                              No hay datos para el período seleccionado
                             </div>
-                          </div>
-                        ))}
-                        {metricsData.metricasPorDia.length === 0 && (
-                          <div className="text-center py-8 text-muted-foreground">
-                            No hay datos para el período seleccionado
-                          </div>
-                        )}
+                          );
+                        })()}
                       </div>
                     </CardContent>
                   </Card>
@@ -2382,21 +2445,28 @@ export function AdminPanel({ onBack, onNavigateToTimeMetrics }: AdminPanelProps)
             )}
 
             {/* Métricas de Rendimiento de Repartidores */}
-            <DeliveryPersonMetrics
-              filters={{
-                fecha_inicio: format(dateRange.from, 'yyyy-MM-dd'),
-                fecha_fin: format(dateRange.to, 'yyyy-MM-dd'),
-                sede_id: selectedSedeFilter === 'all' ? undefined : selectedSedeFilter
-              }}
-              onNavigateToTimeMetrics={onNavigateToTimeMetrics}
-            />
+            {(() => {
+              const dateRangeQuery = createDateRangeForQuery(dateRange.from, dateRange.to);
+              return (
+                <>
+                  <DeliveryPersonMetrics
+                    filters={{
+                      fecha_inicio: dateRangeQuery.fechaInicio,
+                      fecha_fin: dateRangeQuery.fechaFin,
+                      sede_id: selectedSedeFilter === 'all' ? undefined : selectedSedeFilter
+                    }}
+                    onNavigateToTimeMetrics={onNavigateToTimeMetrics}
+                  />
 
-            {/* Métricas de Descuentos */}
-            <DiscountMetrics
-              sedeId={selectedSedeFilter === 'all' ? undefined : selectedSedeFilter}
-              startDate={format(dateRange.from, 'yyyy-MM-dd')}
-              endDate={format(dateRange.to, 'yyyy-MM-dd')}
-            />
+                  {/* Métricas de Descuentos */}
+                  <DiscountMetrics
+                    sedeId={selectedSedeFilter === 'all' ? undefined : selectedSedeFilter}
+                    startDate={dateRangeQuery.fechaInicio}
+                    endDate={dateRangeQuery.fechaFin}
+                  />
+                </>
+              );
+            })()}
           </div>
         )}
 
@@ -2662,10 +2732,13 @@ export function AdminPanel({ onBack, onNavigateToTimeMetrics }: AdminPanelProps)
           }}
           sedeId={selectedSedeForCancelled.id}
           sedeNombre={selectedSedeForCancelled.nombre}
-          dateFilters={{
-            fecha_inicio: format(dateRange.from, 'yyyy-MM-dd'),
-            fecha_fin: format(dateRange.to, 'yyyy-MM-dd')
-          }}
+          dateFilters={(() => {
+            const dateRangeQuery = createDateRangeForQuery(dateRange.from, dateRange.to);
+            return {
+              fecha_inicio: dateRangeQuery.fechaInicio,
+              fecha_fin: dateRangeQuery.fechaFin
+            };
+          })()}
         />
       )}
     </div>

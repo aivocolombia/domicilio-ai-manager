@@ -123,17 +123,45 @@ export interface MetricsFilters {
 }
 
 export class MetricsService {
+  // Helper function para validar y crear fechas seguras
+  private validateAndCreateDates(filters: MetricsFilters): { startDate: Date; endDate: Date; startQuery: string; endQuery: string } {
+    if (!filters.fecha_inicio || !filters.fecha_fin) {
+      console.error('❌ validateAndCreateDates: Fechas requeridas no proporcionadas:', { fecha_inicio: filters.fecha_inicio, fecha_fin: filters.fecha_fin });
+      throw new Error('Fechas de inicio y fin son requeridas');
+    }
+
+    let startDate: Date;
+    let endDate: Date;
+
+    // Verificar si las fechas ya están en formato ISO (contienen 'T')
+    if (filters.fecha_inicio.includes('T')) {
+      // Ya son fechas ISO, usarlas directamente
+      startDate = new Date(filters.fecha_inicio);
+      endDate = new Date(filters.fecha_fin);
+    } else {
+      // Son fechas simples (YYYY-MM-DD), agregar tiempo
+      startDate = new Date(`${filters.fecha_inicio}T00:00:00`);
+      endDate = new Date(`${filters.fecha_fin}T23:59:59`);
+    }
+
+    if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
+      console.error('❌ validateAndCreateDates: Fechas inválidas:', { fecha_inicio: filters.fecha_inicio, fecha_fin: filters.fecha_fin });
+      throw new Error('Fechas de filtro inválidas');
+    }
+
+    const startQuery = formatDateForQuery(startDate, false);
+    const endQuery = formatDateForQuery(endDate, true);
+
+    return { startDate, endDate, startQuery, endQuery };
+  }
+
   // Obtener métricas por día en un rango de fechas
   async getMetricsByDay(filters: MetricsFilters): Promise<MetricsByDay[]> {
     try {
       console.log('📊 Obteniendo métricas por día:', filters);
 
-      // Convertir fechas del filtro a rangos UTC correctos
-      const startDate = new Date(`${filters.fecha_inicio}T00:00:00`);
-      const endDate = new Date(`${filters.fecha_fin}T23:59:59`);
-      
-      const startQuery = formatDateForQuery(startDate, false);
-      const endQuery = formatDateForQuery(endDate, true);
+      // Validar y convertir fechas del filtro a rangos UTC correctos
+      const { startDate, endDate, startQuery, endQuery } = this.validateAndCreateDates(filters);
       
       console.log('📅 MetricsService: Fechas de consulta convertidas:', {
         original: { inicio: filters.fecha_inicio, fin: filters.fecha_fin },
@@ -248,6 +276,9 @@ export class MetricsService {
     try {
       console.log('🍽️ Obteniendo métricas de productos:', filters);
 
+      // Validar fechas antes de usarlas
+      const { startQuery, endQuery } = this.validateAndCreateDates(filters);
+
       let query = supabase
         .from('ordenes')
         .select(`
@@ -261,8 +292,8 @@ export class MetricsService {
             bebidas(id, name, pricing)
           )
         `)
-        .gte('created_at', formatDateForQuery(new Date(`${filters.fecha_inicio}T00:00:00`), false))
-        .lte('created_at', formatDateForQuery(new Date(`${filters.fecha_fin}T23:59:59`), true));
+        .gte('created_at', startQuery)
+        .lte('created_at', endQuery);
 
       if (filters.sede_id) {
         query = query.eq('sede_id', filters.sede_id);
@@ -353,6 +384,9 @@ export class MetricsService {
     try {
       console.log('🏢 Obteniendo métricas por sede:', filters);
 
+      // Validar fechas antes de usarlas
+      const { startQuery, endQuery } = this.validateAndCreateDates(filters);
+
       // Obtener datos de sedes desde ordenes_duraciones_con_sede
       const { data: sedeData, error: sedeError } = await supabase
         .from('ordenes_duraciones_con_sede')
@@ -362,8 +396,8 @@ export class MetricsService {
           created_at,
           sede_nombre
         `)
-        .gte('created_at', formatDateForQuery(new Date(`${filters.fecha_inicio}T00:00:00`), false))
-        .lte('created_at', formatDateForQuery(new Date(`${filters.fecha_fin}T23:59:59`), true));
+        .gte('created_at', startQuery)
+        .lte('created_at', endQuery);
 
       if (sedeError) {
         console.error('❌ Error obteniendo métricas por sede:', sedeError);
@@ -460,14 +494,17 @@ export class MetricsService {
     try {
       console.log('⏰ Obteniendo métricas por hora:', filters);
 
+      // Validar fechas antes de usarlas
+      const { startQuery, endQuery } = this.validateAndCreateDates(filters);
+
       let query = supabase
         .from('ordenes_duraciones_con_sede')
         .select(`
           created_at,
           sede_id
         `)
-        .gte('created_at', formatDateForQuery(new Date(`${filters.fecha_inicio}T00:00:00`), false))
-        .lte('created_at', formatDateForQuery(new Date(`${filters.fecha_fin}T23:59:59`), true));
+        .gte('created_at', startQuery)
+        .lte('created_at', endQuery);
 
       if (filters.sede_id) {
         query = query.eq('sede_id', filters.sede_id);
@@ -534,10 +571,7 @@ export class MetricsService {
 
       // Aplicar filtros de fecha con formato correcto de zona horaria
       if (filters.fecha_inicio && filters.fecha_fin) {
-        const startDate = new Date(`${filters.fecha_inicio}T00:00:00`);
-        const endDate = new Date(`${filters.fecha_fin}T23:59:59`);
-        const startQuery = formatDateForQuery(startDate, false);
-        const endQuery = formatDateForQuery(endDate, true);
+        const { startQuery, endQuery } = this.validateAndCreateDates(filters);
 
         query = query
           .gte('created_at', startQuery)
@@ -561,10 +595,7 @@ export class MetricsService {
 
       // Solo aplicar filtros de fecha (las métricas de cancelación son globales)
       if (filters.fecha_inicio && filters.fecha_fin) {
-        const startDate = new Date(`${filters.fecha_inicio}T00:00:00`);
-        const endDate = new Date(`${filters.fecha_fin}T23:59:59`);
-        const startQuery = formatDateForQuery(startDate, false);
-        const endQuery = formatDateForQuery(endDate, true);
+        const { startQuery, endQuery } = this.validateAndCreateDates(filters);
 
         totalQuery = totalQuery
           .gte('created_at', startQuery)
@@ -888,10 +919,7 @@ export class MetricsService {
 
       // Aplicar filtros de fecha con formato correcto de zona horaria
       if (filters.fecha_inicio && filters.fecha_fin) {
-        const startDate = new Date(`${filters.fecha_inicio}T00:00:00`);
-        const endDate = new Date(`${filters.fecha_fin}T23:59:59`);
-        const startQuery = formatDateForQuery(startDate, false);
-        const endQuery = formatDateForQuery(endDate, true);
+        const { startQuery, endQuery } = this.validateAndCreateDates(filters);
 
         query = query
           .gte('created_at', startQuery)

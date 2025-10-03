@@ -91,6 +91,7 @@ export const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({
           cubiertos,
           address,
           payment_id_2,
+          sede_id,
           clientes!cliente_id(nombre, telefono),
           pagos!payment_id(total_pago),
           pagos2:pagos!payment_id_2(total_pago)
@@ -106,6 +107,9 @@ export const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({
       if (!orderData) {
         throw new Error('Orden no encontrada');
       }
+
+      const sedeId = orderData.sede_id;
+      console.log('🏢 Sede de la orden:', sedeId);
 
       // Obtener items de platos
       const { data: platosData, error: platosError } = await supabase
@@ -149,47 +153,127 @@ export const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({
         console.error('❌ Error obteniendo toppings:', toppingsError);
       }
 
-      // NUEVO: Mantener items individuales sin agrupar
+      // NUEVO: Obtener precios de sede para los productos
+      const platoIds = [...new Set((platosData || []).map(item => item.platos?.id).filter(id => id))];
+      const bebidaIds = [...new Set((bebidasData || []).map(item => item.bebidas?.id).filter(id => id))];
+      const toppingIds = [...new Set((toppingsData || []).map(item => item.toppings?.id).filter(id => id))];
+
+      // Obtener precios de sede para platos
+      const sedePlatosMap = new Map<number, number>();
+      if (platoIds.length > 0 && sedeId) {
+        const { data: sedePlatos } = await supabase
+          .from('sede_platos')
+          .select('plato_id, price_override')
+          .eq('sede_id', sedeId)
+          .in('plato_id', platoIds);
+
+        sedePlatos?.forEach(sp => {
+          if (sp.price_override !== null && sp.price_override !== undefined) {
+            sedePlatosMap.set(sp.plato_id, sp.price_override);
+          }
+        });
+        console.log('💰 Precios de sede para platos:', Object.fromEntries(sedePlatosMap));
+      }
+
+      // Obtener precios de sede para bebidas
+      const sedeBebidasMap = new Map<number, number>();
+      if (bebidaIds.length > 0 && sedeId) {
+        const { data: sedeBebidas } = await supabase
+          .from('sede_bebidas')
+          .select('bebida_id, price_override')
+          .eq('sede_id', sedeId)
+          .in('bebida_id', bebidaIds);
+
+        sedeBebidas?.forEach(sb => {
+          if (sb.price_override !== null && sb.price_override !== undefined) {
+            sedeBebidasMap.set(sb.bebida_id, sb.price_override);
+          }
+        });
+        console.log('💰 Precios de sede para bebidas:', Object.fromEntries(sedeBebidasMap));
+      }
+
+      // Obtener precios de sede para toppings
+      const sedeToppingsMap = new Map<number, number>();
+      if (toppingIds.length > 0 && sedeId) {
+        const { data: sedeToppings } = await supabase
+          .from('sede_toppings')
+          .select('topping_id, price_override')
+          .eq('sede_id', sedeId)
+          .in('topping_id', toppingIds);
+
+        sedeToppings?.forEach(st => {
+          if (st.price_override !== null && st.price_override !== undefined) {
+            sedeToppingsMap.set(st.topping_id, st.price_override);
+          }
+        });
+        console.log('💰 Precios de sede para toppings:', Object.fromEntries(sedeToppingsMap));
+      }
+
+      // NUEVO: Mantener items individuales sin agrupar, usando precios de sede
       const items: OrderItem[] = [
-        // Procesar platos individualmente
-        ...(platosData || []).map(item => ({
-          id: item.platos.id,
-          orden_item_id: item.id, // ID único del item en ordenes_platos
-          quantity: 1, // Siempre 1 para items individuales
-          unit_price: item.platos?.pricing || 0,
-          producto: {
+        // Procesar platos individualmente con precios de sede
+        ...(platosData || []).map(item => {
+          const precioBase = item.platos?.pricing || 0;
+          const precioSede = sedePlatosMap.get(item.platos?.id);
+          const precioFinal = precioSede !== undefined ? precioSede : precioBase;
+
+          console.log(`🍽️ Plato ${item.platos?.name}: precio base=${precioBase}, precio sede=${precioSede}, final=${precioFinal}`);
+
+          return {
             id: item.platos.id,
-            name: item.platos.name,
-            pricing: item.platos?.pricing || 0
-          },
-          tipo: 'plato' as const
-        })),
-        // Procesar bebidas individualmente
-        ...(bebidasData || []).map(item => ({
-          id: item.bebidas.id,
-          orden_item_id: item.id, // ID único del item en ordenes_bebidas
-          quantity: 1, // Siempre 1 para items individuales
-          unit_price: item.bebidas?.pricing || 0,
-          producto: {
+            orden_item_id: item.id, // ID único del item en ordenes_platos
+            quantity: 1, // Siempre 1 para items individuales
+            unit_price: precioFinal,
+            producto: {
+              id: item.platos.id,
+              name: item.platos.name,
+              pricing: precioFinal
+            },
+            tipo: 'plato' as const
+          };
+        }),
+        // Procesar bebidas individualmente con precios de sede
+        ...(bebidasData || []).map(item => {
+          const precioBase = item.bebidas?.pricing || 0;
+          const precioSede = sedeBebidasMap.get(item.bebidas?.id);
+          const precioFinal = precioSede !== undefined ? precioSede : precioBase;
+
+          console.log(`🥤 Bebida ${item.bebidas?.name}: precio base=${precioBase}, precio sede=${precioSede}, final=${precioFinal}`);
+
+          return {
             id: item.bebidas.id,
-            name: item.bebidas.name,
-            pricing: item.bebidas?.pricing || 0
-          },
-          tipo: 'bebida' as const
-        })),
-        // Procesar toppings individualmente
-        ...(toppingsData || []).map(item => ({
-          id: item.toppings.id,
-          orden_item_id: item.id, // ID único del item en ordenes_toppings
-          quantity: 1, // Siempre 1 para items individuales
-          unit_price: item.toppings?.pricing || 0,
-          producto: {
+            orden_item_id: item.id, // ID único del item en ordenes_bebidas
+            quantity: 1, // Siempre 1 para items individuales
+            unit_price: precioFinal,
+            producto: {
+              id: item.bebidas.id,
+              name: item.bebidas.name,
+              pricing: precioFinal
+            },
+            tipo: 'bebida' as const
+          };
+        }),
+        // Procesar toppings individualmente con precios de sede
+        ...(toppingsData || []).map(item => {
+          const precioBase = item.toppings?.pricing || 0;
+          const precioSede = sedeToppingsMap.get(item.toppings?.id);
+          const precioFinal = precioSede !== undefined ? precioSede : precioBase;
+
+          console.log(`⭐ Topping ${item.toppings?.name}: precio base=${precioBase}, precio sede=${precioSede}, final=${precioFinal}`);
+
+          return {
             id: item.toppings.id,
-            name: item.toppings.name,
-            pricing: item.toppings?.pricing || 0
-          },
-          tipo: 'topping' as const
-        }))
+            orden_item_id: item.id, // ID único del item en ordenes_toppings
+            quantity: 1, // Siempre 1 para items individuales
+            unit_price: precioFinal,
+            producto: {
+              id: item.toppings.id,
+              name: item.toppings.name,
+              pricing: precioFinal
+            },
+            tipo: 'topping' as const
+          };
+        })
       ];
 
       const details: OrderDetails = {
