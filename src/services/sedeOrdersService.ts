@@ -40,6 +40,7 @@ export interface CreateOrderData {
   cliente_nombre: string;
   cliente_telefono: string;
   address: string; // Dirección específica para esta orden
+  delivery_instructions?: string; // Indicaciones de entrega (ej: Torre 3 Apto 401)
   tipo_entrega: 'delivery' | 'pickup';
   sede_recogida?: string;
   pago_tipo: 'efectivo' | 'tarjeta' | 'nequi' | 'transferencia';
@@ -599,6 +600,7 @@ class SedeOrdersService {
           sede_id: orderData.sede_id,
           observaciones: orderData.instrucciones,
           address: orderData.address, // Dirección específica de esta orden
+          delivery_instructions: orderData.delivery_instructions, // Indicaciones de entrega
           hora_entrega: horaEntrega.toISOString(),
           cubiertos: orderData.cubiertos,
           // Para pedidos de pickup, repartidor_id debe ser null (no necesitan repartidor)

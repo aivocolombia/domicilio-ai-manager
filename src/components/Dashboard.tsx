@@ -160,6 +160,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
   });
   const [newOrder, setNewOrder] = useState({
     address: '',
+    deliveryInstructions: '',
     items: [] as { productId: string; quantity: number; toppings: string[] }[],
     paymentMethod: 'cash' as PaymentMethod,
     specialInstructions: '',
@@ -1562,6 +1563,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
         cliente_nombre: customerData.name,
         cliente_telefono: customerData.phone,
         address: finalAddress, // Guardar la dirección específica de esta orden
+        delivery_instructions: newOrder.deliveryType === 'delivery' ? newOrder.deliveryInstructions : undefined,
         tipo_entrega: newOrder.deliveryType,
         sede_recogida: newOrder.deliveryType === 'pickup' ? currentSedeName : undefined,
         pago_tipo: newOrder.paymentMethod === 'cash' ? 'efectivo' :
@@ -1627,6 +1629,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
       // Reset form
       setNewOrder({
         address: '',
+        deliveryInstructions: '',
         items: [],
         paymentMethod: 'cash',
         specialInstructions: '',
@@ -2747,6 +2750,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
         if (!open) {
           setNewOrder({
             address: '',
+            deliveryInstructions: '',
             items: [],
             paymentMethod: 'cash',
             specialInstructions: '',
@@ -2755,7 +2759,11 @@ export const Dashboard: React.FC<DashboardProps> = ({
             deliveryTimeMinutes: 90,
             deliveryCost: 0,
             cutleryCount: 0,
-            cutleryManuallyAdjusted: false
+            cutleryManuallyAdjusted: false,
+            hasMultiplePayments: false,
+            paymentMethod2: 'cash',
+            paymentAmount1: 0,
+            paymentAmount2: 0
           });
           setCustomerData({
             name: '',
@@ -2891,6 +2899,17 @@ export const Dashboard: React.FC<DashboardProps> = ({
                     </Button>
                   </div>
                 </div>
+
+                <div>
+                  <Label htmlFor="deliveryInstructions">Indicaciones</Label>
+                  <Input
+                    id="deliveryInstructions"
+                    value={newOrder.deliveryInstructions}
+                    onChange={(e) => setNewOrder({ ...newOrder, deliveryInstructions: e.target.value })}
+                    placeholder="Ej: Torre 3 Apto 401"
+                  />
+                </div>
+
                 <div>
                   <Label htmlFor="deliveryCost">Valor del Domicilio *</Label>
                   <div className="relative">

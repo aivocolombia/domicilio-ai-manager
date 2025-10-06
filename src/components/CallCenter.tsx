@@ -48,6 +48,7 @@ const CallCenter: React.FC<CallCenterProps> = ({
   const [loadingDeliveryPrice, setLoadingDeliveryPrice] = useState(false);
   const [newOrder, setNewOrder] = useState({
     address: '',
+    deliveryInstructions: '',
     items: [] as { productId: string; quantity: number; toppings: string[] }[],
     paymentMethod: 'cash' as PaymentMethod,
     hasMultiplePayments: false,
@@ -215,6 +216,7 @@ const CallCenter: React.FC<CallCenterProps> = ({
       customerName,
       customerPhone: searchPhone,
       address: newOrder.deliveryType === 'pickup' ? `Recogida en ${newOrder.pickupSede}` : newOrder.address,
+      deliveryInstructions: newOrder.deliveryType === 'delivery' ? newOrder.deliveryInstructions : undefined,
       items: orderItems,
       status: 'received',
       totalAmount: calculateTotal(),
@@ -234,6 +236,7 @@ const CallCenter: React.FC<CallCenterProps> = ({
     // Reset form
     setNewOrder({
       address: '',
+      deliveryInstructions: '',
       items: [],
       paymentMethod: 'cash',
       hasMultiplePayments: false,
@@ -388,12 +391,22 @@ const CallCenter: React.FC<CallCenterProps> = ({
                     {newOrder.deliveryType === 'delivery' ? (
                       <>
                         <div>
-                          <Label htmlFor="address">Dirección de Entrega</Label>
+                          <Label htmlFor="address">Dirección de Entrega *</Label>
                           <Input
                             id="address"
                             value={newOrder.address}
                             onChange={(e) => setNewOrder({ ...newOrder, address: e.target.value })}
                             placeholder="Ingrese la dirección completa"
+                          />
+                        </div>
+
+                        <div>
+                          <Label htmlFor="deliveryInstructions">Indicaciones</Label>
+                          <Input
+                            id="deliveryInstructions"
+                            value={newOrder.deliveryInstructions}
+                            onChange={(e) => setNewOrder({ ...newOrder, deliveryInstructions: e.target.value })}
+                            placeholder="Ej: Torre 3 Apto 401"
                           />
                         </div>
 

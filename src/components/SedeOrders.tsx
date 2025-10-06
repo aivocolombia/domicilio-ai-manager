@@ -136,6 +136,7 @@ export const SedeOrders: React.FC<SedeOrdersProps> = ({
 
   const [newOrder, setNewOrder] = useState({
     address: '',
+    deliveryInstructions: '',
     items: [] as { productId: string; quantity: number; toppings: string[] }[],
     paymentMethod: 'cash' as PaymentMethod,
     hasMultiplePayments: false,
@@ -632,7 +633,8 @@ export const SedeOrders: React.FC<SedeOrdersProps> = ({
       const orderData: CreateOrderData = {
         cliente_nombre: finalCustomerName,
         cliente_telefono: finalCustomerPhone,
-        direccion: finalAddress,
+        address: finalAddress,
+        delivery_instructions: newOrder.deliveryType === 'delivery' ? newOrder.deliveryInstructions : undefined,
         tipo_entrega: newOrder.deliveryType,
         sede_recogida: newOrder.deliveryType === 'pickup' ? currentSedeName : undefined,
         pago_tipo: newOrder.paymentMethod === 'cash' ? 'efectivo' :
@@ -716,6 +718,7 @@ export const SedeOrders: React.FC<SedeOrdersProps> = ({
       // Reset form
       setNewOrder({
         address: '',
+        deliveryInstructions: '',
         items: [],
         paymentMethod: 'cash',
         hasMultiplePayments: false,
@@ -890,16 +893,28 @@ export const SedeOrders: React.FC<SedeOrdersProps> = ({
 
             {/* Dirección (solo para delivery) */}
             {newOrder.deliveryType === 'delivery' && (
-              <div>
-                <Label htmlFor="address">Dirección de Entrega</Label>
-                <Textarea
-                  id="address"
-                  value={customerData.address}
-                  onChange={(e) => setCustomerData(prev => ({ ...prev, address: e.target.value }))}
-                  placeholder="Dirección completa de entrega"
-                  rows={3}
-                />
-              </div>
+              <>
+                <div>
+                  <Label htmlFor="address">Dirección de Entrega *</Label>
+                  <Textarea
+                    id="address"
+                    value={customerData.address}
+                    onChange={(e) => setCustomerData(prev => ({ ...prev, address: e.target.value }))}
+                    placeholder="Dirección completa de entrega"
+                    rows={3}
+                  />
+                </div>
+
+                <div>
+                  <Label htmlFor="deliveryInstructions">Indicaciones</Label>
+                  <Input
+                    id="deliveryInstructions"
+                    value={newOrder.deliveryInstructions}
+                    onChange={(e) => setNewOrder({ ...newOrder, deliveryInstructions: e.target.value })}
+                    placeholder="Ej: Torre 3 Apto 401"
+                  />
+                </div>
+              </>
             )}
 
             {/* Productos */}

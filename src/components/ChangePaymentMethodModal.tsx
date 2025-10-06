@@ -68,14 +68,18 @@ export function ChangePaymentMethodModal({
 
     setIsLoadingData(true);
     try {
-      // Obtener todos los métodos de pago de la orden
+      // Obtener el total real de la orden y los IDs de pago
       const { data: orderData, error: orderError } = await supabase
         .from('ordenes')
-        .select('payment_id, payment_id_2')
+        .select('payment_id, payment_id_2, total')
         .eq('id', orderId)
         .single();
 
       if (orderError) throw orderError;
+
+      // Establecer el total real de la orden
+      const realTotal = orderData.total || 0;
+      setOrderTotal(realTotal);
 
       const paymentIds = [orderData.payment_id, orderData.payment_id_2].filter(Boolean);
 
@@ -98,10 +102,6 @@ export function ChangePaymentMethodModal({
       }));
 
       setPaymentMethods(methods);
-
-      // Calcular el total de la orden
-      const total = methods.reduce((sum, m) => sum + m.amount, 0);
-      setOrderTotal(total);
 
     } catch (error) {
       console.error('❌ Error cargando métodos de pago:', error);

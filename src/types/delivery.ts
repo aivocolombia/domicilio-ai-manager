@@ -3,6 +3,7 @@ export interface Order {
   customerName: string;
   customerPhone: string;
   address: string;
+  deliveryInstructions?: string; // Indicaciones de entrega (ej: Torre 3 Apto 401)
   items: OrderItem[];
   status: OrderStatus;
   totalAmount: number;
