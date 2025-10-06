@@ -2215,20 +2215,26 @@ export function AdminPanel({ onBack, onNavigateToTimeMetrics }: AdminPanelProps)
                     </CardHeader>
                     <CardContent>
                       <div className="space-y-4">
-                        {metricsData.metricasPorDia.map((item, index) => (
-                          <div key={index} className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
-                            <div className="flex items-center gap-3">
-                              <div className="w-3 h-3 bg-primary rounded-full"></div>
-                              <span className="font-medium">{format(new Date(item.fecha), 'dd/MM', { locale: es })}</span>
-                            </div>
-                            <div className="text-right">
-                              <div className="font-bold text-lg">{item.total_pedidos} pedidos</div>
-                              <div className="text-sm text-muted-foreground">
-                                ${(item.total_ingresos / 1000).toFixed(0)}k ingresos
+                        {metricsData.metricasPorDia.map((item, index) => {
+                          // Parsear fecha como local, no UTC
+                          const [year, month, day] = item.fecha.split('-').map(Number);
+                          const fechaLocal = new Date(year, month - 1, day);
+
+                          return (
+                            <div key={index} className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
+                              <div className="flex items-center gap-3">
+                                <div className="w-3 h-3 bg-primary rounded-full"></div>
+                                <span className="font-medium">{format(fechaLocal, 'dd/MM', { locale: es })}</span>
+                              </div>
+                              <div className="text-right">
+                                <div className="font-bold text-lg">{item.total_pedidos} pedidos</div>
+                                <div className="text-sm text-muted-foreground">
+                                  ${(item.total_ingresos / 1000).toFixed(0)}k ingresos
+                                </div>
                               </div>
                             </div>
-                          </div>
-                        ))}
+                          );
+                        })}
                         {metricsData.metricasPorDia.length === 0 && (
                           <div className="text-center py-8 text-muted-foreground">
                             No hay datos para el período seleccionado

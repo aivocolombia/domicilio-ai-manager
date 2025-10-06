@@ -208,11 +208,15 @@ export class MetricsService {
         }
       });
 
-      // Procesar datos para agrupar por día
+      // Procesar datos para agrupar por día usando timezone de Colombia
       const metricasPorDia = new Map<string, { pedidos: number; pedidos_entregados: number; ingresos: number }>();
 
       ordenesData?.forEach((orden) => {
-        const fecha = new Date(orden.created_at).toISOString().split('T')[0];
+        // Convertir fecha UTC a fecha en timezone de Colombia (UTC-5)
+        const fechaUTC = new Date(orden.created_at);
+        const fechaColombia = new Date(fechaUTC.toLocaleString('en-US', { timeZone: 'America/Bogota' }));
+        const fecha = fechaColombia.toISOString().split('T')[0];
+
         // Solo contar ingresos de órdenes entregadas
         const ingresos = orden.status === 'Entregados' ? (pagosMap.get(orden.id) || 0) : 0;
         const esEntregado = orden.status === 'Entregados' ? 1 : 0;
