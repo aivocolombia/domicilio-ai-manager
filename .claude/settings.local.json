@@ -18,7 +18,11 @@
       "Bash(del test_crm_payments.cjs)",
       "Bash(del debug_repartidores.js)",
       "Bash(del create_platanitos_substitution.cjs)",
-      "Bash(powershell:*)"
+      "Bash(powershell:*)",
+      "Bash(dir:*)",
+      "Bash(findstr:*)",
+      "Bash(xargs:*)",
+      "Bash(git add:*)"
     ],
     "deny": [],
     "ask": [],
