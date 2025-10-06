@@ -60,7 +60,8 @@ export interface MinutaOrderDetails {
   cliente_nombre: string;
   cliente_telefono: string;
   cliente_direccion?: string;
-  
+  indicaciones_entrega?: string;
+
   // Sede
   sede_nombre: string;
   sede_direccion: string;
@@ -216,6 +217,7 @@ export class MinutaService {
             cubiertos,
             precio_envio,
             address,
+            delivery_instructions,
             payment_id_2,
             sede_id,
             clientes!cliente_id(nombre, telefono),
@@ -307,7 +309,8 @@ export class MinutaService {
         cliente_nombre: orderData.clientes?.nombre || 'Sin nombre',
         cliente_telefono: orderData.clientes?.telefono || 'Sin teléfono',
         cliente_direccion: orderData.address || 'Sin dirección',
-        
+        indicaciones_entrega: orderData.delivery_instructions || undefined,
+
         sede_nombre: orderData.sedes?.name || 'Sede no definida',
         sede_direccion: orderData.sedes?.address || 'Dirección no definida',
         

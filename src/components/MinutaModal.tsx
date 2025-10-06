@@ -375,6 +375,12 @@ export const MinutaModal: React.FC<MinutaModalProps> = ({
             <span>${details.cliente_direccion}</span>
         </div>
         ` : ''}
+        ${details.tipo_pedido === 'delivery' && details.indicaciones_entrega ? `
+        <div class="info-row">
+            <span><strong>Indicaciones:</strong></span>
+            <span>${details.indicaciones_entrega}</span>
+        </div>
+        ` : ''}
     </div>
 
     ${details.tipo_pedido === 'delivery' && details.repartidor_nombre ? `
@@ -557,6 +563,9 @@ export const MinutaModal: React.FC<MinutaModalProps> = ({
                   <div>Teléfono: {orderDetails.cliente_telefono}</div>
                   {orderDetails.tipo_pedido === 'delivery' && orderDetails.cliente_direccion && (
                     <div>Dirección: {orderDetails.cliente_direccion}</div>
+                  )}
+                  {orderDetails.tipo_pedido === 'delivery' && orderDetails.indicaciones_entrega && (
+                    <div>Indicaciones: {orderDetails.indicaciones_entrega}</div>
                   )}
                 </div>
 
