@@ -217,6 +217,7 @@ export class MinutaService {
             precio_envio,
             address,
             payment_id_2,
+            sede_id,
             clientes!cliente_id(nombre, telefono),
             pagos!payment_id(type, total_pago),
             pagos2:pagos!payment_id_2(type, total_pago),
@@ -232,25 +233,28 @@ export class MinutaService {
           .from('ordenes_platos')
           .select(`
             id,
-            platos!inner(name, pricing)
+            plato_id,
+            platos!inner(name)
           `)
           .eq('orden_id', orderId),
-        
+
         // Consulta de bebidas en paralelo
         supabase
           .from('ordenes_bebidas')
           .select(`
             id,
-            bebidas!inner(name, pricing)
+            bebidas_id,
+            bebidas!inner(name)
           `)
           .eq('orden_id', orderId),
-        
+
         // Consulta de toppings en paralelo
         supabase
           .from('ordenes_toppings')
           .select(`
             id,
-            toppings!inner(name, pricing)
+            topping_id,
+            toppings!inner(name)
           `)
           .eq('orden_id', orderId)
       ]);
@@ -326,16 +330,60 @@ export class MinutaService {
         toppings: []
       };
 
-      // COPIADO EXACTAMENTE DE OrderDetailsModal que funciona
-      const mappedPlatos = (platosData || []).map(item => ({
-        plato_nombre: item.platos?.name || 'Producto sin nombre',
-        cantidad: 1, // Cada item individual
-        precio_unitario: item.platos?.pricing || 0,
-        precio_total: item.platos?.pricing || 0,
-        orden_item_id: item.id // ID único del item en ordenes_platos
-      }));
+      // Obtener precios de sede para todos los productos
+      const sedeId = orderData.sede_id;
+      console.log('💰 MinutaService: Obteniendo precios de sede para sede_id:', sedeId);
 
-      console.log('🔍 DEBUG MinutaService: Mapped platos with orden_item_id:', mappedPlatos);
+      // Obtener IDs únicos de cada tipo de producto
+      const platoIds = [...new Set((platosData || []).map(item => item.plato_id).filter(id => id))];
+      const bebidaIds = [...new Set((bebidasData || []).map(item => item.bebidas_id).filter(id => id))];
+      const toppingIds = [...new Set((toppingsData || []).map(item => item.topping_id).filter(id => id))];
+
+      // Consultar precios de sede en paralelo
+      const [sedePlatosData, sedeBebidasData, sedeToppingsData] = await Promise.all([
+        platoIds.length > 0 && sedeId ? supabase
+          .from('sede_platos')
+          .select('plato_id, price_override')
+          .eq('sede_id', sedeId)
+          .in('plato_id', platoIds) : Promise.resolve({ data: [] }),
+        bebidaIds.length > 0 && sedeId ? supabase
+          .from('sede_bebidas')
+          .select('bebida_id, price_override')
+          .eq('sede_id', sedeId)
+          .in('bebida_id', bebidaIds) : Promise.resolve({ data: [] }),
+        toppingIds.length > 0 && sedeId ? supabase
+          .from('sede_toppings')
+          .select('topping_id, price_override')
+          .eq('sede_id', sedeId)
+          .in('topping_id', toppingIds) : Promise.resolve({ data: [] })
+      ]);
+
+      // Crear maps de precios de sede
+      const sedePlatosMap = new Map((sedePlatosData.data || []).map(sp => [sp.plato_id, sp.price_override]));
+      const sedeBebidasMap = new Map((sedeBebidasData.data || []).map(sb => [sb.bebida_id, sb.price_override]));
+      const sedeToppingsMap = new Map((sedeToppingsData.data || []).map(st => [st.topping_id, st.price_override]));
+
+      console.log('💰 MinutaService: Precios de sede cargados:', {
+        platos: sedePlatosMap.size,
+        bebidas: sedeBebidasMap.size,
+        toppings: sedeToppingsMap.size
+      });
+
+      // Mapear platos con precios de sede
+      const mappedPlatos = (platosData || []).map(item => {
+        const precioSede = sedePlatosMap.get(item.plato_id);
+        const precio = precioSede !== null && precioSede !== undefined ? precioSede : 0;
+
+        return {
+          plato_nombre: item.platos?.name || 'Producto sin nombre',
+          cantidad: 1, // Cada item individual
+          precio_unitario: precio,
+          precio_total: precio,
+          orden_item_id: item.id // ID único del item en ordenes_platos
+        };
+      });
+
+      console.log('🔍 DEBUG MinutaService: Mapped platos with precios de sede:', mappedPlatos);
 
       // Obtener historial de sustituciones para esta orden (igual que OrderDetailsModal)
       const substitutionHistory = await substitutionHistoryService.getOrderSubstitutionHistory(orderData.id);
@@ -375,26 +423,42 @@ export class MinutaService {
           }))
       }));
 
-      minutaDetails.bebidas = await this.addSubstitutionsToProducts(
-        bebidasData?.map(item => ({
+      // Mapear bebidas con precios de sede
+      const mappedBebidas = (bebidasData || []).map(item => {
+        const precioSede = sedeBebidasMap.get(item.bebidas_id);
+        const precio = precioSede !== null && precioSede !== undefined ? precioSede : 0;
+
+        return {
           bebida_nombre: item.bebidas?.name || 'Bebida sin nombre',
           cantidad: 1, // Cada item individual
-          precio_unitario: item.bebidas?.pricing || 0,
-          precio_total: item.bebidas?.pricing || 0,
+          precio_unitario: precio,
+          precio_total: precio,
           orden_item_id: item.id // Mantener ID único del item en la orden
-        })) || [],
+        };
+      });
+
+      minutaDetails.bebidas = await this.addSubstitutionsToProducts(
+        mappedBebidas,
         orderData.id,
         'bebida'
       );
 
-      minutaDetails.toppings = await this.addSubstitutionsToProducts(
-        toppingsData?.map(item => ({
+      // Mapear toppings con precios de sede
+      const mappedToppings = (toppingsData || []).map(item => {
+        const precioSede = sedeToppingsMap.get(item.topping_id);
+        const precio = precioSede !== null && precioSede !== undefined ? precioSede : 0;
+
+        return {
           topping_nombre: item.toppings?.name || 'Topping sin nombre',
           cantidad: 1, // Cada item individual
-          precio_unitario: item.toppings?.pricing || 0,
-          precio_total: item.toppings?.pricing || 0,
+          precio_unitario: precio,
+          precio_total: precio,
           orden_item_id: item.id // Mantener ID único del item en la orden
-        })) || [],
+        };
+      });
+
+      minutaDetails.toppings = await this.addSubstitutionsToProducts(
+        mappedToppings,
         orderData.id,
         'topping'
       );

@@ -255,10 +255,12 @@ export class MetricsService {
           created_at,
           sede_id,
           ordenes_platos(
-            platos(id, name, pricing)
+            plato_id,
+            platos(id, name)
           ),
           ordenes_bebidas(
-            bebidas(id, name, pricing)
+            bebidas_id,
+            bebidas(id, name)
           )
         `)
         .gte('created_at', formatDateForQuery(new Date(`${filters.fecha_inicio}T00:00:00`), false))
@@ -275,25 +277,69 @@ export class MetricsService {
         throw new Error(`Error obteniendo productos: ${error.message}`);
       }
 
-      // Procesar datos para contar productos vendidos
+      console.log('💰 Obteniendo precios de sede para métricas de productos...');
+
+      // Obtener todos los IDs únicos de productos y sedes
+      const sedeIds = [...new Set(data?.map(o => o.sede_id).filter(id => id))];
+      const platoIds = [...new Set(data?.flatMap(o => o.ordenes_platos?.map((item: any) => item.plato_id)).filter(id => id))];
+      const bebidaIds = [...new Set(data?.flatMap(o => o.ordenes_bebidas?.map((item: any) => item.bebidas_id)).filter(id => id))];
+
+      // Obtener precios de sede para platos
+      const sedePlatosMap = new Map<string, number>(); // key: "sedeId-platoId", value: precio
+      if (platoIds.length > 0 && sedeIds.length > 0) {
+        const { data: sedePlatos } = await supabase
+          .from('sede_platos')
+          .select('sede_id, plato_id, price_override')
+          .in('sede_id', sedeIds)
+          .in('plato_id', platoIds);
+
+        sedePlatos?.forEach(sp => {
+          if (sp.price_override !== null && sp.price_override !== undefined) {
+            sedePlatosMap.set(`${sp.sede_id}-${sp.plato_id}`, sp.price_override);
+          }
+        });
+        console.log(`✅ Precios de sede cargados para ${sedePlatosMap.size} platos`);
+      }
+
+      // Obtener precios de sede para bebidas
+      const sedeBebidasMap = new Map<string, number>(); // key: "sedeId-bebidaId", value: precio
+      if (bebidaIds.length > 0 && sedeIds.length > 0) {
+        const { data: sedeBebidas } = await supabase
+          .from('sede_bebidas')
+          .select('sede_id, bebida_id, price_override')
+          .in('sede_id', sedeIds)
+          .in('bebida_id', bebidaIds);
+
+        sedeBebidas?.forEach(sb => {
+          if (sb.price_override !== null && sb.price_override !== undefined) {
+            sedeBebidasMap.set(`${sb.sede_id}-${sb.bebida_id}`, sb.price_override);
+          }
+        });
+        console.log(`✅ Precios de sede cargados para ${sedeBebidasMap.size} bebidas`);
+      }
+
+      // Procesar datos para contar productos vendidos usando precios de sede
       const productosMap = new Map<string, { cantidad: number; ingresos: number }>();
 
       data?.forEach(orden => {
-        // Procesar platos
+        const sedeId = orden.sede_id;
+
+        // Procesar platos con precios de sede
         (orden.ordenes_platos || []).forEach((item: any) => {
           const producto = item.platos;
           if (producto) {
             const key = `plato-${producto.id}`;
-            const precio = producto.pricing || 0;
-            
+            const precioSede = sedePlatosMap.get(`${sedeId}-${item.plato_id}`);
+            const precio = precioSede !== undefined ? precioSede : 0;
+
             if (productosMap.has(key)) {
               const existing = productosMap.get(key)!;
               existing.cantidad += 1;
               existing.ingresos += precio;
             } else {
-              productosMap.set(key, { 
-                cantidad: 1, 
-                ingresos: precio 
+              productosMap.set(key, {
+                cantidad: 1,
+                ingresos: precio
               });
               // Guardar también el nombre del producto
               productosMap.set(`${key}-name`, producto.name);
@@ -301,21 +347,22 @@ export class MetricsService {
           }
         });
 
-        // Procesar bebidas
+        // Procesar bebidas con precios de sede
         (orden.ordenes_bebidas || []).forEach((item: any) => {
           const producto = item.bebidas;
           if (producto) {
             const key = `bebida-${producto.id}`;
-            const precio = producto.pricing || 0;
-            
+            const precioSede = sedeBebidasMap.get(`${sedeId}-${item.bebidas_id}`);
+            const precio = precioSede !== undefined ? precioSede : 0;
+
             if (productosMap.has(key)) {
               const existing = productosMap.get(key)!;
               existing.cantidad += 1;
               existing.ingresos += precio;
             } else {
-              productosMap.set(key, { 
-                cantidad: 1, 
-                ingresos: precio 
+              productosMap.set(key, {
+                cantidad: 1,
+                ingresos: precio
               });
               // Guardar también el nombre del producto
               productosMap.set(`${key}-name`, producto.name);

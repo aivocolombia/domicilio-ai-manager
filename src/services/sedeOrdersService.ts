@@ -513,7 +513,7 @@ class SedeOrdersService {
       }
 
       // Paso 2: Calcular total
-      const total = await this.calculateOrderTotal(orderData.items, orderData.tipo_entrega, orderData.delivery_cost);
+      const total = await this.calculateOrderTotal(orderData.items, orderData.tipo_entrega, orderData.delivery_cost, orderData.sede_id);
 
       // Paso 3: Crear pago(s)
       let paymentId: number;
@@ -639,40 +639,91 @@ class SedeOrdersService {
   }
 
   // Función auxiliar para calcular el total del pedido
-  private async calculateOrderTotal(items: CreateOrderData['items'], tipoEntrega: 'delivery' | 'pickup', deliveryCost?: number): Promise<number> {
+  private async calculateOrderTotal(items: CreateOrderData['items'], tipoEntrega: 'delivery' | 'pickup', deliveryCost?: number, sedeId?: string): Promise<number> {
     let total = 0;
 
+    console.log('💰 Calculando total de orden con precios de sede:', sedeId);
+
     for (const item of items) {
+      let precio = 0;
+
       if (item.producto_tipo === 'plato') {
-        const { data, error } = await supabase
-          .from('platos')
-          .select('pricing')
-          .eq('id', item.producto_id)
-          .single();
+        // Intentar obtener precio de sede primero
+        const { data: sedePlato, error: sedeError } = await supabase
+          .from('sede_platos')
+          .select('price_override')
+          .eq('sede_id', sedeId)
+          .eq('plato_id', item.producto_id)
+          .maybeSingle();
 
-        if (!error && data) {
-          total += data.pricing * item.cantidad;
+        if (!sedeError && sedePlato && sedePlato.price_override !== null) {
+          precio = sedePlato.price_override;
+          console.log(`✅ Usando precio de sede para plato ${item.producto_id}: $${precio}`);
+        } else {
+          // Fallback a precio base solo si no existe precio de sede
+          const { data: platoBase } = await supabase
+            .from('platos')
+            .select('pricing')
+            .eq('id', item.producto_id)
+            .single();
+
+          precio = platoBase?.pricing || 0;
+          console.log(`⚠️ Usando precio base para plato ${item.producto_id}: $${precio}`);
         }
+
+        total += precio * item.cantidad;
+
       } else if (item.producto_tipo === 'bebida') {
-        const { data, error } = await supabase
-          .from('bebidas')
-          .select('pricing')
-          .eq('id', item.producto_id)
-          .single();
+        // Intentar obtener precio de sede primero
+        const { data: sedeBebida, error: sedeError } = await supabase
+          .from('sede_bebidas')
+          .select('price_override')
+          .eq('sede_id', sedeId)
+          .eq('bebida_id', item.producto_id)
+          .maybeSingle();
 
-        if (!error && data) {
-          total += data.pricing * item.cantidad;
+        if (!sedeError && sedeBebida && sedeBebida.price_override !== null) {
+          precio = sedeBebida.price_override;
+          console.log(`✅ Usando precio de sede para bebida ${item.producto_id}: $${precio}`);
+        } else {
+          // Fallback a precio base solo si no existe precio de sede
+          const { data: bebidaBase } = await supabase
+            .from('bebidas')
+            .select('pricing')
+            .eq('id', item.producto_id)
+            .single();
+
+          precio = bebidaBase?.pricing || 0;
+          console.log(`⚠️ Usando precio base para bebida ${item.producto_id}: $${precio}`);
         }
+
+        total += precio * item.cantidad;
+
       } else if (item.producto_tipo === 'topping') {
-        const { data, error } = await supabase
-          .from('toppings')
-          .select('pricing')
-          .eq('id', item.producto_id)
-          .single();
+        // Intentar obtener precio de sede primero
+        const { data: sedeTopping, error: sedeError } = await supabase
+          .from('sede_toppings')
+          .select('price_override')
+          .eq('sede_id', sedeId)
+          .eq('topping_id', item.producto_id)
+          .maybeSingle();
 
-        if (!error && data) {
-          total += data.pricing * item.cantidad;
+        if (!sedeError && sedeTopping && sedeTopping.price_override !== null) {
+          precio = sedeTopping.price_override;
+          console.log(`✅ Usando precio de sede para topping ${item.producto_id}: $${precio}`);
+        } else {
+          // Fallback a precio base solo si no existe precio de sede
+          const { data: toppingBase } = await supabase
+            .from('toppings')
+            .select('pricing')
+            .eq('id', item.producto_id)
+            .single();
+
+          precio = toppingBase?.pricing || 0;
+          console.log(`⚠️ Usando precio base para topping ${item.producto_id}: $${precio}`);
         }
+
+        total += precio * item.cantidad;
       }
     }
 
@@ -683,6 +734,7 @@ class SedeOrdersService {
       console.log(`✅ Delivery fee of ${finalDeliveryCost} added to order total`);
     }
 
+    console.log(`💰 Total calculado: $${total.toLocaleString()}`);
     return total;
   }
 
