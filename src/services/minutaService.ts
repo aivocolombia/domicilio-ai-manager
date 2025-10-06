@@ -236,7 +236,7 @@ export class MinutaService {
           .select(`
             id,
             plato_id,
-            platos!inner(name)
+            platos!inner(name, pricing)
           `)
           .eq('orden_id', orderId),
 
@@ -246,7 +246,7 @@ export class MinutaService {
           .select(`
             id,
             bebidas_id,
-            bebidas!inner(name)
+            bebidas!inner(name, pricing)
           `)
           .eq('orden_id', orderId),
 
@@ -256,7 +256,7 @@ export class MinutaService {
           .select(`
             id,
             topping_id,
-            toppings!inner(name)
+            toppings!inner(name, pricing)
           `)
           .eq('orden_id', orderId)
       ]);
@@ -375,7 +375,9 @@ export class MinutaService {
       // Mapear platos con precios de sede
       const mappedPlatos = (platosData || []).map(item => {
         const precioSede = sedePlatosMap.get(item.plato_id);
-        const precio = precioSede !== null && precioSede !== undefined ? precioSede : 0;
+        const basePrice = item.platos?.pricing ?? 0;
+
+        const precio = precioSede ?? basePrice;
 
         return {
           plato_nombre: item.platos?.name || 'Producto sin nombre',
@@ -429,7 +431,9 @@ export class MinutaService {
       // Mapear bebidas con precios de sede
       const mappedBebidas = (bebidasData || []).map(item => {
         const precioSede = sedeBebidasMap.get(item.bebidas_id);
-        const precio = precioSede !== null && precioSede !== undefined ? precioSede : 0;
+        const basePrice = item.bebidas?.pricing ?? 0;
+
+        const precio = precioSede ?? basePrice;
 
         return {
           bebida_nombre: item.bebidas?.name || 'Bebida sin nombre',
@@ -449,7 +453,9 @@ export class MinutaService {
       // Mapear toppings con precios de sede
       const mappedToppings = (toppingsData || []).map(item => {
         const precioSede = sedeToppingsMap.get(item.topping_id);
-        const precio = precioSede !== null && precioSede !== undefined ? precioSede : 0;
+        const basePrice = item.toppings?.pricing ?? 0;
+
+        const precio = precioSede ?? basePrice;
 
         return {
           topping_nombre: item.toppings?.name || 'Topping sin nombre',
