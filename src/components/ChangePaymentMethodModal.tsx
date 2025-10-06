@@ -3,7 +3,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
-import { CreditCard, Banknote, Smartphone, Building2 } from 'lucide-react';
+import { Input } from '@/components/ui/input';
+import { CreditCard, Banknote, Smartphone, Building2, Plus } from 'lucide-react';
 import { PaymentMethod } from '@/types/delivery';
 import { supabase } from '@/lib/supabase';
 import { useToast } from '@/hooks/use-toast';
@@ -41,6 +42,10 @@ export function ChangePaymentMethodModal({
   const [paymentMethods, setPaymentMethods] = useState<PaymentMethodData[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isLoadingData, setIsLoadingData] = useState(false);
+  const [showAddPayment, setShowAddPayment] = useState(false);
+  const [newPaymentType, setNewPaymentType] = useState<string>('cash');
+  const [newPaymentAmount, setNewPaymentAmount] = useState<number>(0);
+  const [orderTotal, setOrderTotal] = useState<number>(0);
   const { toast } = useToast();
 
   // Cargar métodos de pago actuales cuando se abre el modal
@@ -93,6 +98,11 @@ export function ChangePaymentMethodModal({
       }));
 
       setPaymentMethods(methods);
+
+      // Calcular el total de la orden
+      const total = methods.reduce((sum, m) => sum + m.amount, 0);
+      setOrderTotal(total);
+
     } catch (error) {
       console.error('❌ Error cargando métodos de pago:', error);
       toast({
@@ -168,6 +178,95 @@ export function ChangePaymentMethodModal({
       toast({
         title: "Error",
         description: error.message || "No se pudo cambiar el método de pago. Inténtalo de nuevo.",
+        variant: "destructive"
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleAddSecondPayment = async () => {
+    if (paymentMethods.length !== 1) {
+      toast({
+        title: "Error",
+        description: "Solo se puede agregar un segundo método cuando hay exactamente un método de pago.",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    if (newPaymentAmount <= 0 || newPaymentAmount >= orderTotal) {
+      toast({
+        title: "Monto inválido",
+        description: `El monto debe ser mayor a $0 y menor a $${orderTotal.toLocaleString()}`,
+        variant: "destructive"
+      });
+      return;
+    }
+
+    setIsLoading(true);
+    try {
+      const dbPaymentType = newPaymentType === 'cash' ? 'efectivo' :
+                           newPaymentType === 'card' ? 'tarjeta' :
+                           newPaymentType === 'nequi' ? 'nequi' :
+                           newPaymentType === 'transfer' ? 'transferencia' :
+                           newPaymentType;
+
+      console.log('➕ Agregando segundo método de pago:', {
+        orderId,
+        type: dbPaymentType,
+        amount: newPaymentAmount
+      });
+
+      // Crear nuevo pago
+      const { data: newPayment, error: createError } = await supabase
+        .from('pagos')
+        .insert({
+          type: dbPaymentType,
+          status: 'pending',
+          total_pago: newPaymentAmount
+        })
+        .select('id')
+        .single();
+
+      if (createError) throw createError;
+
+      // Actualizar el monto del primer pago
+      const firstPaymentId = paymentMethods[0].id;
+      const remainingAmount = orderTotal - newPaymentAmount;
+
+      const { error: updateError } = await supabase
+        .from('pagos')
+        .update({ total_pago: remainingAmount })
+        .eq('id', firstPaymentId);
+
+      if (updateError) throw updateError;
+
+      // Agregar el segundo pago a la orden
+      const { error: orderUpdateError } = await supabase
+        .from('ordenes')
+        .update({ payment_id_2: newPayment.id })
+        .eq('id', orderId);
+
+      if (orderUpdateError) throw orderUpdateError;
+
+      toast({
+        title: "Segundo método agregado",
+        description: `Pago dividido: $${remainingAmount.toLocaleString()} (${paymentMethods[0].type}) + $${newPaymentAmount.toLocaleString()} (${dbPaymentType})`,
+        variant: "default"
+      });
+
+      // Recargar métodos de pago
+      await loadCurrentPaymentMethods();
+      setShowAddPayment(false);
+      setNewPaymentAmount(0);
+      onPaymentMethodChanged();
+
+    } catch (error) {
+      console.error('❌ Error agregando segundo método de pago:', error);
+      toast({
+        title: "Error",
+        description: error.message || "No se pudo agregar el segundo método de pago.",
         variant: "destructive"
       });
     } finally {
@@ -280,6 +379,104 @@ export function ChangePaymentMethodModal({
                   </div>
                 </div>
               ))
+            )}
+
+            {/* Botón para agregar segundo método de pago */}
+            {paymentMethods.length === 1 && !showAddPayment && (
+              <Button
+                variant="outline"
+                onClick={() => setShowAddPayment(true)}
+                disabled={isLoading}
+                className="w-full border-dashed border-2 border-green-300 text-green-600 hover:bg-green-50"
+              >
+                <Plus className="h-4 w-4 mr-2" />
+                Agregar segundo método de pago
+              </Button>
+            )}
+
+            {/* Formulario para agregar segundo método */}
+            {showAddPayment && paymentMethods.length === 1 && (
+              <div className="border-2 border-green-300 rounded-lg p-4 space-y-4 bg-green-50/30">
+                <div className="flex items-center justify-between">
+                  <h4 className="font-medium text-gray-900">
+                    Dividir pago en dos métodos
+                  </h4>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => {
+                      setShowAddPayment(false);
+                      setNewPaymentAmount(0);
+                    }}
+                    disabled={isLoading}
+                  >
+                    Cancelar
+                  </Button>
+                </div>
+
+                <div className="bg-blue-50 border border-blue-200 rounded p-3 text-sm">
+                  <p className="font-medium text-blue-900">Total de la orden: ${orderTotal.toLocaleString()}</p>
+                  <p className="text-blue-700 mt-1">
+                    El pago se dividirá entre el método actual y el nuevo método
+                  </p>
+                </div>
+
+                <div>
+                  <Label className="text-sm font-medium text-gray-700">
+                    Tipo de segundo método
+                  </Label>
+                  <Select
+                    value={newPaymentType}
+                    onValueChange={setNewPaymentType}
+                    disabled={isLoading}
+                  >
+                    <SelectTrigger className="mt-1">
+                      <SelectValue placeholder="Seleccionar método" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {paymentMethodOptions.map((option) => (
+                        <SelectItem key={option.value} value={option.value}>
+                          <div className="flex items-center gap-2">
+                            <option.icon className="h-4 w-4" />
+                            <span>{option.label}</span>
+                          </div>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div>
+                  <Label className="text-sm font-medium text-gray-700">
+                    Monto del segundo método
+                  </Label>
+                  <Input
+                    type="number"
+                    value={newPaymentAmount || ''}
+                    onChange={(e) => setNewPaymentAmount(Number(e.target.value))}
+                    placeholder="0"
+                    disabled={isLoading}
+                    className="mt-1"
+                    min={1}
+                    max={orderTotal - 1}
+                  />
+                  {newPaymentAmount > 0 && newPaymentAmount < orderTotal && (
+                    <p className="text-sm text-gray-600 mt-2">
+                      Método 1 ({paymentMethods[0].type}): <span className="font-medium">${(orderTotal - newPaymentAmount).toLocaleString()}</span>
+                      <br />
+                      Método 2 ({getPaymentMethodLabel(newPaymentType)}): <span className="font-medium">${newPaymentAmount.toLocaleString()}</span>
+                    </p>
+                  )}
+                </div>
+
+                <Button
+                  onClick={handleAddSecondPayment}
+                  disabled={isLoading || newPaymentAmount <= 0 || newPaymentAmount >= orderTotal}
+                  className="w-full bg-green-600 hover:bg-green-700"
+                >
+                  {isLoading ? 'Procesando...' : 'Confirmar división de pago'}
+                </Button>
+              </div>
             )}
           </div>
         )}
