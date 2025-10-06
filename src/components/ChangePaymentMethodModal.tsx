@@ -10,7 +10,7 @@ import { supabase } from '@/lib/supabase';
 import { useToast } from '@/hooks/use-toast';
 
 interface PaymentMethodData {
-  id: string;
+  id: number;
   type: string;
   amount: number;
 }
@@ -58,28 +58,34 @@ export function ChangePaymentMethodModal({
   const loadCurrentPaymentMethods = async () => {
     if (currentPaymentMethods) {
       // Si ya se pasaron los métodos de pago
-      setPaymentMethods(currentPaymentMethods.map(pm => ({
-        id: pm.id,
+      const mappedMethods = currentPaymentMethods.map(pm => ({
+        id: Number(pm.id),
         type: pm.type,
         amount: pm.amount
-      })));
+      }));
+      setPaymentMethods(mappedMethods);
+      setOrderTotal(mappedMethods.reduce((sum, method) => sum + (method.amount || 0), 0));
+      setShowAddPayment(false);
+      setNewPaymentAmount(0);
       return;
     }
 
     setIsLoadingData(true);
     try {
-      // Obtener el total real de la orden y los IDs de pago
+      // Obtener IDs de pago asociados a la orden
+      const normalizedOrderId = Number(orderId);
+      const orderFilterValue = Number.isNaN(normalizedOrderId) ? orderId : normalizedOrderId;
+
       const { data: orderData, error: orderError } = await supabase
         .from('ordenes')
-        .select('payment_id, payment_id_2, total')
-        .eq('id', orderId)
-        .single();
+        .select('payment_id, payment_id_2')
+        .eq('id', orderFilterValue)
+        .maybeSingle();
 
       if (orderError) throw orderError;
-
-      // Establecer el total real de la orden
-      const realTotal = orderData.total || 0;
-      setOrderTotal(realTotal);
+      if (!orderData) {
+        throw new Error('Orden no encontrada');
+      }
 
       const paymentIds = [orderData.payment_id, orderData.payment_id_2].filter(Boolean);
 
@@ -95,14 +101,16 @@ export function ChangePaymentMethodModal({
 
       if (paymentsError) throw paymentsError;
 
-      const methods = paymentsData.map(payment => ({
+      const methods = (paymentsData || []).map(payment => ({
         id: payment.id,
         type: payment.type,
         amount: payment.total_pago || 0
       }));
 
       setPaymentMethods(methods);
-
+      setOrderTotal(methods.reduce((sum, method) => sum + (method.amount || 0), 0));
+      setShowAddPayment(false);
+      setNewPaymentAmount(0);
     } catch (error) {
       console.error('❌ Error cargando métodos de pago:', error);
       toast({
@@ -114,8 +122,7 @@ export function ChangePaymentMethodModal({
       setIsLoadingData(false);
     }
   };
-
-  const updatePaymentMethod = async (paymentId: string, newType: string) => {
+  const updatePaymentMethod = async (paymentId: number, newType: string) => {
     const dbPaymentType = newType === 'cash' ? 'efectivo' :
                          newType === 'card' ? 'tarjeta' :
                          newType === 'nequi' ? 'nequi' :
