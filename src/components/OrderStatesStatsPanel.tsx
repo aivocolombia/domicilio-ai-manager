@@ -97,12 +97,19 @@ export const OrderStatesStatsPanel: React.FC<OrderStatesStatsPanelProps> = ({
       console.log('📊 Cargando estadísticas por estado...');
 
       // Consulta directa a la base de datos para obtener estadísticas por estado
-      const { data, error } = await supabase
+      let query = supabase
         .from('ordenes_duraciones_con_sede')
         .select('*')
         .gte('created_at', `${filters.fecha_inicio}T00:00:00.000Z`)
         .lte('created_at', `${filters.fecha_fin}T23:59:59.999Z`)
         .not('status', 'is', null);
+
+      // Filtrar por sede si se especifica
+      if (filters.sede_id) {
+        query = query.eq('sede_id', filters.sede_id);
+      }
+
+      const { data, error } = await query;
 
       if (error) {
         throw new Error(`Error al obtener estadísticas: ${error.message}`);

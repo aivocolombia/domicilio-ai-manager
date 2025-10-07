@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 
-type AdminSectionValue = 'config' | 'metrics';
+type AdminSectionValue = 'config' | 'metrics' | 'orderStates' | 'crm';
 
 const STORAGE_KEY = 'ajiaco-admin-active-section';
 
@@ -10,7 +10,7 @@ export const useAdminSection = () => {
   // Cargar la sección activa desde localStorage al montar el componente
   useEffect(() => {
     const savedSection = localStorage.getItem(STORAGE_KEY) as AdminSectionValue;
-    if (savedSection && ['config', 'metrics'].includes(savedSection)) {
+    if (savedSection && ['config', 'metrics', 'orderStates', 'crm'].includes(savedSection)) {
       setActiveSection(savedSection);
     }
   }, []);

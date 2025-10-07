@@ -116,7 +116,9 @@ export function DiscountMetrics({
           payment_id,
           status,
           created_at,
-          pagos!payment_id(total_pago)
+          sede_id,
+          pagos!payment_id(total_pago),
+          sedes!sede_id(name)
         `)
         .eq('id', orderId)
         .single();
@@ -134,7 +136,8 @@ export function DiscountMetrics({
         orderTotal,
         originalTotal,
         orderStatus: orderData.status,
-        orderDate: orderData.created_at
+        orderDate: orderData.created_at,
+        sedeName: orderData.sedes?.name || 'Sin sede'
       });
     } catch (error) {
       console.error('❌ Error buscando descuento:', error);
@@ -424,6 +427,10 @@ export function DiscountMetrics({
                   </div>
 
                   <div className="space-y-2">
+                    <div className="flex justify-between">
+                      <span className="text-sm text-gray-600">Sede:</span>
+                      <span className="text-sm font-medium">📍 {searchResult.sedeName}</span>
+                    </div>
                     <div className="flex justify-between">
                       <span className="text-sm text-gray-600">Estado:</span>
                       <Badge variant="outline">{searchResult.orderStatus}</Badge>

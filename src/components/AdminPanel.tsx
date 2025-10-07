@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { Plus, Search, Edit, Trash2, Users, Building2, UserCheck, UserX, TrendingUp, DollarSign, Package, Clock, LayoutDashboard, Phone, MapPin, Settings, RefreshCw, Cog, ChartLine, Timer, BarChart3, Truck, Eye, AlertTriangle, ChevronLeft, ChevronRight, XCircle, Star, BarChart } from 'lucide-react'
+import { Plus, Search, Edit, Trash2, Users, Building2, UserCheck, UserX, TrendingUp, DollarSign, Package, Clock, LayoutDashboard, Phone, MapPin, Settings, RefreshCw, Cog, ChartLine, Timer, BarChart3, Truck, Eye, AlertTriangle, ChevronLeft, ChevronRight, XCircle, Star, BarChart, Activity } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -33,6 +33,7 @@ import { useRealtimeMetrics } from '@/hooks/useRealtimeMetrics'
 import { DeliveryPersonMetrics } from '@/components/DeliveryPersonMetrics'
 import { CRM } from '@/components/CRM'
 import { DiscountMetrics } from '@/components/DiscountMetrics'
+import { OrderStatesStatsPanel } from '@/components/OrderStatesStatsPanel'
 
 type Profile = User
 
@@ -1212,6 +1213,14 @@ export function AdminPanel({ onBack, onNavigateToTimeMetrics }: AdminPanelProps)
             Métricas
           </Button>
           <Button
+            variant={activeSection === 'orderStates' ? 'default' : 'ghost'}
+            onClick={() => setActiveSection('orderStates')}
+            className="flex items-center gap-2"
+          >
+            <Activity className="h-4 w-4" />
+            Estados de Órdenes
+          </Button>
+          <Button
             variant={activeSection === 'crm' ? 'default' : 'ghost'}
             onClick={() => setActiveSection('crm')}
             className="flex items-center gap-2"
@@ -2229,7 +2238,7 @@ export function AdminPanel({ onBack, onNavigateToTimeMetrics }: AdminPanelProps)
                               <div className="text-right">
                                 <div className="font-bold text-lg">{item.total_pedidos} pedidos</div>
                                 <div className="text-sm text-muted-foreground">
-                                  ${(item.total_ingresos / 1000).toFixed(0)}k ingresos
+                                  ${item.total_ingresos.toLocaleString('es-CO')} ingresos
                                 </div>
                               </div>
                             </div>
@@ -2253,6 +2262,9 @@ export function AdminPanel({ onBack, onNavigateToTimeMetrics }: AdminPanelProps)
                       </CardTitle>
                       <CardDescription>
                         Distribución de ventas por producto
+                        <div className="mt-1 text-xs">
+                          📊 Mostrando datos del <span className="font-medium">{format(dateRange.from, 'dd/MM/yyyy', { locale: es })}</span> al <span className="font-medium">{format(dateRange.to, 'dd/MM/yyyy', { locale: es })}</span>
+                        </div>
                       </CardDescription>
                     </CardHeader>
                     <CardContent>
@@ -2349,7 +2361,17 @@ export function AdminPanel({ onBack, onNavigateToTimeMetrics }: AdminPanelProps)
                               {user?.role === 'admin_punto' ? 'Cancelaciones en tu Sede:' : 'Cancelaciones por Sede:'}
                             </h4>
                             {metricsData.pedidosCancelados.porSede
-                              .filter(sede => user?.role === 'admin_global' || sede.sede_id === user?.sede_id)
+                              .filter(sede => {
+                                // Filtrar por rol
+                                if (user?.role !== 'admin_global' && sede.sede_id !== user?.sede_id) {
+                                  return false;
+                                }
+                                // Filtrar por sede seleccionada (solo para admin_global)
+                                if (user?.role === 'admin_global' && selectedSedeFilter !== 'all' && sede.sede_id !== selectedSedeFilter) {
+                                  return false;
+                                }
+                                return true;
+                              })
                               .map((sede, index) => (
                               <div 
                                 key={index} 
@@ -2410,6 +2432,19 @@ export function AdminPanel({ onBack, onNavigateToTimeMetrics }: AdminPanelProps)
           /* ========== SECCIÓN DE CRM ========== */
           <div className="space-y-6">
             <CRM effectiveSedeId={selectedSedeFilter === 'all' ? undefined : selectedSedeFilter} />
+          </div>
+        )}
+
+        {activeSection === 'orderStates' && (
+          /* ========== SECCIÓN DE ESTADOS DE ÓRDENES ========== */
+          <div className="space-y-6">
+            <OrderStatesStatsPanel
+              filters={{
+                fecha_inicio: format(dateRange.from, 'yyyy-MM-dd'),
+                fecha_fin: format(dateRange.to, 'yyyy-MM-dd'),
+                sede_id: selectedSedeFilter === 'all' ? undefined : selectedSedeFilter
+              }}
+            />
           </div>
         )}
 
