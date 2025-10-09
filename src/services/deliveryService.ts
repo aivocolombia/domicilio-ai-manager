@@ -126,11 +126,16 @@ class DeliveryService {
             console.log(`📊 Obteniendo estadísticas para repartidor ${repartidor.id}...`);
             
             // Crear rango de fechas (Colombia timezone UTC-5)
+            // FIX: Corregir el manejo de la zona horaria para filtrar correctamente el día.
+            // El método anterior era propenso a errores. Este es más robusto.
             const targetDate = filterDate || new Date();
-            const colombiaOffset = -5 * 60; // -5 horas en minutos
-            const colombiaDate = new Date(targetDate.getTime() + (colombiaOffset - targetDate.getTimezoneOffset()) * 60000);
-            const startOfDay = new Date(colombiaDate.getFullYear(), colombiaDate.getMonth(), colombiaDate.getDate());
-            const endOfDay = new Date(colombiaDate.getFullYear(), colombiaDate.getMonth(), colombiaDate.getDate(), 23, 59, 59, 999);
+            const year = targetDate.getFullYear();
+            const month = targetDate.getMonth();
+            const day = targetDate.getDate();
+            
+            // Establecer el inicio y fin del día en la zona horaria local del navegador (que debe ser Colombia)
+            const startOfDay = new Date(year, month, day, 0, 0, 0, 0);
+            const endOfDay = new Date(year, month, day, 23, 59, 59, 999);
 
             // Query SQL directo para obtener estadísticas del repartidor
             console.log(`🔍 [DEBUG] Obteniendo órdenes para repartidor ${repartidor.id}${sedeId && repartidor.id === 1 ? ` filtradas por sede ${sedeId}` : ''}`);

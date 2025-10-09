@@ -107,8 +107,10 @@ export const OrderStatesStatsPanel: React.FC<OrderStatesStatsPanelProps> = ({
       let query = supabase
         .from('ordenes_duraciones_con_sede')
         .select('*')
-        .gte('created_at', `${dateRange.from.toISOString().split('T')[0]}T00:00:00.000Z`)
-        .lte('created_at', `${dateRange.to.toISOString().split('T')[0]}T23:59:59.999Z`)
+        // FIX: Usar la fecha local para evitar problemas de zona horaria.
+        // .toISOString() convierte a UTC, lo que puede causar que se filtre el día anterior.
+        .gte('created_at', `${dateRange.from.getFullYear()}-${String(dateRange.from.getMonth() + 1).padStart(2, '0')}-${String(dateRange.from.getDate()).padStart(2, '0')}T00:00:00`)
+        .lte('created_at', `${dateRange.to.getFullYear()}-${String(dateRange.to.getMonth() + 1).padStart(2, '0')}-${String(dateRange.to.getDate()).padStart(2, '0')}T23:59:59`)
         .not('status', 'is', null);
 
       // Filtrar por sede si se especifica
