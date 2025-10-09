@@ -223,7 +223,10 @@ export const OrderConfigModal: React.FC<OrderConfigModalProps> = ({
       
       // Preparar actualizaciones para órdenes reales
       const updates: OrderStatusUpdate[] = selectedOrderIds.map(orderId => ({
-        orderId: parseInt(orderId.replace('ORD-', '')),
+        // FIX: Mantener el orderId como string. El error 'replace is not a function'
+        // ocurría porque el servicio esperaba un string pero recibía un número
+        // al usar parseInt().
+        orderId: orderId,
         // Si hay estados mixtos, solo aplicar tiempo extra
         newStatus: hasMixedStates ? undefined : (newStatus || undefined),
         extraTime: extraTime > 0 ? extraTime : undefined,
