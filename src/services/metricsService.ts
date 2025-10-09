@@ -6,6 +6,7 @@ export interface MetricsByDay {
   total_pedidos: number;
   total_ingresos: number;
   promedio_por_pedido: number;
+  total_ordenes?: number;
 }
 
 export interface ProductMetrics {
@@ -209,7 +210,7 @@ export class MetricsService {
       });
 
       // Procesar datos para agrupar por día usando timezone de Colombia
-      const metricasPorDia = new Map<string, { pedidos: number; pedidos_entregados: number; ingresos: number }>();
+      const metricasPorDia = new Map<string, { pedidosTotales: number; pedidos_entregados: number; ingresos: number }>();
 
       ordenesData?.forEach((orden) => {
         // Convertir fecha UTC a fecha en timezone de Colombia (UTC-5)
@@ -223,23 +224,24 @@ export class MetricsService {
 
         if (metricasPorDia.has(fecha)) {
           const existing = metricasPorDia.get(fecha)!;
-          existing.pedidos += 1; // Contar todos los pedidos
+          existing.pedidosTotales += 1; // Contar todos los pedidos para referencia
           existing.pedidos_entregados += esEntregado; // Contar solo entregados
           existing.ingresos += ingresos; // Solo ingresos de entregados
         } else {
-          metricasPorDia.set(fecha, { pedidos: 1, pedidos_entregados: esEntregado, ingresos });
+          metricasPorDia.set(fecha, { pedidosTotales: 1, pedidos_entregados: esEntregado, ingresos });
         }
       });
 
       // Convertir a array y calcular promedios basados en pedidos entregados
       const resultado: MetricsByDay[] = Array.from(metricasPorDia.entries()).map(([fecha, datos]) => ({
         fecha,
-        total_pedidos: datos.pedidos,
+        total_pedidos: datos.pedidos_entregados, // Solo pedidos entregados cuentan como beneficio
         total_ingresos: datos.ingresos,
-        promedio_por_pedido: datos.pedidos_entregados > 0 ? datos.ingresos / datos.pedidos_entregados : 0
+        promedio_por_pedido: datos.pedidos_entregados > 0 ? datos.ingresos / datos.pedidos_entregados : 0,
+        total_ordenes: datos.pedidosTotales
       }));
 
-      console.log('✅ Métricas por día calculadas:', resultado.length, 'días');
+      console.log('[metrics] Métricas por día calculadas:', resultado.length, 'días');
       return resultado.sort((a, b) => a.fecha.localeCompare(b.fecha));
     } catch (error) {
       console.error('❌ Error en getMetricsByDay:', error);
@@ -256,6 +258,7 @@ export class MetricsService {
         .from('ordenes')
         .select(`
           id,
+          status,
           created_at,
           sede_id,
           ordenes_platos(
@@ -265,10 +268,17 @@ export class MetricsService {
           ordenes_bebidas(
             bebidas_id,
             bebidas(id, name)
+          ),
+          ordenes_toppings(
+            topping_id,
+            toppings(id, name, pricing)
           )
         `)
         .gte('created_at', formatDateForQuery(new Date(`${filters.fecha_inicio}T00:00:00`), false))
         .lte('created_at', formatDateForQuery(new Date(`${filters.fecha_fin}T23:59:59`), true));
+
+      // Solo considerar pedidos entregados para métricas de ventas
+      query = query.eq('status', 'Entregados');
 
       if (filters.sede_id) {
         query = query.eq('sede_id', filters.sede_id);
@@ -287,6 +297,7 @@ export class MetricsService {
       const sedeIds = [...new Set(data?.map(o => o.sede_id).filter(id => id))];
       const platoIds = [...new Set(data?.flatMap(o => o.ordenes_platos?.map((item: any) => item.plato_id)).filter(id => id))];
       const bebidaIds = [...new Set(data?.flatMap(o => o.ordenes_bebidas?.map((item: any) => item.bebidas_id)).filter(id => id))];
+      const toppingIds = [...new Set(data?.flatMap(o => o.ordenes_toppings?.map((item: any) => item.topping_id)).filter(id => id))];
 
       // Obtener precios de sede para platos
       const sedePlatosMap = new Map<string, number>(); // key: "sedeId-platoId", value: precio
@@ -322,6 +333,23 @@ export class MetricsService {
         console.log(`✅ Precios de sede cargados para ${sedeBebidasMap.size} bebidas`);
       }
 
+      // Obtener precios de sede para toppings
+      const sedeToppingsMap = new Map<string, number>(); // key: "sedeId-toppingId", value: precio
+      if (toppingIds.length > 0 && sedeIds.length > 0) {
+        const { data: sedeToppings } = await supabase
+          .from('sede_toppings')
+          .select('sede_id, topping_id, price_override')
+          .in('sede_id', sedeIds)
+          .in('topping_id', toppingIds);
+
+        sedeToppings?.forEach(st => {
+          if (st.price_override !== null && st.price_override !== undefined) {
+            sedeToppingsMap.set(`${st.sede_id}-${st.topping_id}`, st.price_override);
+          }
+        });
+        console.log(`✅ Precios de sede cargados para ${sedeToppingsMap.size} toppings`);
+      }
+
       // Procesar datos para contar productos vendidos usando precios de sede
       const productosMap = new Map<string, { cantidad: number; ingresos: number }>();
 
@@ -334,7 +362,8 @@ export class MetricsService {
           if (producto) {
             const key = `plato-${producto.id}`;
             const precioSede = sedePlatosMap.get(`${sedeId}-${item.plato_id}`);
-            const precio = precioSede !== undefined ? precioSede : 0;
+            const basePrice = producto.pricing || 0;
+            const precio = precioSede !== undefined ? precioSede : basePrice;
 
             if (productosMap.has(key)) {
               const existing = productosMap.get(key)!;
@@ -357,7 +386,8 @@ export class MetricsService {
           if (producto) {
             const key = `bebida-${producto.id}`;
             const precioSede = sedeBebidasMap.get(`${sedeId}-${item.bebidas_id}`);
-            const precio = precioSede !== undefined ? precioSede : 0;
+            const basePrice = producto.pricing || 0;
+            const precio = precioSede !== undefined ? precioSede : basePrice;
 
             if (productosMap.has(key)) {
               const existing = productosMap.get(key)!;
@@ -370,6 +400,29 @@ export class MetricsService {
               });
               // Guardar también el nombre del producto
               productosMap.set(`${key}-name`, producto.name);
+            }
+          }
+        });
+
+        // Procesar toppings extra
+        (orden.ordenes_toppings || []).forEach((item: any) => {
+          const topping = item.toppings;
+          if (topping) {
+            const key = `topping-${topping.id}`;
+            const precioSede = sedeToppingsMap.get(`${sedeId}-${item.topping_id}`);
+            const basePrice = topping.pricing || 0;
+            const precio = precioSede !== undefined ? precioSede : basePrice;
+
+            if (productosMap.has(key)) {
+              const existing = productosMap.get(key)!;
+              existing.cantidad += 1;
+              existing.ingresos += precio;
+            } else {
+              productosMap.set(key, {
+                cantidad: 1,
+                ingresos: precio
+              });
+              productosMap.set(`${key}-name`, `Extra: ${topping.name}`);
             }
           }
         });
@@ -595,7 +648,10 @@ export class MetricsService {
           .lte('created_at', endQuery);
       }
 
-      // Las métricas de cancelación son globales - no se filtra por sede
+      // Aplicar filtro de sede si se especifica
+      if (filters.sede_id && filters.sede_id !== 'all') {
+        query = query.eq('sede_id', filters.sede_id);
+      }
 
       const { data: cancelados, error } = await query;
 
@@ -610,7 +666,7 @@ export class MetricsService {
         .select('id, pagos!payment_id(total_pago)')
         .neq('status', null);
 
-      // Solo aplicar filtros de fecha (las métricas de cancelación son globales)
+      // Aplicar filtros de fecha y sede consistentes
       if (filters.fecha_inicio && filters.fecha_fin) {
         const startDate = new Date(`${filters.fecha_inicio}T00:00:00`);
         const endDate = new Date(`${filters.fecha_fin}T23:59:59`);
@@ -620,6 +676,10 @@ export class MetricsService {
         totalQuery = totalQuery
           .gte('created_at', startQuery)
           .lte('created_at', endQuery);
+      }
+
+      if (filters.sede_id && filters.sede_id !== 'all') {
+        totalQuery = totalQuery.eq('sede_id', filters.sede_id);
       }
 
       const { data: totalPedidos, error: totalError } = await totalQuery;

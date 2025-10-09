@@ -1365,9 +1365,7 @@ export const Inventory: React.FC<InventoryProps> = ({
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>¿Qué deseas hacer?</DialogTitle>
-            <DialogDescription>
-              Elige una opción para agregar productos al inventario
-            </DialogDescription>
+            <DialogDescription>Elige una opción para agregar productos al inventario</DialogDescription>
           </DialogHeader>
           <div className="flex flex-col gap-4 py-4">
             <Button

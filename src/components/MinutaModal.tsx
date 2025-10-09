@@ -106,22 +106,18 @@ export const MinutaModal: React.FC<MinutaModalProps> = ({
       pickup: 'PARA LLEVAR',
       dine_in: 'EN SEDE'
     };
-
     const tipoPedidoIcon = {
       delivery: '🚚',
       pickup: '📦',
       dine_in: '🏪'
     };
-
     // Determinar el encabezado según el tipo de pedido
     const minutaTitle = details.tipo_pedido === 'delivery' ? 'DOMICILIO' : 'RECOGER';
-
     const fecha = new Date(details.created_at).toLocaleDateString('es-CO', {
       day: '2-digit',
       month: '2-digit',
       year: 'numeric'
     });
-
     const hora = new Date(details.created_at).toLocaleTimeString('es-CO', {
       hour: '2-digit',
       minute: '2-digit',
@@ -172,8 +168,21 @@ export const MinutaModal: React.FC<MinutaModalProps> = ({
             padding-bottom: 6px;
         }
         
+        .title-container {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            margin-bottom: 3px;
+        }
+
+        .logo {
+            height: 24px;
+            width: auto;
+        }
+
         .title {
-            font-size: 12px;
+            font-size: 16px;
             font-weight: bold;
             margin-bottom: 3px;
         }
@@ -327,7 +336,10 @@ export const MinutaModal: React.FC<MinutaModalProps> = ({
 </head>
 <body>
     <div class="header">
-        <div class="title">🍲 AJIACO RESTAURANTE</div>
+        <div class="title-container">
+            <img src="http://localhost:8080/lovable-uploads/96fc454f-e0fb-40ad-9214-85dcb21960e5.png" class="logo" alt="Logo">
+            <div class="title">Ajiaco y frijoles restaurante</div>
+        </div>
         <div class="minuta-number">${minutaTitle} #${details.minuta_id}</div>
         <div style="font-size: 9px; margin: 3px 0; color: #333; text-align: center; font-weight: bold;">
             ${details.sede_direccion}
@@ -403,21 +415,16 @@ export const MinutaModal: React.FC<MinutaModalProps> = ({
         
         ${groupedPlatos.length > 0 ? `
         <div style="margin: 5px 0;"><strong>Platos:</strong></div>
-        ${groupedPlatos.map(plato => {
-          console.log(`🖨️ HTML: Renderizando ${plato.plato_nombre}, substitutions:`, plato.substitutions);
-          let platoHTML = `<div class="product-item">• ${plato.plato_nombre}${plato.cantidad > 1 ? ` x${plato.cantidad}` : ''} - $${plato.precio_total.toLocaleString()}</div>`;
-
-          if (plato.substitutions && plato.substitutions.length > 0) {
-            console.log(`✅ HTML: ${plato.plato_nombre} tiene ${plato.substitutions.length} sustituciones`);
-            platoHTML += plato.substitutions.map(sub =>
+        ${groupedPlatos.map(plato => `
+          <div class="product-item">• ${plato.plato_nombre}${plato.cantidad > 1 ? ` x${plato.cantidad}` : ''} - $${plato.precio_total.toLocaleString()}</div>
+          ${plato.substitutions && plato.substitutions.length > 0 ? 
+            plato.substitutions.map((sub: any) =>
               `<div class="substitution-info ${sub.type === 'topping_substitution' ? 'substitution-topping' : ''}">
                  🔄 ${sub.type === 'topping_substitution' ? 'Topping' : 'Producto'}: ${sub.original_name} → ${sub.substitute_name}
                </div>`
-            ).join('');
-          }
-
-          return platoHTML;
-        }).join('')}
+            ).join('') 
+          : ''}
+        `).join('')}
         ` : ''}
 
         ${groupedBebidas.length > 0 ? `
@@ -500,9 +507,7 @@ export const MinutaModal: React.FC<MinutaModalProps> = ({
           <DialogTitle className="flex items-center gap-2">
             <Printer className="h-5 w-5 text-blue-600" />
             Imprimir Minuta
-            {orderDetails && (
-              <span className="text-blue-600">#{orderDetails.minuta_id}</span>
-            )}
+            {orderDetails && <span className="text-blue-600">#{orderDetails.minuta_id}</span>}
           </DialogTitle>
           <DialogDescription>
             Vista previa e impresión de la minuta para el pedido seleccionado
@@ -530,7 +535,10 @@ export const MinutaModal: React.FC<MinutaModalProps> = ({
             {/* Preview de la minuta */}
             <div className="border rounded-lg p-4 bg-gray-50 max-h-96 overflow-y-auto">
               <div className="text-center space-y-2 mb-4">
-                <h3 className="text-lg font-bold">🍲 AJIACO RESTAURANTE</h3>
+                <div className="flex items-center justify-center gap-3">
+                  <img src="http://localhost:8080/lovable-uploads/96fc454f-e0fb-40ad-9214-85dcb21960e5.png" alt="Logo" className="h-8 w-auto" />
+                  <h3 className="text-lg font-bold">Ajiaco y frijoles restaurante</h3>
+                </div>
                 <div className="text-2xl font-bold border-2 border-black inline-block px-4 py-2">
                   {orderDetails.tipo_pedido === 'delivery' ? 'DOMICILIO' : 'RECOGER'} #{orderDetails.minuta_id}
                 </div>

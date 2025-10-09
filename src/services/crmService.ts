@@ -261,12 +261,12 @@ class CRMService {
   }
 
   // Obtener órdenes de un cliente específico
-  async getCustomerOrders(customerId: string, limit: number = 10): Promise<CRMOrder[]> {
+  async getCustomerOrders(customerId: string, limit: number = 10, sedeId?: string): Promise<CRMOrder[]> {
     try {
       console.log('🔄 CRM: Obteniendo órdenes del cliente:', customerId);
 
       // Obtener órdenes básicas del cliente
-      const { data: orders, error: ordersError } = await supabase
+      let ordersQuery = supabase
         .from('ordenes')
         .select(`
           id,
@@ -275,11 +275,18 @@ class CRMService {
           cliente_id,
           repartidor_id,
           address,
-          payment_id
+          payment_id,
+          sede_id
         `)
         .eq('cliente_id', customerId)
         .order('created_at', { ascending: false })
         .limit(limit);
+
+      if (sedeId) {
+        ordersQuery = ordersQuery.eq('sede_id', sedeId);
+      }
+
+      const { data: orders, error: ordersError } = await ordersQuery;
 
       if (ordersError) {
         console.error('❌ CRM: Error obteniendo órdenes del cliente:', ordersError);

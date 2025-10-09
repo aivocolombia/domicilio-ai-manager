@@ -171,7 +171,7 @@ export const OrderConfigModal: React.FC<OrderConfigModalProps> = ({
       if (newStatus === 'Camino' && !assignedDeliveryPersonId) {
         // Verificar si alguna orden seleccionada es de tipo delivery
         const hasDeliveryOrders = selectedOrderIds.some(orderId => {
-          const order = orders.find(o => ('id' in o ? o.id : o.id_display) === orderId);
+          const order = orders.find(o => ('id' in o ? o.id : o.id_display) === orderId) as DashboardOrder | Order | undefined;
           const orderType = ('type_order' in order && order.type_order) || 
                            ('tipo_orden' in order && (order as any).tipo_orden) || 
                            'delivery';
@@ -191,7 +191,7 @@ export const OrderConfigModal: React.FC<OrderConfigModalProps> = ({
 
       // También validar órdenes existentes que ya están seleccionadas
       const ordersNeedingDeliveryPerson = selectedOrderIds.filter(orderId => {
-        const order = orders.find(o => ('id' in o ? o.id : o.id_display) === orderId);
+        const order = orders.find(o => ('id' in o ? o.id : o.id_display) === orderId) as DashboardOrder | Order | undefined;
         if (!order) return false;
         
         // Si se va a cambiar a Camino y la orden no tiene repartidor asignado y no se está asignando uno ahora
@@ -223,7 +223,7 @@ export const OrderConfigModal: React.FC<OrderConfigModalProps> = ({
       
       // Preparar actualizaciones para órdenes reales
       const updates: OrderStatusUpdate[] = selectedOrderIds.map(orderId => ({
-        orderId: orderId,
+        orderId: parseInt(orderId.replace('ORD-', '')),
         // Si hay estados mixtos, solo aplicar tiempo extra
         newStatus: hasMixedStates ? undefined : (newStatus || undefined),
         extraTime: extraTime > 0 ? extraTime : undefined,

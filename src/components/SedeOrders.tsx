@@ -1030,7 +1030,7 @@ export const SedeOrders: React.FC<SedeOrdersProps> = ({
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     {/* Primer pago */}
                     <div className="space-y-2">
-                      <Label className="text-xs text-gray-600">Primer Método: {
+                    <Label className="text-xs text-gray-600">Primer Método: {
                         newOrder.paymentMethod === 'cash' ? 'Efectivo' :
                         newOrder.paymentMethod === 'card' ? 'Tarjeta' :
                         newOrder.paymentMethod === 'nequi' ? 'Nequi' : 'Transferencia'

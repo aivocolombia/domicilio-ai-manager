@@ -1,5 +1,5 @@
-import { useState, useEffect, useCallback } from 'react'
-import { Plus, Search, Edit, Trash2, Users, Building2, UserCheck, UserX, TrendingUp, DollarSign, Package, Clock, LayoutDashboard, Phone, MapPin, Settings, RefreshCw, Cog, ChartLine, Timer, BarChart3, Truck, Eye, AlertTriangle, ChevronLeft, ChevronRight, XCircle, Star, BarChart, Activity } from 'lucide-react'
+﻿import { useState, useEffect, useCallback } from 'react'
+import { Plus, Search, Edit, Trash2, Users, Building2, UserCheck, UserX, TrendingUp, DollarSign, Package, Clock, LayoutDashboard, Phone, MapPin, Settings, RefreshCw, Cog, ChartLine, Timer, BarChart3, Truck, Eye, AlertTriangle, ChevronLeft, ChevronRight, XCircle, Star, BarChart, Activity, Download } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -34,6 +34,8 @@ import { DeliveryPersonMetrics } from '@/components/DeliveryPersonMetrics'
 import { CRM } from '@/components/CRM'
 import { DiscountMetrics } from '@/components/DiscountMetrics'
 import { OrderStatesStatsPanel } from '@/components/OrderStatesStatsPanel'
+import { ExportButton } from '@/components/ui/ExportButton'
+import { formatters, type TableColumn } from '@/utils/exportUtils'
 
 type Profile = User
 
@@ -116,7 +118,7 @@ export function AdminPanel({ onBack, onNavigateToTimeMetrics }: AdminPanelProps)
   // Estados para métricas
   const [metricsData, setMetricsData] = useState<DashboardMetrics | null>(null)
   const [selectedDate, setSelectedDate] = useState<Date>(new Date())
-  const [selectedSedeFilter, setSelectedSedeFilter] = useState<string>('all')
+  const [selectedSedeFilter, setSelectedSedeFilter] = useState<string>('all') // 'all' o un ID de sede
   const [dateRange, setDateRange] = useState<{ from: Date; to: Date }>({
     from: new Date(), // Hoy por defecto
     to: new Date()    // Hoy por defecto
@@ -146,7 +148,7 @@ export function AdminPanel({ onBack, onNavigateToTimeMetrics }: AdminPanelProps)
 
   // Optimized data loading functions with timeout and retry
   const loadInitialData = useCallback(async () => {
-    logger.info('Starting optimized initial data load')
+    logger.info('🚀 Starting optimized initial data load')
     
     try {
       const result = await adminDataLoader.loadAllData(false, undefined, {
@@ -266,14 +268,14 @@ export function AdminPanel({ onBack, onNavigateToTimeMetrics }: AdminPanelProps)
         finishLoading('metrics', result.error)
         if (!result.timedOut) {
           toast({
-            title: "Error",
-            description: result.error || "No se pudieron cargar las métricas",
+            title: 'Error',
+            description: result.error || 'No se pudieron cargar las métricas',
             variant: "destructive",
           })
         }
       }
     } catch (error) {
-      logger.error('Metrics loading failed', { error })
+      logger.error('Metrics loading failed', { error });
       finishLoading('metrics', 'Error de conexión')
     }
   }, [dateRange, selectedSedeFilter, startLoading, finishLoading, toast])
@@ -419,7 +421,7 @@ export function AdminPanel({ onBack, onNavigateToTimeMetrics }: AdminPanelProps)
       setUsers(prev => prev.filter(u => u.id !== tempUser.id));
       logger.error('Error creating user:', error);
       toast({
-        title: "Error al crear usuario",
+        title: 'Error al crear usuario',
         description: error.message || 'Ocurrió un error inesperado',
         variant: "destructive",
       });
@@ -908,7 +910,7 @@ export function AdminPanel({ onBack, onNavigateToTimeMetrics }: AdminPanelProps)
     
     if (!repartidorFormData.nombre.trim() || !repartidorFormData.telefono.trim()) {
       toast({
-        title: "Error",
+        title: 'Error',
         description: "Por favor completa los campos obligatorios (nombre y teléfono)",
         variant: "destructive",
       })
@@ -1020,6 +1022,7 @@ export function AdminPanel({ onBack, onNavigateToTimeMetrics }: AdminPanelProps)
   }
 
   const filteredUsers = users.filter(userRow => {
+    // Filtro de b├║squeda
     // Filtro de búsqueda
     const matchesSearch = userRow.display_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          userRow.nickname?.toLowerCase().includes(searchTerm.toLowerCase());
@@ -1034,6 +1037,7 @@ export function AdminPanel({ onBack, onNavigateToTimeMetrics }: AdminPanelProps)
   })
 
   const filteredRepartidores = repartidores.filter(repartidor => {
+    // Filtro de b├║squeda
     // Filtro de búsqueda
     const matchesSearch = repartidor.nombre.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          repartidor.telefono.includes(searchTerm) ||
@@ -1070,10 +1074,12 @@ export function AdminPanel({ onBack, onNavigateToTimeMetrics }: AdminPanelProps)
     repartidoresCount: repartidores.length
   })
 
+  // Si showMainApp es true, mostrar la aplicaci├│n principal
   // Si showMainApp es true, mostrar la aplicación principal
   if (showMainApp) {
     return (
       <div className="min-h-screen bg-background">
+        {/* Header con bot├│n de regreso */}
         {/* Header con botón de regreso */}
         <div className="border-b bg-card">
           <div className="flex h-16 items-center justify-between px-6">
@@ -1099,6 +1105,7 @@ export function AdminPanel({ onBack, onNavigateToTimeMetrics }: AdminPanelProps)
                   Volver a Admin
                 </Button>
               <Button variant="outline" onClick={signOut}>
+                Cerrar Sesi├│n
                 Cerrar Sesión
               </Button>
             </div>
@@ -1108,6 +1115,7 @@ export function AdminPanel({ onBack, onNavigateToTimeMetrics }: AdminPanelProps)
         {/* Aquí iría el contenido de la aplicación principal */}
         <div className="p-6">
           <div className="text-center py-12">
+            <h2 className="text-2xl font-bold mb-4">Bienvenido a la Aplicaci├│n Principal</h2>
             <h2 className="text-2xl font-bold mb-4">Bienvenido a la Aplicación Principal</h2>
             <p className="text-muted-foreground mb-6">
               Aquí puedes gestionar pedidos, inventario, repartidores y más.
@@ -1233,7 +1241,6 @@ export function AdminPanel({ onBack, onNavigateToTimeMetrics }: AdminPanelProps)
         {activeSection === 'config' && (
           /* ========== SECCIÓN DE CONFIGURACIONES ========== */
           <div className="space-y-6">
-            {/* Stats Cards de Configuración */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               <Card>
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
@@ -1472,7 +1479,6 @@ export function AdminPanel({ onBack, onNavigateToTimeMetrics }: AdminPanelProps)
                   </div>
                 </div>
                 
-                {/* Section loading indicator for users */}
                 <SectionLoading
                   isLoading={loadingStates.users.isLoading}
                   error={loadingStates.users.error}
@@ -1562,7 +1568,6 @@ export function AdminPanel({ onBack, onNavigateToTimeMetrics }: AdminPanelProps)
                                     <Building2 className="h-4 w-4" />
                                   </Button>
                                 )}
-                                {/* Solo admin_global puede eliminar cualquier usuario, admin_punto solo de su sede */}
                                 {(user?.role === 'admin_global' || (user?.role === 'admin_punto' && tableUser.sede_id === user?.sede_id)) && (
                                   <Button
                                     variant="destructive"
@@ -1592,9 +1597,7 @@ export function AdminPanel({ onBack, onNavigateToTimeMetrics }: AdminPanelProps)
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-3">
                     <div>
-                      <CardTitle>
-                        {user?.role === 'admin_global' ? 'Gestión de Sedes' : 'Mi Sede'}
-                      </CardTitle>
+                      <CardTitle>{user?.role === 'admin_global' ? 'Gestión de Sedes' : 'Mi Sede'}</CardTitle>
                       <CardDescription>
                         {user?.role === 'admin_global' 
                           ? 'Administra las sedes del sistema'
@@ -1614,7 +1617,6 @@ export function AdminPanel({ onBack, onNavigateToTimeMetrics }: AdminPanelProps)
                       <RefreshCw className={`h-4 w-4 ${loadingStates.sedes.isLoading ? 'animate-spin' : ''}`} />
                       Actualizar
                     </Button>
-                    {/* Solo admin_global puede crear sedes */}
                     {user?.role === 'admin_global' && (
                       <Dialog open={isCreateSedeOpen} onOpenChange={setIsCreateSedeOpen}>
                         <DialogTrigger asChild>
@@ -1626,9 +1628,7 @@ export function AdminPanel({ onBack, onNavigateToTimeMetrics }: AdminPanelProps)
                       <DialogContent>
                         <DialogHeader>
                           <DialogTitle>Crear Nueva Sede</DialogTitle>
-                          <DialogDescription>
-                            Completa la información de la nueva sede
-                          </DialogDescription>
+                          <DialogDescription>Completa la información de la nueva sede</DialogDescription>
                         </DialogHeader>
                         <form onSubmit={handleCreateSede} className="space-y-4">
                           <div className="space-y-2">
@@ -1710,7 +1710,6 @@ export function AdminPanel({ onBack, onNavigateToTimeMetrics }: AdminPanelProps)
               </CardHeader>
               <CardContent>
                 <div className="space-y-4">
-                  {/* Search bar for sedes */}
                   <div className="flex items-center space-x-2">
                     <Search className="h-4 w-4 text-muted-foreground" />
                     <Input
@@ -1791,7 +1790,6 @@ export function AdminPanel({ onBack, onNavigateToTimeMetrics }: AdminPanelProps)
                             </TableCell>
                             <TableCell>
                               <div className="flex items-center gap-2">
-                                {/* admin_global tiene acceso completo */}
                                 {user?.role === 'admin_global' && (
                                   <>
                                     <Button
@@ -1820,7 +1818,6 @@ export function AdminPanel({ onBack, onNavigateToTimeMetrics }: AdminPanelProps)
                                     </Button>
                                   </>
                                 )}
-                                {/* admin_punto solo puede editar su sede */}
                                 {user?.role === 'admin_punto' && (
                                   <>
                                     <Button
@@ -2008,7 +2005,6 @@ export function AdminPanel({ onBack, onNavigateToTimeMetrics }: AdminPanelProps)
         {activeSection === 'metrics' && (
           /* ========== SECCIÓN DE MÉTRICAS ========== */
           <div className="space-y-6">
-            {/* Métricas de Negocio */}
             <MetricsLoading
               isLoading={loadingStates.metrics.isLoading}
               error={loadingStates.metrics.error}
@@ -2045,7 +2041,6 @@ export function AdminPanel({ onBack, onNavigateToTimeMetrics }: AdminPanelProps)
                   </CardHeader>
                   <CardContent>
                     <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-end">
-                      {/* Selector de Rango de Fechas */}
                       <div className="flex flex-col gap-2">
                         <Label>Rango de Fechas</Label>
                         
@@ -2167,6 +2162,7 @@ export function AdminPanel({ onBack, onNavigateToTimeMetrics }: AdminPanelProps)
                         )}
                       </div>
 
+                      {/* Bot├│n de Actualizar */}
                       {/* Botón de Actualizar */}
                       <Button 
                         onClick={loadMetricsOptimized}
@@ -2182,7 +2178,6 @@ export function AdminPanel({ onBack, onNavigateToTimeMetrics }: AdminPanelProps)
                       </Button>
                     </div>
 
-                    {/* Resumen de filtros aplicados */}
                     <div className="mt-4 p-3 bg-muted/30 rounded-lg">
                       <div className="text-sm text-muted-foreground">
                         📊 Mostrando datos del{' '}
@@ -2213,17 +2208,30 @@ export function AdminPanel({ onBack, onNavigateToTimeMetrics }: AdminPanelProps)
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                   {/* Domicilios por Día */}
                   <Card>
-                    <CardHeader>
-                      <CardTitle className="flex items-center gap-2">
-                        <TrendingUp className="h-5 w-5" />
-                        Domicilios por Día
-                      </CardTitle>
-                      <CardDescription>
-                        Tendencia de domicilios y ganancias diarias
-                      </CardDescription>
+                    <CardHeader className="flex flex-row items-center justify-between">
+                      <div>
+                        <CardTitle className="flex items-center gap-2">
+                          <TrendingUp className="h-5 w-5" />
+                          Domicilios por Día
+                        </CardTitle>
+                        <CardDescription>
+                          Tendencia de domicilios y ganancias diarias
+                        </CardDescription>
+                      </div>
+                      <ExportButton
+                        data={metricsData.metricasPorDia}
+                        columns={[
+                          { key: 'fecha', header: 'Fecha' },
+                          { key: 'total_pedidos', header: 'Total Pedidos' },
+                          { key: 'total_ingresos', header: 'Total Ingresos', format: formatters.currency },
+                          { key: 'promedio_por_pedido', header: 'Promedio por Pedido', format: formatters.currency },
+                        ]}
+                        filename={`domicilios_por_dia_${format(dateRange.from, 'yyyy-MM-dd')}_${format(dateRange.to, 'yyyy-MM-dd')}`}
+                        formats={['excel', 'csv']}
+                      />
                     </CardHeader>
-                    <CardContent>
-                      <div className="space-y-4">
+                    <CardContent className="max-h-[300px] overflow-y-auto">
+                      <div className="space-y-4 pr-2">
                         {metricsData.metricasPorDia.map((item, index) => {
                           // Parsear fecha como local, no UTC
                           const [year, month, day] = item.fecha.split('-').map(Number);
@@ -2255,20 +2263,32 @@ export function AdminPanel({ onBack, onNavigateToTimeMetrics }: AdminPanelProps)
 
                   {/* Productos Más Vendidos */}
                   <Card>
-                    <CardHeader>
-                      <CardTitle className="flex items-center gap-2">
-                        <Package className="h-5 w-5" />
-                        Productos Más Vendidos
-                      </CardTitle>
-                      <CardDescription>
-                        Distribución de ventas por producto
-                        <div className="mt-1 text-xs">
-                          📊 Mostrando datos del <span className="font-medium">{format(dateRange.from, 'dd/MM/yyyy', { locale: es })}</span> al <span className="font-medium">{format(dateRange.to, 'dd/MM/yyyy', { locale: es })}</span>
-                        </div>
-                      </CardDescription>
+                    <CardHeader className="flex flex-row items-center justify-between">
+                      <div>
+                        <CardTitle className="flex items-center gap-2">
+                          <Package className="h-5 w-5" />
+                          Productos Más Vendidos
+                        </CardTitle>
+                        <CardDescription>
+                          Distribución de ventas por producto
+                          <div className="mt-1 text-xs">
+                            📊 Mostrando datos del <span className="font-medium">{format(dateRange.from, 'dd/MM/yyyy', { locale: es })}</span> al <span className="font-medium">{format(dateRange.to, 'dd/MM/yyyy', { locale: es })}</span>
+                          </div>
+                        </CardDescription>
+                      </div>
+                      <ExportButton
+                        data={metricsData.productosMasVendidos}
+                        columns={[
+                          { key: 'producto_nombre', header: 'Producto' },
+                          { key: 'total_vendido', header: 'Total Vendido' },
+                          { key: 'porcentaje_ventas', header: 'Porcentaje', format: (value) => `${Number(value).toFixed(1)}%` },
+                        ]}
+                        filename={`productos_mas_vendidos_${format(dateRange.from, 'yyyy-MM-dd')}_${format(dateRange.to, 'yyyy-MM-dd')}`}
+                        formats={['excel', 'csv']}
+                      />
                     </CardHeader>
-                    <CardContent>
-                      <div className="space-y-4">
+                    <CardContent className="max-h-[300px] overflow-y-auto">
+                      <div className="space-y-4 pr-2">
                         {metricsData.productosMasVendidos.slice(0, 5).map((item, index) => (
                           <div key={index} className="flex items-center justify-between">
                             <div className="flex items-center gap-3">
@@ -2295,14 +2315,26 @@ export function AdminPanel({ onBack, onNavigateToTimeMetrics }: AdminPanelProps)
 
                   {/* Métricas de Pedidos Cancelados */}
                   <Card>
-                    <CardHeader>
-                      <CardTitle className="flex items-center gap-2">
-                        <XCircle className="h-5 w-5 text-red-500" />
-                        Análisis de Cancelaciones
-                      </CardTitle>
-                      <CardDescription>
-                        Estadísticas de pedidos cancelados por sede
-                      </CardDescription>
+                    <CardHeader className="flex flex-row items-center justify-between">
+                      <div>
+                        <CardTitle className="flex items-center gap-2">
+                          <XCircle className="h-5 w-5 text-red-500" />
+                          Análisis de Cancelaciones
+                        </CardTitle>
+                        <CardDescription>
+                          Estadísticas de pedidos cancelados por sede
+                        </CardDescription>
+                      </div>
+                      <ExportButton
+                        data={metricsData.pedidosCancelados.porSede}
+                        columns={[
+                          { key: 'nombre', header: 'Sede' },
+                          { key: 'cancelados', header: 'Cancelados' },
+                          { key: 'monto', header: 'Monto Perdido', format: formatters.currency },
+                        ]}
+                        filename={`analisis_cancelaciones_${format(dateRange.from, 'yyyy-MM-dd')}_${format(dateRange.to, 'yyyy-MM-dd')}`}
+                        formats={['excel', 'csv']}
+                      />
                     </CardHeader>
                     <CardContent>
                       <div className="space-y-4">
@@ -2356,7 +2388,7 @@ export function AdminPanel({ onBack, onNavigateToTimeMetrics }: AdminPanelProps)
 
                         {/* Cancelaciones por sede */}
                         {metricsData.pedidosCancelados?.porSede && metricsData.pedidosCancelados.porSede.length > 0 ? (
-                          <div className="space-y-3">
+                          <div className="space-y-3 max-h-[300px] overflow-y-auto pr-2">
                             <h4 className="font-semibold text-sm">
                               {user?.role === 'admin_punto' ? 'Cancelaciones en tu Sede:' : 'Cancelaciones por Sede:'}
                             </h4>
@@ -2424,6 +2456,7 @@ export function AdminPanel({ onBack, onNavigateToTimeMetrics }: AdminPanelProps)
               sedeId={selectedSedeFilter === 'all' ? undefined : selectedSedeFilter}
               startDate={format(dateRange.from, 'yyyy-MM-dd')}
               endDate={format(dateRange.to, 'yyyy-MM-dd')}
+              className="lg:col-span-2"
             />
           </div>
         )}
@@ -2448,9 +2481,7 @@ export function AdminPanel({ onBack, onNavigateToTimeMetrics }: AdminPanelProps)
           </div>
         )}
 
-        {/* All Dialogs remain the same but are omitted for brevity - they would be included in the full implementation */}
         
-        {/* Dialog para editar sede */}
         <Dialog open={isEditSedeOpen} onOpenChange={setIsEditSedeOpen}>
           <DialogContent>
             <DialogHeader>
@@ -2604,6 +2635,7 @@ export function AdminPanel({ onBack, onNavigateToTimeMetrics }: AdminPanelProps)
                 />
               </div>
               <div className="space-y-2">
+                <Label htmlFor="repartidor-telefono">Tel├®fono *</Label>
                 <Label htmlFor="repartidor-telefono">Teléfono *</Label>
                 <Input
                   id="repartidor-telefono"

@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Calendar } from '@/components/ui/calendar';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
@@ -10,6 +12,7 @@ import {
   Clock,
   TrendingUp,
   BarChart3,
+  Calendar as CalendarIcon,
   Timer,
   Package,
   Truck,
@@ -88,6 +91,10 @@ export const OrderStatesStatsPanel: React.FC<OrderStatesStatsPanelProps> = ({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showDetailTable, setShowDetailTable] = useState(false);
+  const [dateRange, setDateRange] = useState<{ from: Date; to: Date }>({
+    from: new Date(),
+    to: new Date(),
+  });
 
   // Cargar estadísticas de estados
   const loadStateStats = async () => {
@@ -100,8 +107,8 @@ export const OrderStatesStatsPanel: React.FC<OrderStatesStatsPanelProps> = ({
       let query = supabase
         .from('ordenes_duraciones_con_sede')
         .select('*')
-        .gte('created_at', `${filters.fecha_inicio}T00:00:00.000Z`)
-        .lte('created_at', `${filters.fecha_fin}T23:59:59.999Z`)
+        .gte('created_at', `${dateRange.from.toISOString().split('T')[0]}T00:00:00.000Z`)
+        .lte('created_at', `${dateRange.to.toISOString().split('T')[0]}T23:59:59.999Z`)
         .not('status', 'is', null);
 
       // Filtrar por sede si se especifica
@@ -474,7 +481,7 @@ export const OrderStatesStatsPanel: React.FC<OrderStatesStatsPanelProps> = ({
     sections.push({
       title: 'Estadísticas del Período',
       content: [
-        `Período: ${filters.fecha_inicio} al ${filters.fecha_fin}`,
+        `Período: ${dateRange.from.toLocaleDateString()} al ${dateRange.to.toLocaleDateString()}`,
         `Total de órdenes analizadas: ${orderDetails.length}`,
         `Órdenes atascadas: ${stuckOrders.length}`,
         `Distribución por estado: ${stateStats.map(s => `${s.state_label}: ${s.total_orders}`).join(', ')}`
@@ -513,20 +520,6 @@ export const OrderStatesStatsPanel: React.FC<OrderStatesStatsPanelProps> = ({
         </div>
         <div className="flex gap-2">
           <Button
-            onClick={() => {
-              loadStateStats();
-              onRefresh?.();
-            }}
-            disabled={loading}
-            variant="outline"
-            size="sm"
-          >
-            <RefreshCw className={`h-4 w-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
-            {loading ? 'Cargando...' : 'Actualizar'}
-          </Button>
-        </div>
-        <div className="flex gap-2">
-          <Button
             onClick={() => setShowDetailTable(!showDetailTable)}
             variant={showDetailTable ? "default" : "outline"}
             size="sm"
@@ -535,33 +528,78 @@ export const OrderStatesStatsPanel: React.FC<OrderStatesStatsPanelProps> = ({
             {showDetailTable ? 'Ocultar Tabla' : 'Ver Tabla Detallada'}
           </Button>
 
-          {/* Botón de exportación PDF para resumen ejecutivo */}
-          <ExportButton
-            pdfSections={generatePDFSections()}
-            formats={['pdf']}
-            filename={`reporte_estados_${filters.fecha_inicio}_${filters.fecha_fin}`}
-            title="Reporte de Estados de Órdenes"
-            subtitle={`Análisis del ${filters.fecha_inicio} al ${filters.fecha_fin}`}
-            variant="outline"
-            size="sm"
-          />
-
-          {/* Botón de exportación para tabla de auditoría */}
-          {showDetailTable && filteredOrders.length > 0 && (
+          <div className="flex gap-2">
+            {/* Botón de exportación PDF para resumen ejecutivo */}
             <ExportButton
-              data={filteredOrders}
-              columns={auditColumns}
-              formats={['excel', 'csv']}
-              filename={`auditoria_ordenes_${filters.fecha_inicio}_${filters.fecha_fin}`}
-              title="Auditoría de Órdenes por Estado"
-              subtitle={`Detalle individual de órdenes del ${filters.fecha_inicio} al ${filters.fecha_fin}`}
-              sheetName="Auditoría"
+              pdfSections={generatePDFSections()}
+              formats={['pdf']}
+              filename={`reporte_estados_${dateRange.from.toISOString().split('T')[0]}_${dateRange.to.toISOString().split('T')[0]}`}
+              title="Reporte de Estados de Órdenes"
+              subtitle={`Análisis del ${dateRange.from.toLocaleDateString()} al ${dateRange.to.toLocaleDateString()}`}
               variant="outline"
               size="sm"
             />
-          )}
+
+            {/* Botón de exportación para tabla de auditoría */}
+            {showDetailTable && filteredOrders.length > 0 && (
+              <ExportButton
+              data={filteredOrders}
+              columns={auditColumns}
+              formats={['excel', 'csv']}
+              filename={`auditoria_ordenes_${dateRange.from.toISOString().split('T')[0]}_${dateRange.to.toISOString().split('T')[0]}`}
+              title="Auditoría de Órdenes por Estado"
+              subtitle={`Detalle individual de órdenes del ${dateRange.from.toLocaleDateString()} al ${dateRange.to.toLocaleDateString()}`}
+              sheetName="Auditoría"
+              variant="outline"
+              size="sm"
+              />
+            )}
+          </div>
         </div>
       </div>
+
+      {/* Filtros de fecha */}
+      <Card>
+        <CardContent className="p-4 flex items-center gap-4">
+          <div className="flex items-center gap-2">
+            <CalendarIcon className="h-4 w-4 text-muted-foreground" />
+            <span className="text-sm font-medium">Filtrar por fecha:</span>
+          </div>
+          <Popover>
+            <PopoverTrigger asChild>
+              <Button variant="outline" className="w-[280px] justify-start text-left font-normal">
+                <CalendarIcon className="mr-2 h-4 w-4" />
+                {dateRange.from && dateRange.to
+                  ? `${dateRange.from.toLocaleDateString()} - ${dateRange.to.toLocaleDateString()}`
+                  : <span>Seleccionar rango</span>
+                }
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-auto p-0" align="start">
+              <Calendar
+                initialFocus
+                mode="range"
+                defaultMonth={dateRange.from}
+                selected={dateRange}
+                onSelect={(range) => range && setDateRange({ from: range.from || new Date(), to: range.to || new Date() })}
+                numberOfMonths={2}
+              />
+            </PopoverContent>
+          </Popover>
+          <Button
+            onClick={() => {
+              loadStateStats();
+              onRefresh?.();
+            }}
+            disabled={loading}
+            variant="default"
+            size="sm"
+          >
+            <RefreshCw className={`h-4 w-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
+            {loading ? 'Cargando...' : 'Aplicar'}
+          </Button>
+        </CardContent>
+      </Card>
 
       {/* Tabla de Auditoría Individual (mostrar/ocultar) */}
       {showDetailTable && (

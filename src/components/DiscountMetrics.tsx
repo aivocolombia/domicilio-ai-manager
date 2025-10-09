@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+﻿﻿import React, { useState, useEffect, useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
@@ -83,8 +83,10 @@ export function DiscountMetrics({
   };
 
   // Buscar descuento por ID de orden
-  const handleSearchOrder = async () => {
-    if (!searchOrderId.trim()) {
+  const handleSearchOrder = async (orderIdToSearch?: string) => {
+    const finalOrderId = orderIdToSearch || searchOrderId;
+
+    if (!finalOrderId.trim()) {
       setSearchError('Ingresa un ID de orden válido');
       return;
     }
@@ -94,9 +96,12 @@ export function DiscountMetrics({
     setSearchResult(null);
 
     try {
-      const orderId = parseInt(searchOrderId.trim());
+      // Limpiar la entrada para aceptar formatos como "ORD-0605", "0605" o "605"
+      const cleanedOrderId = finalOrderId.trim().replace(/[^0-9]/g, '');
+      const orderId = parseInt(cleanedOrderId, 10);
+
       if (isNaN(orderId)) {
-        setSearchError('El ID de orden debe ser un número');
+        setSearchError('El ID de orden debe ser un número válido');
         return;
       }
 
@@ -104,7 +109,7 @@ export function DiscountMetrics({
       const discountHistory = await discountService.getOrderDiscountHistory(orderId);
 
       if (!discountHistory) {
-        setSearchError(`No se encontró descuento aplicado para la orden ${orderId}`);
+        setSearchError(`No se encontró descuento aplicado para la orden #${orderId}`);
         return;
       }
 
@@ -124,7 +129,13 @@ export function DiscountMetrics({
         .single();
 
       if (orderError || !orderData) {
-        setSearchError(`Error obteniendo información de la orden ${orderId}`);
+        setSearchError(`Error obteniendo información de la orden #${orderId}`);
+        return;
+      }
+
+      // Restringir visibilidad a la sede asignada cuando corresponda
+      if (sedeId && orderData.sede_id !== sedeId) {
+        setSearchError('No tienes permisos para ver informaciÃ³n de esta orden.');
         return;
       }
 
@@ -154,8 +165,32 @@ export function DiscountMetrics({
     setSearchError(null);
   };
 
+  const sedeLabel = useMemo(() => (sedeId ? `Sede ${sedeId}` : 'Todas las sedes'), [sedeId]);
+
+  const exportRangeInfo = useMemo(() => {
+    const startISO = startDate || null;
+    const endISO = endDate || null;
+    const displayStart = startDate ? new Date(startDate).toLocaleDateString('es-CO') : 'Inicio';
+    const displayEnd = endDate ? new Date(endDate).toLocaleDateString('es-CO') : 'Actual';
+    return {
+      startISO,
+      endISO,
+      displayStart,
+      displayEnd,
+      label: `${displayStart} - ${displayEnd}`
+    };
+  }, [startDate, endDate]);
+
+  const discountSubtitle = useMemo(
+    () => `Rango: ${exportRangeInfo.label} | ${sedeLabel}`,
+    [exportRangeInfo.label, sedeLabel]
+  );
+
   // Configuración de columnas para exportación de descuentos
   const discountColumns: TableColumn[] = [
+    { key: 'fecha_inicio', header: 'Fecha Inicio', width: 14, format: formatters.date },
+    { key: 'fecha_fin', header: 'Fecha Fin', width: 14, format: formatters.date },
+    { key: 'sede', header: 'Sede', width: 24 },
     { key: 'orderId', header: 'ID Orden', width: 12 },
     { key: 'discountAmount', header: 'Descuento', width: 15, format: formatters.currency },
     { key: 'discountComment', header: 'Motivo del Descuento', width: 40 },
@@ -163,7 +198,21 @@ export function DiscountMetrics({
     { key: 'appliedDate', header: 'Fecha de Aplicación', width: 20, format: formatters.datetime }
   ];
 
-  // Generar secciones para PDF de descuentos
+  const recentDiscountsExportData = useMemo(() => {
+    if (!metrics?.recentDiscounts) return [];
+    return metrics.recentDiscounts.map((discount) => ({
+      fecha_inicio: exportRangeInfo.startISO,
+      fecha_fin: exportRangeInfo.endISO,
+      sede: sedeLabel,
+      orderId: discount.orderId,
+      discountAmount: discount.discountAmount,
+      discountComment: discount.discountComment,
+      appliedBy: discount.appliedBy,
+      appliedDate: discount.appliedDate
+    }));
+  }, [metrics, exportRangeInfo, sedeLabel]);
+
+// Generar secciones para PDF de descuentos
   const generateDiscountPDFSections = (): PDFSection[] => {
     const sections: PDFSection[] = [];
 
@@ -273,7 +322,7 @@ export function DiscountMetrics({
                 formats={['pdf']}
                 filename={`reporte_descuentos_${sedeId || 'global'}_${startDate || 'inicio'}_${endDate || 'fin'}`}
                 title="Reporte de Descuentos"
-                subtitle={`Análisis de descuentos aplicados`}
+                subtitle={discountSubtitle}
                 variant="outline"
                 size="sm"
               />
@@ -281,12 +330,12 @@ export function DiscountMetrics({
               {/* Botón de exportación Excel/CSV para tabla de descuentos */}
               {metrics?.recentDiscounts && metrics.recentDiscounts.length > 0 && (
                 <ExportButton
-                  data={metrics.recentDiscounts}
+                  data={recentDiscountsExportData}
                   columns={discountColumns}
                   formats={['excel', 'csv']}
                   filename={`descuentos_detalle_${sedeId || 'global'}_${startDate || 'inicio'}_${endDate || 'fin'}`}
                   title="Detalle de Descuentos"
-                  subtitle={`Lista completa de descuentos aplicados`}
+                  subtitle={discountSubtitle}
                   sheetName="Descuentos"
                   variant="outline"
                   size="sm"
@@ -362,7 +411,7 @@ export function DiscountMetrics({
         </Card>
       )}
 
-      {/* Búsqueda de descuento por orden */}
+      {/* BÃºsqueda de descuento por orden */}
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
@@ -467,7 +516,7 @@ export function DiscountMetrics({
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="space-y-4">
+            <div className="space-y-4 max-h-96 overflow-y-auto pr-2">
               {metrics.recentDiscounts.map((discount, index) => (
                 <div key={`${discount.orderId}-${index}`} className="border-l-4 border-blue-500 pl-4">
                   <div className="flex items-start justify-between">
@@ -484,7 +533,7 @@ export function DiscountMetrics({
                           size="sm"
                           onClick={() => {
                             setSearchOrderId(discount.orderId.toString());
-                            handleSearchOrder();
+                            handleSearchOrder(discount.orderId.toString());
                           }}
                           className="h-6 px-2 text-xs"
                         >

@@ -22,6 +22,7 @@ import {
   Star,
   User
 } from 'lucide-react';
+import { ExportButton } from '@/components/ui/ExportButton';
 import { useToast } from '@/hooks/use-toast';
 import { formatCurrency } from '@/utils/format';
 import { crmService, CRMCustomer, CRMOrder, CRMStats } from '@/services/crmService';
@@ -42,6 +43,8 @@ export const CRM: React.FC<CRMProps> = ({ effectiveSedeId }) => {
   const [loading, setLoading] = useState(true);
   const [loadingOrders, setLoadingOrders] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage] = useState(15);
   const [activeTab, setActiveTab] = useState('customers');
 
   // Determinar qué sede usar - CRM debería mostrar datos globales para admin_global
@@ -84,7 +87,7 @@ export const CRM: React.FC<CRMProps> = ({ effectiveSedeId }) => {
   const loadCustomerOrders = async (customerId: string) => {
     try {
       setLoadingOrders(true);
-      const orders = await crmService.getCustomerOrders(customerId, 20);
+      const orders = await crmService.getCustomerOrders(customerId, 20, sedeToUse || undefined);
       setCustomerOrders(orders);
     } catch (error) {
       console.error('Error loading customer orders:', error);
@@ -110,6 +113,28 @@ export const CRM: React.FC<CRMProps> = ({ effectiveSedeId }) => {
     customer.telefono.toLowerCase().includes(searchTerm.toLowerCase()) ||
     customer.direccion.toLowerCase().includes(searchTerm.toLowerCase())
   );
+
+  // Lógica de paginación
+  const totalPages = Math.ceil(filteredCustomers.length / itemsPerPage);
+  const indexOfLastItem = currentPage * itemsPerPage;
+  const indexOfFirstItem = indexOfLastItem - itemsPerPage;
+  const currentCustomers = filteredCustomers.slice(indexOfFirstItem, indexOfLastItem);
+
+  const handlePageChange = (pageNumber: number) => {
+    if (pageNumber > 0 && pageNumber <= totalPages) {
+      setCurrentPage(pageNumber);
+    }
+  };
+  // Definir columnas para exportación
+  const customerColumns = [
+    { key: 'nombre', header: 'Nombre' },
+    { key: 'telefono', header: 'Teléfono' },
+    { key: 'direccion', header: 'Dirección' },
+    { key: 'total_orders', header: 'Órdenes' },
+    { key: 'total_spent', header: 'Total Gastado', format: (value: number) => formatCurrency(value) },
+    { key: 'average_order_value', header: 'Promedio por Orden', format: (value: number) => formatCurrency(value) },
+    { key: 'last_order_date', header: 'Última Orden', format: (value: string) => value ? formatDate(value) : 'N/A' },
+  ];
 
   // Formatear fecha
   const formatDate = (dateString: string) => {
@@ -323,6 +348,14 @@ export const CRM: React.FC<CRMProps> = ({ effectiveSedeId }) => {
                       className="pl-8 w-64"
                     />
                   </div>
+                  <ExportButton
+                    data={filteredCustomers}
+                    columns={customerColumns}
+                    filename={`reporte_clientes_${sedeToUse || 'global'}`}
+                    title="Reporte de Clientes"
+                    subtitle={`Sede: ${sedeToUse ? customers.find(c => c.id === sedeToUse)?.nombre : 'Todas'}`}
+                    formats={['excel', 'csv']}
+                  />
                 </div>
               </div>
             </CardHeader>
@@ -340,7 +373,7 @@ export const CRM: React.FC<CRMProps> = ({ effectiveSedeId }) => {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {filteredCustomers.map((customer) => (
+                  {currentCustomers.map((customer) => (
                     <TableRow key={customer.id}>
                       <TableCell>
                         <div>
@@ -385,7 +418,7 @@ export const CRM: React.FC<CRMProps> = ({ effectiveSedeId }) => {
                             <DialogHeader>
                               <DialogTitle>Detalles del Cliente</DialogTitle>
                               <DialogDescription>
-                                Información completa y historial de órdenes de {selectedCustomer?.nombre}
+                                Información completa e historial de órdenes de {selectedCustomer?.nombre}
                               </DialogDescription>
                             </DialogHeader>
                             
@@ -450,9 +483,7 @@ export const CRM: React.FC<CRMProps> = ({ effectiveSedeId }) => {
                                 <Card>
                                   <CardHeader>
                                     <CardTitle className="text-lg">Historial de Órdenes</CardTitle>
-                                    <CardDescription>
-                                      Últimas 20 órdenes del cliente
-                                    </CardDescription>
+                                    <CardDescription>Últimas 20 órdenes del cliente</CardDescription>
                                   </CardHeader>
                                   <CardContent>
                                     {loadingOrders ? (
@@ -517,6 +548,62 @@ export const CRM: React.FC<CRMProps> = ({ effectiveSedeId }) => {
                   ))}
                 </TableBody>
               </Table>
+              {/* Controles de paginación */}
+              {totalPages > 1 && (
+                <div className="flex items-center justify-between mt-4">
+                  <span className="text-sm text-muted-foreground">
+                    Página {currentPage} de {totalPages} ({filteredCustomers.length} clientes)
+                  </span>
+                  <div className="flex items-center gap-1">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handlePageChange(currentPage - 1)}
+                      disabled={currentPage === 1}
+                    >
+                      Anterior
+                    </Button>
+                    {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => {
+                      // Lógica para mostrar solo un rango de páginas
+                      const shouldShow =
+                        page === 1 ||
+                        page === totalPages ||
+                        (page >= currentPage - 1 && page <= currentPage + 1);
+
+                      const isEllipsis =
+                        (page === currentPage - 2 && page > 1) ||
+                        (page === currentPage + 2 && page < totalPages);
+
+                      if (isEllipsis) {
+                        return <span key={`ellipsis-${page}`} className="px-2 text-muted-foreground">...</span>;
+                      }
+
+                      if (shouldShow) {
+                        return (
+                          <Button
+                            key={page}
+                            variant={currentPage === page ? 'default' : 'outline'}
+                            size="sm"
+                            className="w-9 h-9 p-0"
+                            onClick={() => handlePageChange(page)}
+                          >
+                            {page}
+                          </Button>
+                        );
+                      }
+                      return null;
+                    })}
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handlePageChange(currentPage + 1)}
+                      disabled={currentPage === totalPages}
+                    >
+                      Siguiente
+                    </Button>
+                  </div>
+                </div>
+              )}
             </CardContent>
           </Card>
         </TabsContent>

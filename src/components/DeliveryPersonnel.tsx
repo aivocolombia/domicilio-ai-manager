@@ -249,7 +249,7 @@ export const DeliveryPersonnel: React.FC<DeliveryPersonnelProps> = ({
               <DialogTitle>Agregar Nuevo Repartidor</DialogTitle>
             </DialogHeader>
             <div className="space-y-4">
-              <div>
+              <div className="space-y-2">
                 <Label htmlFor="name">Nombre</Label>
                 <Input
                   id="name"
@@ -258,7 +258,7 @@ export const DeliveryPersonnel: React.FC<DeliveryPersonnelProps> = ({
                   placeholder="Nombre del repartidor"
                 />
               </div>
-              <div>
+              <div className="space-y-2">
                 <Label htmlFor="phone">Teléfono</Label>
                 <Input
                   id="phone"
@@ -267,7 +267,7 @@ export const DeliveryPersonnel: React.FC<DeliveryPersonnelProps> = ({
                   placeholder="Número de teléfono"
                 />
               </div>
-              <div>
+              <div className="space-y-2">
                 <Label htmlFor="placas">Placas (opcional)</Label>
                 <Input
                   id="placas"
