@@ -124,16 +124,12 @@ class DeliveryService {
           }
           try {
             console.log(`📊 Obteniendo estadísticas para repartidor ${repartidor.id}...`);
-            
-            // Crear rango de fechas (Colombia timezone UTC-5)
-            // FIX: Corregir el manejo de la zona horaria para filtrar correctamente el día.
-            // El método anterior era propenso a errores. Este es más robusto.
+          
             const targetDate = filterDate || new Date();
             const year = targetDate.getFullYear();
             const month = targetDate.getMonth();
             const day = targetDate.getDate();
             
-            // Establecer el inicio y fin del día en la zona horaria local del navegador (que debe ser Colombia)
             const startOfDay = new Date(year, month, day, 0, 0, 0, 0);
             const endOfDay = new Date(year, month, day, 23, 59, 59, 999);
 
