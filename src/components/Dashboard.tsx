@@ -483,7 +483,8 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
   const canApplyDiscount = (order: DashboardOrder): boolean => {
     // Solo admin_punto y admin_global pueden aplicar descuentos
-    if (!user || !['admin_punto', 'admin_global'].includes(user.role)) {
+    if (!profile || !['admin_punto', 'admin_global'].includes(profile.role)) {
+      logDebug('Dashboard', 'canApplyDiscount: No tiene permisos', { profile });
       return false;
     }
 
@@ -492,19 +493,27 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
     // Verificar estado de la orden
     if (!allowedStatuses.includes(order.estado)) {
+      logDebug('Dashboard', 'canApplyDiscount: Estado no permitido', { estado: order.estado });
       return false;
     }
 
     // admin_punto solo puede aplicar descuentos en su sede
-    if (user.role === 'admin_punto' && user.sede_id !== order.sede) {
+    if (profile.role === 'admin_punto' && profile.sede_id !== order.sede_id) {
+      logDebug('Dashboard', 'canApplyDiscount: Sede no coincide', {
+        profileSedeId: profile.sede_id,
+        orderSede: order.sede,
+        orderSedeId: order.sede_id
+      });
       return false;
     }
 
     // No permitir descuento si ya tiene uno aplicado
     if (order.descuento_valor && order.descuento_valor > 0) {
+      logDebug('Dashboard', 'canApplyDiscount: Ya tiene descuento', { descuento: order.descuento_valor });
       return false;
     }
 
+    logDebug('Dashboard', 'canApplyDiscount: ✅ Puede aplicar descuento', { orderId: order.id_display });
     return true;
   };
 
@@ -1034,10 +1043,32 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
       if (clienteData) {
         logDebug('Dashboard', 'Cliente encontrado:', clienteData);
+
+        // Buscar las últimas indicaciones de entrega del cliente
+        let ultimasIndicaciones = '';
+        try {
+          const { data: ultimaOrden } = await supabase
+            .from('ordenes')
+            .select('delivery_instructions')
+            .eq('cliente_id', clienteData.id)
+            .not('delivery_instructions', 'is', null)
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .single();
+
+          if (ultimaOrden?.delivery_instructions) {
+            ultimasIndicaciones = ultimaOrden.delivery_instructions;
+          }
+        } catch (err) {
+          // Si no hay órdenes previas o error, continuar sin indicaciones
+          logDebug('Dashboard', 'No se encontraron indicaciones previas');
+        }
+
         return {
           nombre: clienteData.nombre,
           telefono: clienteData.telefono,
-          direccion_reciente: clienteData.direccion || ''
+          direccion_reciente: clienteData.direccion || '',
+          indicaciones_recientes: ultimasIndicaciones
         };
       }
     } catch (error) {
@@ -1138,6 +1169,14 @@ export const Dashboard: React.FC<DashboardProps> = ({
             phone: prev.phone,
             address: prev.address.trim() ? prev.address : foundClient.direccion_reciente
           }));
+
+          // Auto-rellenar indicaciones si están vacías
+          if (foundClient.indicaciones_recientes && !newOrder.deliveryInstructions.trim()) {
+            setNewOrder(prev => ({
+              ...prev,
+              deliveryInstructions: foundClient.indicaciones_recientes
+            }));
+          }
         } else {
           setFoundCustomer(null);
         }
@@ -1797,8 +1836,8 @@ export const Dashboard: React.FC<DashboardProps> = ({
         </div>
         
         <div className="flex gap-3">
-          {/* Botón de Crear Nuevo Pedido - Para administradores y agentes */}
-          {(profile?.role === 'admin_global' || profile?.role === 'admin_punto' || profile?.role === 'agent') && (
+          {/* Botón de Crear Nuevo Pedido - Solo para admin_punto y agentes */}
+          {(profile?.role === 'admin_punto' || profile?.role === 'agent') && (
             <Button
               onClick={() => setShowCreateOrderModal(true)}
               disabled={!settings.acceptingOrders}

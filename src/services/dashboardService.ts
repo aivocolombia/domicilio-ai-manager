@@ -8,6 +8,7 @@ export interface DashboardOrder {
   cliente_direccion?: string; // Dirección del cliente
   address: string; // Dirección específica de esta orden (no del cliente)
   sede: string;
+  sede_id: string; // ID de la sede (UUID)
   estado: string;
   pago_tipo: string;
   pago_estado: string;
@@ -257,6 +258,7 @@ export class DashboardService {
         cliente_telefono: order.clientes?.telefono || 'Sin teléfono',
         address: order.address || 'Sin dirección',
         sede: order.sedes?.name || 'Sin sede',
+        sede_id: order.sede_id || '',
         estado: order.status || 'Desconocido',
         pago_tipo: order.pagos?.type || 'Sin pago',
         pago_estado: this.mapPaymentStatus(order.pagos?.status),

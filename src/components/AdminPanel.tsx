@@ -1040,7 +1040,7 @@ export function AdminPanel({ onBack, onNavigateToTimeMetrics }: AdminPanelProps)
     // Filtro de b├║squeda
     // Filtro de búsqueda
     const matchesSearch = repartidor.nombre.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         repartidor.telefono.includes(searchTerm) ||
+                         (repartidor.telefono && repartidor.telefono.includes(searchTerm)) ||
                          (repartidor.placas && repartidor.placas.toLowerCase().includes(searchTerm.toLowerCase()));
     
     // Filtro por rol: admin_punto solo ve repartidores de su sede
