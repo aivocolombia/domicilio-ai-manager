@@ -43,17 +43,28 @@ export const useDashboard = (sede_id?: string | number, onRealtimeUpdate?: () =>
     sedeIdRef.current = sede_id;
   }, [sede_id]);
 
+  // Referencia para el timestamp de última carga
+  const lastLoadTimestampRef = useRef<number>(0);
+
   // Cargar órdenes del dashboard con protección contra cargas concurrentes
   const loadDashboardOrders = useCallback(async (filters: DashboardFilters = {}) => {
     // ATOMIC check-and-set para prevenir race conditions
-    const wasLoading = loadingRef.current;
-    loadingRef.current = true;
-    
-    if (wasLoading) {
+    const now = Date.now();
+    const timeSinceLastLoad = now - lastLoadTimestampRef.current;
+
+    // Prevenir cargas si ya hay una en progreso O si se cargó hace menos de 500ms
+    if (loadingRef.current) {
       logDebug('Dashboard', 'Ya hay una carga en progreso, saltando...');
-      loadingRef.current = wasLoading; // Restaurar estado original
       return;
     }
+
+    if (timeSinceLastLoad < 500) {
+      logDebug('Dashboard', `Última carga hace ${timeSinceLastLoad}ms, muy reciente, saltando...`);
+      return;
+    }
+
+    loadingRef.current = true;
+    lastLoadTimestampRef.current = now;
 
     try {
       setLoading(true);
@@ -177,7 +188,7 @@ export const useDashboard = (sede_id?: string | number, onRealtimeUpdate?: () =>
     }
   }, [loadDashboardOrders]);
 
-  // Configurar suscripción en tiempo real con debounce reducido
+  // Configurar suscripción en tiempo real con debounce más agresivo
   const debouncedReload = useCallback(
     debounce(() => {
       if (sedeIdRef.current) {
@@ -186,7 +197,7 @@ export const useDashboard = (sede_id?: string | number, onRealtimeUpdate?: () =>
         loadingRef.current = false;
         loadDashboardOrders();
       }
-    }, 300), // Reducido a 300ms para respuesta más rápida
+    }, 1000), // Aumentado a 1 segundo para evitar recargas múltiples
     [loadDashboardOrders]
   );
 
@@ -209,9 +220,10 @@ export const useDashboard = (sede_id?: string | number, onRealtimeUpdate?: () =>
       description: `Orden #${order.id} recibida`,
       duration: 3000,
     });
-    forceReload();
+    // Usar debouncedReload en lugar de forceReload para evitar interrumpir modales
+    debouncedReload();
     onRealtimeUpdate?.(); // También refrescar componentes externos
-  }, [forceReload, toast, onRealtimeUpdate]);
+  }, [debouncedReload, toast, onRealtimeUpdate]);
 
   const onOrderStatusChanged = useCallback((orderId: number, newStatus: string) => {
     console.log(`📊 Dashboard: Orden #${orderId} cambió a ${newStatus}`);

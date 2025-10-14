@@ -136,100 +136,189 @@ export class MetricsService {
       const startQuery = formatDateForQuery(startDate, false);
       const endQuery = formatDateForQuery(endDate, true);
       
-      console.log('📅 MetricsService: Fechas de consulta convertidas:', {
-        original: { inicio: filters.fecha_inicio, fin: filters.fecha_fin },
-        converted: { inicio: startQuery, fin: endQuery }
-      });
+      // Query principal con PAGINACIÓN para obtener TODOS los registros
+      const pageSize = 1000;
+      let allOrdenesData: any[] = [];
+      let currentPage = 0;
+      let hasMoreData = true;
 
-      // Query principal usando ordenes_duraciones_con_sede que tiene los datos completos
-      let query = supabase
-        .from('ordenes_duraciones_con_sede')
-        .select(`
-          id,
-          created_at,
-          status,
-          sede_id,
-          sede_nombre
-        `)
-        .gte('created_at', startQuery)
-        .lte('created_at', endQuery);
+      while (hasMoreData) {
+        let query = supabase
+          .from('ordenes_duraciones_con_sede')
+          .select(`
+            id,
+            created_at,
+            status,
+            sede_id,
+            sede_nombre
+          `)
+          .gte('created_at', startQuery)
+          .lte('created_at', endQuery)
+          .order('created_at', { ascending: true })
+          .range(currentPage * pageSize, (currentPage + 1) * pageSize - 1);
 
-      if (filters.sede_id) {
-        query = query.eq('sede_id', filters.sede_id);
-      }
+        if (filters.sede_id) {
+          query = query.eq('sede_id', filters.sede_id);
+        }
 
-      const { data: ordenesData, error } = await query;
+        const { data: pageData, error } = await query;
 
-      if (error) {
-        console.error('❌ Error obteniendo métricas por día:', error);
-        throw new Error(`Error obteniendo métricas: ${error.message}`);
-      }
+        if (error) {
+          console.error('Error obteniendo métricas por día:', error);
+          throw new Error(`Error obteniendo métricas: ${error.message}`);
+        }
 
-      console.log('✅ Órdenes obtenidas para métricas:', ordenesData?.length || 0);
-      console.log('🔍 DEBUG getMetricsByDay - Rango aplicado:', {
-        fecha_inicio: `${filters.fecha_inicio}T00:00:00`,
-        fecha_fin: `${filters.fecha_fin}T23:59:59`
-      });
-      if (ordenesData && ordenesData.length > 0) {
-        console.log('📅 DEBUG - Fechas de órdenes encontradas:', ordenesData.map(o => ({
-          id: o.id,
-          fecha: o.created_at,
-          fecha_solo: new Date(o.created_at).toISOString().split('T')[0]
-        })));
-      }
+        if (pageData && pageData.length > 0) {
+          allOrdenesData = allOrdenesData.concat(pageData);
 
-      // Obtener pagos por separado
-      let pagosData: any[] = [];
-      if (ordenesData && ordenesData.length > 0) {
-        const ordenIds = ordenesData.map(o => o.id).filter(id => id !== undefined && id !== null);
-        
-        // Solo hacer la consulta si hay IDs válidos
-        if (ordenIds.length > 0) {
-          const { data: pagosResult, error: pagosError } = await supabase
-            .from('ordenes')
-            .select(`
-              id,
-              pagos!payment_id(total_pago)
-            `)
-            .in('id', ordenIds);
-
-          if (pagosError) {
-            console.error('⚠️ Error obteniendo pagos:', pagosError);
+          if (pageData.length < pageSize) {
+            hasMoreData = false;
           } else {
-            pagosData = pagosResult || [];
+            currentPage++;
           }
+        } else {
+          hasMoreData = false;
         }
       }
+
+      const ordenesData = allOrdenesData;
+
+      // Obtener pagos por separado usando el mismo rango de fechas
+      console.log('💰 Iniciando paginación de pagos...');
+      let allPagosData: any[] = [];
+      let currentPagosPage = 0;
+      let hasMorePagos = true;
+      const pagosPageSize = 1000;
+
+      while (hasMorePagos) {
+        let pagosQuery = supabase
+          .from('ordenes')
+          .select(`
+            id,
+            created_at,
+            pagos!payment_id(total_pago)
+          `)
+          .gte('created_at', startQuery)
+          .lte('created_at', endQuery)
+          .order('created_at', { ascending: true })
+          .range(currentPagosPage * pagosPageSize, (currentPagosPage + 1) * pagosPageSize - 1);
+
+        if (filters.sede_id) {
+          pagosQuery = pagosQuery.eq('sede_id', filters.sede_id);
+        }
+
+        const { data: pagosPageData, error: pagosError } = await pagosQuery;
+
+        if (pagosError) {
+          console.error('❌ Error obteniendo pagos (página ' + currentPagosPage + '):', pagosError);
+          break;
+        }
+
+        if (pagosPageData && pagosPageData.length > 0) {
+          allPagosData = allPagosData.concat(pagosPageData);
+          console.log(`💰 Pagos - Página ${currentPagosPage + 1}: ${pagosPageData.length} registros (total: ${allPagosData.length})`);
+
+          if (pagosPageData.length < pagosPageSize) {
+            hasMorePagos = false;
+          } else {
+            currentPagosPage++;
+          }
+        } else {
+          hasMorePagos = false;
+        }
+      }
+
+      const pagosData = allPagosData;
+      console.log('✅ Total pagos obtenidos:', pagosData.length);
 
       // Crear mapa de pagos por orden_id
       const pagosMap = new Map();
+      let pagosConDatos = 0;
+      let totalSumaPagos = 0;
+
       pagosData.forEach(orden => {
-        if (orden.pagos) {
+        if (orden.pagos && orden.pagos.total_pago) {
           pagosMap.set(orden.id, orden.pagos.total_pago);
+          pagosConDatos++;
+          totalSumaPagos += orden.pagos.total_pago;
         }
+      });
+
+      console.log('💰 DEBUG Pagos:', {
+        totalRegistros: pagosData.length,
+        registrosConPago: pagosConDatos,
+        sumaTotal: totalSumaPagos,
+        ejemplo: pagosData.slice(0, 3).map(o => ({
+          id: o.id,
+          tiene_pagos: !!o.pagos,
+          total_pago: o.pagos?.total_pago
+        }))
       });
 
       // Procesar datos para agrupar por día usando timezone de Colombia
       const metricasPorDia = new Map<string, { pedidosTotales: number; pedidos_entregados: number; ingresos: number }>();
 
+      let ordenesEntregadasCount = 0;
+      let ordenesConPagoEncontrado = 0;
+      let sumaIngresosTotal = 0;
+
       ordenesData?.forEach((orden) => {
         // Convertir fecha UTC a fecha en timezone de Colombia (UTC-5)
+        // CORREGIDO: Usar método más confiable para conversión de timezone
         const fechaUTC = new Date(orden.created_at);
-        const fechaColombia = new Date(fechaUTC.toLocaleString('en-US', { timeZone: 'America/Bogota' }));
-        const fecha = fechaColombia.toISOString().split('T')[0];
+
+        // Obtener componentes de fecha en timezone de Colombia
+        const formatter = new Intl.DateTimeFormat('en-CA', {
+          timeZone: 'America/Bogota',
+          year: 'numeric',
+          month: '2-digit',
+          day: '2-digit'
+        });
+
+        const parts = formatter.formatToParts(fechaUTC);
+        const year = parts.find(p => p.type === 'year')?.value || '';
+        const month = parts.find(p => p.type === 'month')?.value || '';
+        const day = parts.find(p => p.type === 'day')?.value || '';
+        const fecha = `${year}-${month}-${day}`;
 
         // Solo contar ingresos de órdenes entregadas
-        const ingresos = orden.status === 'Entregados' ? (pagosMap.get(orden.id) || 0) : 0;
-        const esEntregado = orden.status === 'Entregados' ? 1 : 0;
+        const esEntregado = orden.status === 'Entregados';
+        const pagoEncontrado = pagosMap.get(orden.id);
+        const ingresos = esEntregado ? (pagoEncontrado || 0) : 0;
+
+        if (esEntregado) {
+          ordenesEntregadasCount++;
+          if (pagoEncontrado) {
+            ordenesConPagoEncontrado++;
+            sumaIngresosTotal += pagoEncontrado;
+          }
+        }
 
         if (metricasPorDia.has(fecha)) {
           const existing = metricasPorDia.get(fecha)!;
           existing.pedidosTotales += 1; // Contar todos los pedidos para referencia
-          existing.pedidos_entregados += esEntregado; // Contar solo entregados
+          existing.pedidos_entregados += esEntregado ? 1 : 0; // Contar solo entregados
           existing.ingresos += ingresos; // Solo ingresos de entregados
         } else {
-          metricasPorDia.set(fecha, { pedidosTotales: 1, pedidos_entregados: esEntregado, ingresos });
+          metricasPorDia.set(fecha, { pedidosTotales: 1, pedidos_entregados: esEntregado ? 1 : 0, ingresos });
         }
+      });
+
+      console.log('📊 DEBUG Procesamiento de órdenes:', {
+        totalOrdenes: ordenesData?.length || 0,
+        ordenesEntregadas: ordenesEntregadasCount,
+        ordenesEntregadasConPago: ordenesConPagoEncontrado,
+        sumaIngresosCalculada: sumaIngresosTotal
+      });
+
+      // DEBUG: Mostrar qué hay en el Map antes de convertir
+      console.log('🔍 DEBUG - Datos agrupados en metricasPorDia Map:', {
+        totalDiasEnMap: metricasPorDia.size,
+        fechasEnMap: Array.from(metricasPorDia.keys()).sort(),
+        ejemplosDatos: Array.from(metricasPorDia.entries()).slice(0, 3).map(([fecha, datos]) => ({
+          fecha,
+          ...datos
+        }))
       });
 
       // Convertir a array y calcular promedios basados en pedidos entregados
@@ -241,7 +330,26 @@ export class MetricsService {
         total_ordenes: datos.pedidosTotales
       }));
 
-      console.log('[metrics] Métricas por día calculadas:', resultado.length, 'días');
+      console.log('[metrics] ✅ Métricas por día calculadas:', resultado.length, 'días');
+      console.log('[metrics] 📅 Rango de fechas en resultado:', {
+        primera: resultado[0]?.fecha,
+        última: resultado[resultado.length - 1]?.fecha,
+        filtroAplicado: { inicio: filters.fecha_inicio, fin: filters.fecha_fin },
+        totalDías: resultado.length
+      });
+
+      // Verificar si falta el último día del rango
+      if (resultado.length > 0) {
+        const ultimaFechaResultado = resultado[resultado.length - 1].fecha;
+        const fechaFinEsperada = filters.fecha_fin;
+        if (ultimaFechaResultado !== fechaFinEsperada) {
+          console.warn('⚠️ [metrics] La última fecha en el resultado no coincide con el filtro:', {
+            esperada: fechaFinEsperada,
+            obtenida: ultimaFechaResultado
+          });
+        }
+      }
+
       return resultado.sort((a, b) => a.fecha.localeCompare(b.fecha));
     } catch (error) {
       console.error('❌ Error en getMetricsByDay:', error);
@@ -457,22 +565,61 @@ export class MetricsService {
     try {
       console.log('🏢 Obteniendo métricas por sede:', filters);
 
-      // Obtener datos de sedes desde ordenes_duraciones_con_sede
-      const { data: sedeData, error: sedeError } = await supabase
-        .from('ordenes_duraciones_con_sede')
-        .select(`
-          sede_id,
-          status,
-          created_at,
-          sede_nombre
-        `)
-        .gte('created_at', formatDateForQuery(new Date(`${filters.fecha_inicio}T00:00:00`), false))
-        .lte('created_at', formatDateForQuery(new Date(`${filters.fecha_fin}T23:59:59`), true));
+      // Obtener datos de sedes con PAGINACIÓN
+      const startQuery = formatDateForQuery(new Date(`${filters.fecha_inicio}T00:00:00`), false);
+      const endQuery = formatDateForQuery(new Date(`${filters.fecha_fin}T23:59:59`), true);
 
-      if (sedeError) {
-        console.error('❌ Error obteniendo métricas por sede:', sedeError);
-        throw new Error(`Error obteniendo métricas por sede: ${sedeError.message}`);
+      const pageSize = 1000;
+      let allSedeData: any[] = [];
+      let currentPage = 0;
+      let hasMoreData = true;
+
+      console.log('🔄 Paginando métricas por sede...');
+
+      while (hasMoreData) {
+        let query = supabase
+          .from('ordenes_duraciones_con_sede')
+          .select(`
+            id,
+            sede_id,
+            status,
+            created_at,
+            sede_nombre
+          `)
+          .gte('created_at', startQuery)
+          .lte('created_at', endQuery)
+          .order('created_at', { ascending: true })
+          .range(currentPage * pageSize, (currentPage + 1) * pageSize - 1);
+
+        // CRÍTICO: Aplicar filtro de sede si se proporciona
+        if (filters.sede_id) {
+          query = query.eq('sede_id', filters.sede_id);
+        }
+
+        const { data: pageData, error: sedeError } = await query;
+
+        if (sedeError) {
+          console.error('❌ Error obteniendo métricas por sede (página ' + currentPage + '):', sedeError);
+          throw new Error(`Error obteniendo métricas por sede: ${sedeError.message}`);
+        }
+
+        if (pageData && pageData.length > 0) {
+          allSedeData = allSedeData.concat(pageData);
+          console.log(`📄 Sede Metrics - Página ${currentPage + 1}: ${pageData.length} órdenes (total: ${allSedeData.length})`);
+
+          if (pageData.length < pageSize) {
+            hasMoreData = false;
+          } else {
+            currentPage++;
+          }
+        } else {
+          hasMoreData = false;
+        }
       }
+
+      const sedeData = allSedeData;
+
+      console.log('✅ Total órdenes obtenidas para métricas de sede:', sedeData.length);
 
       // Obtener pagos por separado
       let pagosData: any[] = [];

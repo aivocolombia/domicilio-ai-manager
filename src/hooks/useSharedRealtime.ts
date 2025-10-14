@@ -44,7 +44,7 @@ class RealtimeManager {
     this.channel = supabase.channel(`shared_realtime_${sedeId}`, {
       config: {
         presence: { key: sedeId },
-        broadcast: { self: true }
+        broadcast: { self: false } // Cambiado a false para evitar duplicados locales
       }
     });
 
@@ -57,8 +57,31 @@ class RealtimeManager {
           this.isConnected = payload.status === 'ok';
         }
       })
-      .on('postgres_changes', { event: '*', schema: 'public' }, (payload) => {
-        console.log('🔄 [SHARED_REALTIME] Change received:', payload);
+      // CRÍTICO: Agregar filtro por sede en el nivel de suscripción
+      .on('postgres_changes', {
+        event: '*',
+        schema: 'public',
+        table: 'ordenes',
+        filter: `sede_id=eq.${sedeId}` // ⚠️ FILTRO CRÍTICO
+      }, (payload) => {
+        console.log(`🔄 [SHARED_REALTIME] Change received for sede ${sedeId}:`, payload);
+        this.handleRealtimeChange(payload);
+      })
+      // También escuchar cambios en ordenes_platos y ordenes_bebidas
+      .on('postgres_changes', {
+        event: '*',
+        schema: 'public',
+        table: 'ordenes_platos'
+      }, (payload) => {
+        console.log('🔄 [SHARED_REALTIME] ordenes_platos change:', payload);
+        this.handleRealtimeChange(payload);
+      })
+      .on('postgres_changes', {
+        event: '*',
+        schema: 'public',
+        table: 'ordenes_bebidas'
+      }, (payload) => {
+        console.log('🔄 [SHARED_REALTIME] ordenes_bebidas change:', payload);
         this.handleRealtimeChange(payload);
       });
 
