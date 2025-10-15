@@ -195,7 +195,15 @@ export const useDashboard = (sede_id?: string | number, onRealtimeUpdate?: () =>
         console.log('🔄 Dashboard: Recarga programada ejecutándose...');
         // Resetear el flag de loading para permitir recarga
         loadingRef.current = false;
-        loadDashboardOrders();
+
+        // Usar función de refresh del Dashboard si está disponible para mantener filtros
+        if (refreshFunctionRef.current) {
+          console.log('🔄 Dashboard: Usando función de refresh con filtros actuales');
+          refreshFunctionRef.current({ force: true });
+        } else {
+          console.log('⚠️ Dashboard: refreshFunctionRef no disponible, usando loadDashboardOrders básico');
+          loadDashboardOrders();
+        }
       }
     }, 1000), // Aumentado a 1 segundo para evitar recargas múltiples
     [loadDashboardOrders]
