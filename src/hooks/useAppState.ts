@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from './useAuth';
 
-type AppView = 'main' | 'admin' | 'time-metrics';
+type AppView = 'main' | 'admin' | 'time-metrics' | 'pos';
 
 const STORAGE_KEY = 'ajiaco-app-view';
 const NAVIGATION_HISTORY_KEY = 'ajiaco-navigation-history';
@@ -10,6 +10,7 @@ export const useAppState = () => {
   const { user } = useAuth();
   const [showAdminPanel, setShowAdminPanel] = useState(false);
   const [showTimeMetrics, setShowTimeMetrics] = useState(false);
+  const [showPOS, setShowPOS] = useState(false);
   const [navigationHistory, setNavigationHistory] = useState<AppView[]>([]);
 
   // Cargar el estado desde localStorage al montar el componente
@@ -41,16 +42,23 @@ export const useAppState = () => {
       } else if (savedView === 'time-metrics') {
         setShowAdminPanel(false);
         setShowTimeMetrics(true);
+        setShowPOS(false);
+      } else if (savedView === 'pos') {
+        setShowAdminPanel(false);
+        setShowTimeMetrics(false);
+        setShowPOS(true);
       } else {
         // Vista principal por defecto
         setShowAdminPanel(false);
         setShowTimeMetrics(false);
+        setShowPOS(false);
       }
     } catch (error) {
       console.warn('Error loading app state from localStorage:', error);
       // Valores por defecto en caso de error
       setShowAdminPanel(false);
       setShowTimeMetrics(false);
+      setShowPOS(false);
       setNavigationHistory([]);
     }
   }, [user?.role]);
@@ -62,12 +70,13 @@ export const useAppState = () => {
       console.error('🚫 ACCESO DENEGADO: Solo usuarios admin pueden acceder al panel de administración');
       return;
     }
-    
+
     console.log('📍 Navegando a Admin Panel');
     const newHistory = [...navigationHistory, 'admin'];
     setNavigationHistory(newHistory);
     setShowAdminPanel(true);
     setShowTimeMetrics(false);
+    setShowPOS(false);
     localStorage.setItem(STORAGE_KEY, 'admin');
     localStorage.setItem(NAVIGATION_HISTORY_KEY, JSON.stringify(newHistory));
   };
@@ -79,7 +88,20 @@ export const useAppState = () => {
     setNavigationHistory(newHistory);
     setShowAdminPanel(false);
     setShowTimeMetrics(true);
+    setShowPOS(false);
     localStorage.setItem(STORAGE_KEY, 'time-metrics');
+    localStorage.setItem(NAVIGATION_HISTORY_KEY, JSON.stringify(newHistory));
+  };
+
+  // Función para mostrar POS
+  const navigateToPOS = () => {
+    console.log('📍 Navegando a POS');
+    const newHistory = [...navigationHistory, 'pos'];
+    setNavigationHistory(newHistory);
+    setShowAdminPanel(false);
+    setShowTimeMetrics(false);
+    setShowPOS(true);
+    localStorage.setItem(STORAGE_KEY, 'pos');
     localStorage.setItem(NAVIGATION_HISTORY_KEY, JSON.stringify(newHistory));
   };
 
@@ -100,15 +122,23 @@ export const useAppState = () => {
       if (previousView === 'admin') {
         setShowAdminPanel(true);
         setShowTimeMetrics(false);
+        setShowPOS(false);
         localStorage.setItem(STORAGE_KEY, 'admin');
       } else if (previousView === 'time-metrics') {
         setShowAdminPanel(false);
         setShowTimeMetrics(true);
+        setShowPOS(false);
         localStorage.setItem(STORAGE_KEY, 'time-metrics');
+      } else if (previousView === 'pos') {
+        setShowAdminPanel(false);
+        setShowTimeMetrics(false);
+        setShowPOS(true);
+        localStorage.setItem(STORAGE_KEY, 'pos');
       } else {
         // Vista principal por defecto
         setShowAdminPanel(false);
         setShowTimeMetrics(false);
+        setShowPOS(false);
         localStorage.setItem(STORAGE_KEY, 'main');
       }
     } else {
@@ -116,6 +146,7 @@ export const useAppState = () => {
       console.log('📍 No hay historial, yendo a vista principal');
       setShowAdminPanel(false);
       setShowTimeMetrics(false);
+      setShowPOS(false);
       setNavigationHistory([]);
       localStorage.setItem(STORAGE_KEY, 'main');
       localStorage.setItem(NAVIGATION_HISTORY_KEY, JSON.stringify([]));
@@ -126,6 +157,7 @@ export const useAppState = () => {
   const clearAppState = () => {
     setShowAdminPanel(false);
     setShowTimeMetrics(false);
+    setShowPOS(false);
     setNavigationHistory([]);
     localStorage.removeItem(STORAGE_KEY);
     localStorage.removeItem(NAVIGATION_HISTORY_KEY);
@@ -136,6 +168,7 @@ export const useAppState = () => {
     console.log('📍 Navegando a vista principal');
     setShowAdminPanel(false);
     setShowTimeMetrics(false);
+    setShowPOS(false);
     setNavigationHistory([]);
     localStorage.setItem(STORAGE_KEY, 'main');
     localStorage.setItem(NAVIGATION_HISTORY_KEY, JSON.stringify([]));
@@ -144,8 +177,10 @@ export const useAppState = () => {
   return {
     showAdminPanel,
     showTimeMetrics,
+    showPOS,
     navigateToAdmin,
     navigateToTimeMetrics,
+    navigateToPOS,
     navigateToMain,
     navigateToMainView,
     clearAppState

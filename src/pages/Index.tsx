@@ -8,6 +8,7 @@ import { UserProfile } from '@/components/UserProfile';
 // Lazy loading para componentes pesados
 const AdminPanel = lazy(() => import('@/components/AdminPanel').then(module => ({ default: module.AdminPanel })));
 const TimeMetricsPage = lazy(() => import('@/components/TimeMetricsPage').then(module => ({ default: module.TimeMetricsPage })));
+const POSView = lazy(() => import('@/pages/POSView').then(module => ({ default: module.POSView })));
 
 import { Order, DeliverySettings, OrderSource, DeliveryPerson, PaymentMethod, PaymentStatus, User as UserType, Sede, OrderStatus, DeliveryType } from '@/types/delivery';
 import { LayoutDashboard, Package, Users, Settings, Building2, ChevronDown } from 'lucide-react';
@@ -174,7 +175,7 @@ const Index = () => {
   const { profile } = useAuth();
   const { permissions, isAdmin, isAdministradorPunto, isAgent, userSedeId } = usePermissions();
   const { activeTab, setActiveTab, resetToDashboard } = useActiveTab();
-  const { showAdminPanel, showTimeMetrics, navigateToAdmin, navigateToTimeMetrics, navigateToMain, navigateToMainView } = useAppState();
+  const { showAdminPanel, showTimeMetrics, showPOS, navigateToAdmin, navigateToTimeMetrics, navigateToPOS, navigateToMain, navigateToMainView } = useAppState();
   const [orders, setOrders] = useState<Order[]>([]);
   const [deliveryPersonnel, setDeliveryPersonnel] = useState<DeliveryPerson[]>([]);
   const [currentUser] = useState<UserType>(generateMockUser());
@@ -362,8 +363,8 @@ const Index = () => {
   };
 
   useEffect(() => {
-    // Solo cargar datos iniciales si NO estamos en AdminPanel o TimeMetrics
-    if (!showAdminPanel && !showTimeMetrics) {
+    // Solo cargar datos iniciales si NO estamos en AdminPanel, TimeMetrics o POS
+    if (!showAdminPanel && !showTimeMetrics && !showPOS) {
       console.log('📊 Index: Cargando datos del dashboard principal...');
       // No cargar órdenes aquí - dejar que el Dashboard maneje sus propios datos
       // Esto evita que se recarguen sin filtros cuando se cambia de sede
@@ -377,9 +378,9 @@ const Index = () => {
       }
       setDeliveryPersonnel(generateMockDeliveryPersonnel());
     } else {
-      console.log('🚫 Index: Saltando carga de dashboard - AdminPanel/TimeMetrics activo');
+      console.log('🚫 Index: Saltando carga de dashboard - AdminPanel/TimeMetrics/POS activo');
     }
-  }, [effectiveSedeId, showAdminPanel, showTimeMetrics]);
+  }, [effectiveSedeId, showAdminPanel, showTimeMetrics, showPOS]);
 
   // Cargar sedes cuando el perfil esté disponible
   useEffect(() => {
@@ -417,7 +418,7 @@ const Index = () => {
   if (showAdminPanel) {
     return (
       <Suspense fallback={<Loading message="Cargando Panel de Administración..." size="lg" />}>
-        <AdminPanel 
+        <AdminPanel
           onBack={navigateToMain}
           onNavigateToTimeMetrics={navigateToTimeMetrics}
         />
@@ -430,6 +431,15 @@ const Index = () => {
     return (
       <Suspense fallback={<Loading message="Cargando Métricas de Tiempo..." size="lg" />}>
         <TimeMetricsPage onBack={navigateToMain} />
+      </Suspense>
+    );
+  }
+
+  // Si showPOS es true, mostrar la vista POS
+  if (showPOS) {
+    return (
+      <Suspense fallback={<Loading message="Cargando POS..." size="lg" />}>
+        <POSView onBack={navigateToMain} />
       </Suspense>
     );
   }
@@ -474,6 +484,15 @@ const Index = () => {
                   </div>
                 )}
 
+                {/* POS Button */}
+                <Button
+                  variant="outline"
+                  onClick={navigateToPOS}
+                  className="flex items-center gap-2 bg-brand-secondary text-red-500 border-brand-secondary hover:bg-brand-primary hover:text-yellow-400"
+                >
+                  POS
+                </Button>
+
                 {/* Admin Panel Button - Visible para admin_global y admin_punto */}
                 {(isAdmin || isAdministradorPunto) && (
                   <Button
@@ -485,8 +504,8 @@ const Index = () => {
                     Admin Panel
                   </Button>
                 )}
-                
-                
+
+
                 {/* User Profile Button */}
                 <UserProfile />
               </div>
