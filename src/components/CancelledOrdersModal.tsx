@@ -12,6 +12,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { supabase } from '@/lib/supabase';
 import { formatDateForQuery } from '@/utils/dateUtils';
 import { ChevronLeft, ChevronRight, XCircle, Calendar, DollarSign, MessageCircle } from 'lucide-react';
+import { ExportButton } from '@/components/ui/ExportButton';
+import { TableColumn, PDFSection } from '@/utils/exportUtils';
 
 interface CancelledOrder {
   id: number;
@@ -41,6 +43,38 @@ interface CancelledOrdersModalProps {
 
 const ITEMS_PER_PAGE = 10;
 
+// Definir columnas para exportación
+const cancelledOrdersColumns: TableColumn[] = [
+  { key: 'id_display', header: 'Orden' },
+  { key: 'created_at', header: 'Fecha', format: (value) => new Date(value).toLocaleString('es-CO', {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit'
+  }) },
+  { key: 'cliente_nombre', header: 'Cliente' },
+  { key: 'cliente_telefono', header: 'Teléfono' },
+  { key: 'total_pago', header: 'Monto', format: (value) => {
+    return new Intl.NumberFormat('es-CO', {
+      style: 'currency',
+      currency: 'COP',
+      minimumFractionDigits: 0
+    }).format(value || 0);
+  }},
+  { key: 'motivo_cancelacion', header: 'Motivo de Cancelación', format: (value) => value?.trim() || 'Sin motivo especificado' }
+];
+
+// Función para aplanar los datos para exportación
+const flattenOrderData = (order: CancelledOrder) => ({
+  id_display: order.id_display || `ORD-${order.id.toString().padStart(4, '0')}`,
+  created_at: order.created_at,
+  cliente_nombre: order.clientes?.nombre || 'Sin nombre',
+  cliente_telefono: order.clientes?.telefono || 'Sin teléfono',
+  total_pago: order.pagos?.total_pago || 0,
+  motivo_cancelacion: order.motivo_cancelacion
+});
+
 export const CancelledOrdersModal: React.FC<CancelledOrdersModalProps> = ({
   isOpen,
   onClose,
@@ -48,7 +82,37 @@ export const CancelledOrdersModal: React.FC<CancelledOrdersModalProps> = ({
   sedeNombre,
   dateFilters
 }) => {
+  // Calcular secciones PDF dinámicamente basadas en los datos
+  const getPDFSections = (): PDFSection[] => {
+    const totalMonto = allOrders.reduce((sum, order) => sum + (order.pagos?.total_pago || 0), 0);
+
+    return [
+      {
+        title: 'Resumen General',
+        type: 'summary',
+        calculate: (data: any[]) => ({
+          'Sede': sedeNombre,
+          'Total Órdenes Canceladas': data.length,
+          'Monto Total Cancelado': new Intl.NumberFormat('es-CO', {
+            style: 'currency',
+            currency: 'COP',
+            minimumFractionDigits: 0
+          }).format(totalMonto),
+          'Período': dateFilters.fecha_inicio && dateFilters.fecha_fin
+            ? `${dateFilters.fecha_inicio} a ${dateFilters.fecha_fin}`
+            : 'Todos los registros'
+        })
+      },
+      {
+        title: `Detalles de Cancelaciones - ${sedeNombre}`,
+        type: 'table',
+        columns: cancelledOrdersColumns
+      }
+    ];
+  };
+
   const [orders, setOrders] = useState<CancelledOrder[]>([]);
+  const [allOrders, setAllOrders] = useState<CancelledOrder[]>([]); // Para exportar todos los datos
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
@@ -138,6 +202,46 @@ export const CancelledOrdersModal: React.FC<CancelledOrdersModalProps> = ({
       }));
 
       setOrders(ordersWithDisplay);
+
+      // NUEVO: Cargar TODOS los datos sin paginación para exportar
+      let allDataQuery = supabase
+        .from('ordenes')
+        .select(`
+          id,
+          created_at,
+          motivo_cancelacion,
+          payment_id,
+          clientes!left(nombre, telefono),
+          pagos!payment_id(total_pago)
+        `)
+        .eq('status', 'Cancelado')
+        .eq('sede_id', sedeId)
+        .order('created_at', { ascending: false });
+
+      // Aplicar los mismos filtros de fecha
+      if (dateFilters.fecha_inicio && dateFilters.fecha_fin) {
+        const startDate = new Date(`${dateFilters.fecha_inicio}T00:00:00`);
+        const endDate = new Date(`${dateFilters.fecha_fin}T23:59:59`);
+
+        const startQuery = formatDateForQuery(startDate, false);
+        const endQuery = formatDateForQuery(endDate, true);
+
+        allDataQuery = allDataQuery
+          .gte('created_at', startQuery)
+          .lte('created_at', endQuery);
+      }
+
+      const { data: allData, error: allError } = await allDataQuery;
+
+      if (!allError && allData) {
+        const allOrdersWithDisplay = allData.map(order => ({
+          ...order,
+          id_display: `ORD-${order.id.toString().padStart(4, '0')}`
+        }));
+        setAllOrders(allOrdersWithDisplay);
+        console.log('✅ Todos los datos cargados para exportar:', allOrdersWithDisplay.length);
+      }
+
       console.log('✅ Órdenes canceladas cargadas:', {
         count: ordersWithDisplay.length,
         totalCountFromQuery: count,
@@ -198,13 +302,27 @@ export const CancelledOrdersModal: React.FC<CancelledOrdersModalProps> = ({
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent className="max-w-4xl max-h-[80vh] overflow-hidden flex flex-col">
         <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <XCircle className="h-6 w-6 text-red-500" />
-            Órdenes Canceladas - {sedeNombre}
-          </DialogTitle>
-          <DialogDescription>
-            Detalles de las órdenes canceladas con motivos de cancelación
-          </DialogDescription>
+          <div className="flex items-center justify-between">
+            <div>
+              <DialogTitle className="flex items-center gap-2">
+                <XCircle className="h-6 w-6 text-red-500" />
+                Órdenes Canceladas - {sedeNombre}
+              </DialogTitle>
+              <DialogDescription>
+                Detalles de las órdenes canceladas con motivos de cancelación
+              </DialogDescription>
+            </div>
+            {allOrders.length > 0 && (
+              <ExportButton
+                data={allOrders.map(flattenOrderData)}
+                columns={cancelledOrdersColumns}
+                pdfSections={getPDFSections()}
+                filename={`cancelaciones_${sedeNombre.toLowerCase().replace(/\s+/g, '_')}_${new Date().toISOString().split('T')[0]}`}
+                title={`Reporte de Órdenes Canceladas - ${sedeNombre}`}
+                subtitle={`Período: ${dateFilters.fecha_inicio && dateFilters.fecha_fin ? `${dateFilters.fecha_inicio} a ${dateFilters.fecha_fin}` : 'Todos los registros'} | Total: ${allOrders.length} órdenes`}
+              />
+            )}
+          </div>
         </DialogHeader>
 
         <div className="flex-1 overflow-y-auto">
