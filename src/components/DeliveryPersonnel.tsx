@@ -8,7 +8,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Calendar } from '@/components/ui/calendar';
 import { Label } from '@/components/ui/label';
-import { Search, Plus, User, Phone, History, Loader2, AlertCircle, Calendar as CalendarIcon, Filter } from 'lucide-react';
+import { Search, Plus, User, Phone, History, Loader2, AlertCircle, Calendar as CalendarIcon, Filter, Pencil } from 'lucide-react';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { useDelivery } from '@/hooks/useDelivery';
@@ -79,6 +79,7 @@ export const DeliveryPersonnel: React.FC<DeliveryPersonnelProps> = ({
     loading,
     error,
     crearRepartidor,
+    actualizarRepartidor,
     cambiarDisponibilidad,
     clearError,
     refreshWithDate
@@ -91,6 +92,13 @@ export const DeliveryPersonnel: React.FC<DeliveryPersonnelProps> = ({
   const [newPersonPlacas, setNewPersonPlacas] = useState('');
   const [selectedPerson, setSelectedPerson] = useState<any>(null);
   const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false);
+
+  // Estados para el modal de edición
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [editingPerson, setEditingPerson] = useState<any>(null);
+  const [editPersonName, setEditPersonName] = useState('');
+  const [editPersonPhone, setEditPersonPhone] = useState('');
+  const [editPersonPlacas, setEditPersonPlacas] = useState('');
 
   // Debug logs
   console.log('🔍 DeliveryPersonnel Debug:', {
@@ -176,6 +184,45 @@ export const DeliveryPersonnel: React.FC<DeliveryPersonnelProps> = ({
   const handlePersonClick = (person: any) => {
     setSelectedPerson(person);
     setIsHistoryModalOpen(true);
+  };
+
+  const handleEditClick = (person: any, e: React.MouseEvent) => {
+    e.stopPropagation(); // Evitar que se abra el modal de historial
+    setEditingPerson(person);
+    setEditPersonName(person.nombre || '');
+    setEditPersonPhone(person.telefono || '');
+    setEditPersonPlacas(person.placas || '');
+    setIsEditModalOpen(true);
+  };
+
+  const handleUpdatePerson = async () => {
+    if (!editingPerson) return;
+
+    if (!editPersonName.trim() || !editPersonPhone.trim()) {
+      toast({
+        title: "Error",
+        description: "Por favor completa todos los campos obligatorios.",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    try {
+      await actualizarRepartidor(editingPerson.id, {
+        nombre: editPersonName.trim(),
+        telefono: editPersonPhone.trim(),
+        placas: editPersonPlacas.trim() || null
+      });
+
+      // Limpiar formulario
+      setEditPersonName('');
+      setEditPersonPhone('');
+      setEditPersonPlacas('');
+      setEditingPerson(null);
+      setIsEditModalOpen(false);
+    } catch (error) {
+      console.error('❌ Error al actualizar repartidor:', error);
+    }
   };
 
   // Función para volver a "hoy"
@@ -476,6 +523,14 @@ export const DeliveryPersonnel: React.FC<DeliveryPersonnelProps> = ({
                   </div>
                 </div>
                 <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={(e) => handleEditClick(person, e)}
+                    className="h-8 w-8 p-0"
+                  >
+                    <Pencil className="h-4 w-4" />
+                  </Button>
                   <Switch
                     checked={person.disponible}
                     onCheckedChange={() => person.id !== 1 && togglePersonActive(person.id)}
@@ -556,6 +611,52 @@ export const DeliveryPersonnel: React.FC<DeliveryPersonnelProps> = ({
           )}
         </>
       )}
+
+      {/* Modal de Edición */}
+      <Dialog open={isEditModalOpen} onOpenChange={setIsEditModalOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Editar Repartidor</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="edit-name">Nombre</Label>
+              <Input
+                id="edit-name"
+                value={editPersonName}
+                onChange={(e) => setEditPersonName(e.target.value)}
+                placeholder="Nombre del repartidor"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="edit-phone">Teléfono</Label>
+              <Input
+                id="edit-phone"
+                value={editPersonPhone}
+                onChange={(e) => setEditPersonPhone(e.target.value)}
+                placeholder="Número de teléfono"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="edit-placas">Placas (opcional)</Label>
+              <Input
+                id="edit-placas"
+                value={editPersonPlacas}
+                onChange={(e) => setEditPersonPlacas(e.target.value)}
+                placeholder="Placas del vehículo"
+              />
+            </div>
+            <div className="flex gap-3 pt-4">
+              <Button variant="outline" onClick={() => setIsEditModalOpen(false)} className="flex-1">
+                Cancelar
+              </Button>
+              <Button onClick={handleUpdatePerson} className="flex-1">
+                Guardar Cambios
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       <DeliveryPersonHistory
         isOpen={isHistoryModalOpen}
