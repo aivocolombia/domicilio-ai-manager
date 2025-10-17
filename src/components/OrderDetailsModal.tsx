@@ -45,6 +45,7 @@ interface OrderDetails {
   cliente_nombre: string;
   cliente_telefono: string;
   direccion: string;
+  direccion_indicaciones?: string;
   estado: string;
   total: number;
   created_at: string;
@@ -90,6 +91,7 @@ export const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({
           observaciones,
           cubiertos,
           address,
+          delivery_instructions,
           payment_id_2,
           clientes!cliente_id(nombre, telefono),
           pagos!payment_id(total_pago),
@@ -198,6 +200,7 @@ export const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({
         cliente_nombre: orderData.clientes?.nombre || 'Sin nombre',
         cliente_telefono: orderData.clientes?.telefono || 'Sin teléfono',
         direccion: orderData.address || 'Sin dirección',
+        direccion_indicaciones: orderData.delivery_instructions || undefined,
         estado: orderData.status || 'Desconocido',
         total: !!orderData.payment_id_2
           ? (orderData.pagos?.total_pago || 0) + (orderData.pagos2?.total_pago || 0)
@@ -404,7 +407,14 @@ export const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({
                   </div>
                   <div className="flex items-start gap-2">
                     <MapPin className="h-4 w-4 text-gray-500 mt-1" />
-                    <span className="text-sm">{orderDetails.direccion}</span>
+                    <div className="flex flex-col">
+                      <span className="text-sm">{orderDetails.direccion}</span>
+                      {orderDetails.direccion_indicaciones && (
+                        <span className="text-xs text-gray-600 mt-1">
+                          {orderDetails.direccion_indicaciones}
+                        </span>
+                      )}
+                    </div>
                   </div>
                 </div>
               </div>
