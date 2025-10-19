@@ -24,6 +24,7 @@ export interface CRMOrder {
   repartidor_name?: string;
   platos_count: number;
   bebidas_count: number;
+  sede_nombre?: string;
 }
 
 export interface CRMStats {
@@ -41,62 +42,115 @@ class CRMService {
     try {
       console.log('🔄 CRM: Obteniendo estadísticas...', { sedeId });
 
-      // Obtener órdenes básicas con payment_id
-      let ordersQuery = supabase
-        .from('ordenes')
-        .select(`
-          id,
-          created_at,
-          status,
-          cliente_id,
-          sede_id,
-          payment_id
-        `);
+      // NUEVO: Obtener TODAS las órdenes sin límite usando paginación
+      let allOrders: any[] = [];
+      let offset = 0;
+      const batchSize = 1000;
+      let hasMore = true;
 
-      if (sedeId) {
-        ordersQuery = ordersQuery.eq('sede_id', sedeId);
+      while (hasMore) {
+        let ordersQuery = supabase
+          .from('ordenes')
+          .select(`
+            id,
+            created_at,
+            status,
+            cliente_id,
+            sede_id,
+            payment_id,
+            payment_id_2
+          `)
+          .range(offset, offset + batchSize - 1);
+
+        if (sedeId) {
+          ordersQuery = ordersQuery.eq('sede_id', sedeId);
+        }
+
+        const { data: ordersBatch, error: ordersError } = await ordersQuery;
+
+        if (ordersError) {
+          console.error('❌ CRM: Error obteniendo órdenes:', ordersError);
+          throw ordersError;
+        }
+
+        if (!ordersBatch || ordersBatch.length === 0) {
+          hasMore = false;
+        } else {
+          allOrders = allOrders.concat(ordersBatch);
+
+          // Si obtuvimos menos de batchSize, no hay más datos
+          if (ordersBatch.length < batchSize) {
+            hasMore = false;
+          } else {
+            offset += batchSize;
+          }
+        }
       }
 
-      const { data: orders, error: ordersError } = await ordersQuery;
-      if (ordersError) {
-        console.error('❌ CRM: Error obteniendo órdenes:', ordersError);
-        throw ordersError;
-      }
+      const orders = allOrders;
 
       console.log('✅ CRM: Órdenes obtenidas:', orders?.length);
 
-      // Obtener pagos usando payment_id de las órdenes
-      const paymentIds = orders?.filter(o => o.payment_id).map(o => o.payment_id) || [];
+      // Obtener pagos usando payment_id Y payment_id_2 de las órdenes
+      const paymentIds1 = orders?.filter(o => o.payment_id).map(o => o.payment_id) || [];
+      const paymentIds2 = orders?.filter(o => o.payment_id_2).map(o => o.payment_id_2) || [];
+      const paymentIds = [...new Set([...paymentIds1, ...paymentIds2])];
       let totalRevenue = 0;
 
-      if (paymentIds.length > 0) {
-        const { data: pagos, error: pagosError } = await supabase
-          .from('pagos')
-          .select('id, total_pago')
-          .in('id', paymentIds);
+      console.log(`🔄 CRM Stats: Obteniendo ${paymentIds.length} pagos únicos (incluyendo payment_id_2)...`);
 
-        if (pagosError) {
-          console.warn('⚠️ CRM: Error obteniendo pagos:', pagosError);
-        } else {
-          totalRevenue = pagos?.reduce((sum, pago) => sum + (pago.total_pago || 0), 0) || 0;
+      if (paymentIds.length > 0) {
+        // NUEVO: Dividir en lotes para evitar límites de .in()
+        const batchSize = 1000;
+        let allPagos: any[] = [];
+
+        for (let i = 0; i < paymentIds.length; i += batchSize) {
+          const batchIds = paymentIds.slice(i, i + batchSize);
+
+          const { data: pagosBatch, error: pagosError } = await supabase
+            .from('pagos')
+            .select('id, total_pago')
+            .in('id', batchIds);
+
+          if (pagosError) {
+            console.warn(`⚠️ CRM Stats: Error obteniendo lote de pagos (${i}-${i + batchSize}):`, pagosError);
+          } else if (pagosBatch) {
+            allPagos = allPagos.concat(pagosBatch);
+          }
         }
+
+        totalRevenue = allPagos.reduce((sum, pago) => sum + (pago.total_pago || 0), 0) || 0;
+        console.log(`✅ CRM Stats: Total revenue calculado: ${totalRevenue} de ${allPagos.length} pagos`);
       }
 
       // Obtener clientes únicos que han hecho órdenes
       const uniqueClienteIds = [...new Set(orders?.map(o => o.cliente_id) || [])];
       let totalCustomers = 0;
 
-      if (uniqueClienteIds.length > 0) {
-        const { data: customers, error: customersError } = await supabase
-          .from('clientes')
-          .select('id')
-          .in('id', uniqueClienteIds);
+      console.log(`🔄 CRM Stats: Verificando ${uniqueClienteIds.length} clientes únicos...`);
 
-        if (customersError) {
-          console.warn('⚠️ CRM: Error obteniendo clientes:', customersError);
-        } else {
-          totalCustomers = customers?.length || 0;
+      if (uniqueClienteIds.length > 0) {
+        // NUEVO: Paginar si hay muchos IDs
+        let allCustomersCount = 0;
+        const customerBatchSize = 1000;
+
+        for (let i = 0; i < uniqueClienteIds.length; i += customerBatchSize) {
+          const batchIds = uniqueClienteIds.slice(i, i + customerBatchSize);
+
+          const { data: customers, error: customersError } = await supabase
+            .from('clientes')
+            .select('id')
+            .in('id', batchIds);
+
+          if (customersError) {
+            console.warn(`⚠️ CRM Stats: Error obteniendo lote de clientes (${i}-${i + customerBatchSize}):`, customersError);
+          } else {
+            allCustomersCount += customers?.length || 0;
+          }
         }
+
+        totalCustomers = allCustomersCount;
+        console.log(`✅ CRM Stats: Total clientes verificados: ${totalCustomers}`);
       }
 
       // Calcular estadísticas
@@ -150,23 +204,54 @@ class CRMService {
     try {
       console.log('🔄 CRM: Obteniendo lista de clientes...', { sedeId });
 
-      // Obtener órdenes básicas con payment_id
-      let ordersQuery = supabase
-        .from('ordenes')
-        .select(`
-          id,
-          created_at,
-          status,
-          cliente_id,
-          sede_id,
-          payment_id
-        `);
+      // NUEVO: Obtener TODAS las órdenes sin límite usando paginación
+      let allOrders: any[] = [];
+      let offset = 0;
+      const batchSize = 1000;
+      let hasMore = true;
 
-      if (sedeId) {
-        ordersQuery = ordersQuery.eq('sede_id', sedeId);
+      while (hasMore) {
+        let ordersQuery = supabase
+          .from('ordenes')
+          .select(`
+            id,
+            created_at,
+            status,
+            cliente_id,
+            sede_id,
+            payment_id,
+            payment_id_2
+          `)
+          .range(offset, offset + batchSize - 1);
+
+        if (sedeId) {
+          ordersQuery = ordersQuery.eq('sede_id', sedeId);
+        }
+
+        const { data: ordersBatch, error: ordersError } = await ordersQuery;
+
+        if (ordersError) {
+          console.error('❌ CRM: Error obteniendo órdenes:', ordersError);
+          throw ordersError;
+        }
+
+        if (!ordersBatch || ordersBatch.length === 0) {
+          hasMore = false;
+        } else {
+          allOrders = allOrders.concat(ordersBatch);
+          console.log(`✅ CRM: Lote obtenido: ${ordersBatch.length} órdenes (total: ${allOrders.length})`);
+
+          // Si obtuvimos menos de batchSize, no hay más datos
+          if (ordersBatch.length < batchSize) {
+            hasMore = false;
+          } else {
+            offset += batchSize;
+          }
+        }
       }
 
-      const { data: orders, error: ordersError } = await ordersQuery;
+      const orders = allOrders;
+      const { error: ordersError } = { error: null }; // Ya manejamos errores arriba
       if (ordersError) {
         console.error('❌ CRM: Error obteniendo órdenes:', ordersError);
         throw ordersError;
@@ -182,49 +267,82 @@ class CRMService {
         return [];
       }
 
-      // Obtener información de clientes
-      const { data: customers, error: customersError } = await supabase
-        .from('clientes')
-        .select(`
-          id,
-          nombre,
-          telefono,
-          direccion,
-          created_at,
-          updated_at
-        `)
-        .in('id', uniqueClienteIds);
+      // Obtener información de clientes - PAGINAR si hay muchos IDs
+      console.log(`🔄 CRM: Obteniendo información de ${uniqueClienteIds.length} clientes únicos...`);
 
-      if (customersError) {
-        console.error('❌ CRM: Error obteniendo información de clientes:', customersError);
-        throw customersError;
+      let allCustomers: any[] = [];
+      const customerBatchSize = 1000;
+
+      for (let i = 0; i < uniqueClienteIds.length; i += customerBatchSize) {
+        const batchIds = uniqueClienteIds.slice(i, i + customerBatchSize);
+
+        const { data: customersBatch, error: customersError } = await supabase
+          .from('clientes')
+          .select(`
+            id,
+            nombre,
+            telefono,
+            direccion,
+            created_at,
+            updated_at
+          `)
+          .in('id', batchIds);
+
+        if (customersError) {
+          console.error(`❌ CRM: Error obteniendo lote de clientes (${i}-${i + customerBatchSize}):`, customersError);
+          throw customersError;
+        }
+
+        if (customersBatch) {
+          allCustomers = allCustomers.concat(customersBatch);
+          console.log(`✅ CRM: Lote de clientes obtenido: ${customersBatch.length} (total: ${allCustomers.length})`);
+        }
       }
 
-      if (!customers) {
+      const customers = allCustomers;
+
+      if (!customers || customers.length === 0) {
         console.log('ℹ️ CRM: No se encontraron clientes');
         return [];
       }
 
       console.log('✅ CRM: Clientes obtenidos:', customers.length);
 
-      // Obtener pagos usando payment_id de las órdenes
-      const paymentIds = orders?.filter(o => o.payment_id).map(o => o.payment_id) || [];
+      // Obtener pagos usando payment_id Y payment_id_2 de las órdenes
+      const paymentIds1 = orders?.filter(o => o.payment_id).map(o => o.payment_id) || [];
+      const paymentIds2 = orders?.filter(o => o.payment_id_2).map(o => o.payment_id_2) || [];
+      const paymentIds = [...new Set([...paymentIds1, ...paymentIds2])];
       let pagosMap: Record<number, number> = {};
 
-      if (paymentIds.length > 0) {
-        const { data: pagos, error: pagosError } = await supabase
-          .from('pagos')
-          .select('id, total_pago')
-          .in('id', paymentIds);
+      console.log(`🔄 CRM: Obteniendo ${paymentIds.length} pagos únicos (incluyendo payment_id_2)...`);
 
-        if (pagosError) {
-          console.warn('⚠️ CRM: Error obteniendo pagos, usando valores por defecto:', pagosError);
-        } else {
-          pagosMap = pagos?.reduce((acc, pago) => {
-            acc[pago.id] = pago.total_pago || 0;
-            return acc;
-          }, {} as Record<number, number>) || {};
+      if (paymentIds.length > 0) {
+        // NUEVO: Dividir en lotes para evitar límites de .in()
+        const batchSize = 1000; // Supabase tiene límite en .in()
+        let allPagos: any[] = [];
+
+        for (let i = 0; i < paymentIds.length; i += batchSize) {
+          const batchIds = paymentIds.slice(i, i + batchSize);
+
+          const { data: pagosBatch, error: pagosError } = await supabase
+            .from('pagos')
+            .select('id, total_pago')
+            .in('id', batchIds);
+
+          if (pagosError) {
+            console.warn(`⚠️ CRM: Error obteniendo lote de pagos (${i}-${i + batchSize}):`, pagosError);
+          } else if (pagosBatch) {
+            allPagos = allPagos.concat(pagosBatch);
+            console.log(`✅ CRM: Lote de pagos obtenido: ${pagosBatch.length} (total: ${allPagos.length})`);
+          }
         }
+
+        pagosMap = allPagos.reduce((acc, pago) => {
+          acc[pago.id] = pago.total_pago || 0;
+          return acc;
+        }, {} as Record<number, number>) || {};
+
+        console.log(`✅ CRM: Total pagos en mapa: ${Object.keys(pagosMap).length}`);
       }
 
       // Para cada cliente, calcular estadísticas de órdenes
@@ -233,7 +351,12 @@ class CRMService {
         const customerOrders = orders?.filter(o => o.cliente_id === customer.id) || [];
 
         const totalOrders = customerOrders.length;
-        const totalSpent = customerOrders.reduce((sum, order) => sum + (order.payment_id ? pagosMap[order.payment_id] || 0 : 0), 0);
+        // CORREGIDO: Sumar AMBOS payment_id y payment_id_2
+        const totalSpent = customerOrders.reduce((sum, order) => {
+          const pago1 = order.payment_id ? (pagosMap[order.payment_id] || 0) : 0;
+          const pago2 = order.payment_id_2 ? (pagosMap[order.payment_id_2] || 0) : 0;
+          return sum + pago1 + pago2;
+        }, 0);
         const averageOrderValue = totalOrders > 0 ? totalSpent / totalOrders : 0;
         const lastOrderDate = customerOrders.length > 0
           ? customerOrders.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())[0].created_at
@@ -276,6 +399,7 @@ class CRMService {
           repartidor_id,
           address,
           payment_id,
+          payment_id_2,
           sede_id
         `)
         .eq('cliente_id', customerId)
@@ -311,24 +435,40 @@ class CRMService {
         console.warn('⚠️ CRM: Error obteniendo datos del cliente:', clienteError);
       }
 
-      // Obtener pagos usando payment_id de las órdenes
-      const paymentIds = orders.filter(o => o.payment_id).map(o => o.payment_id);
+      // Obtener pagos usando payment_id Y payment_id_2 de las órdenes
+      const paymentIds1 = orders.filter(o => o.payment_id).map(o => o.payment_id);
+      const paymentIds2 = orders.filter(o => o.payment_id_2).map(o => o.payment_id_2);
+      const paymentIds = [...new Set([...paymentIds1, ...paymentIds2])];
       let pagosMap: Record<number, number> = {};
 
-      if (paymentIds.length > 0) {
-        const { data: pagos, error: pagosError } = await supabase
-          .from('pagos')
-          .select('id, total_pago')
-          .in('id', paymentIds);
+      console.log(`🔄 CRM Customer Orders: Obteniendo ${paymentIds.length} pagos (incluyendo payment_id_2)...`);
 
-        if (pagosError) {
-          console.warn('⚠️ CRM: Error obteniendo pagos del cliente:', pagosError);
-        } else {
-          pagosMap = pagos?.reduce((acc, pago) => {
-            acc[pago.id] = pago.total_pago || 0;
-            return acc;
-          }, {} as Record<number, number>) || {};
+      if (paymentIds.length > 0) {
+        // Aunque sea un límite pequeño, mantener consistencia con la paginación
+        const batchSize = 1000;
+        let allPagos: any[] = [];
+
+        for (let i = 0; i < paymentIds.length; i += batchSize) {
+          const batchIds = paymentIds.slice(i, i + batchSize);
+
+          const { data: pagosBatch, error: pagosError } = await supabase
+            .from('pagos')
+            .select('id, total_pago')
+            .in('id', batchIds);
+
+          if (pagosError) {
+            console.warn(`⚠️ CRM Customer Orders: Error obteniendo pagos:`, pagosError);
+          } else if (pagosBatch) {
+            allPagos = allPagos.concat(pagosBatch);
+          }
         }
+
+        pagosMap = allPagos.reduce((acc, pago) => {
+          acc[pago.id] = pago.total_pago || 0;
+          return acc;
+        }, {} as Record<number, number>) || {};
+
+        console.log(`✅ CRM Customer Orders: ${Object.keys(pagosMap).length} pagos obtenidos`);
       }
 
       // Obtener información de repartidores para las órdenes que tienen repartidor
@@ -351,6 +491,39 @@ class CRMService {
         }
       }
 
+      // NUEVO: Obtener información de sedes para las órdenes
+      const sedeIds = [...new Set(orders.filter(o => o.sede_id).map(o => o.sede_id))];
+      let sedesMap: Record<string, string> = {};
+
+      console.log('🔍 CRM Customer Orders: Sede IDs encontrados:', sedeIds);
+
+      if (sedeIds.length > 0) {
+        const { data: sedes, error: sedesError } = await supabase
+          .from('sedes')
+          .select('id, nombre')
+          .in('id', sedeIds);
+
+        if (sedesError) {
+          console.error('❌ CRM: Error obteniendo sedes:', {
+            error: sedesError,
+            message: sedesError.message,
+            details: sedesError.details,
+            hint: sedesError.hint,
+            code: sedesError.code,
+            sedeIds: sedeIds
+          });
+        } else {
+          sedesMap = sedes?.reduce((acc, sede) => {
+            acc[sede.id] = sede.nombre;
+            return acc;
+          }, {} as Record<string, string>) || {};
+          console.log('✅ CRM Customer Orders: Sedes mapeadas:', sedesMap);
+        }
+        console.log(`✅ CRM Customer Orders: ${Object.keys(sedesMap).length} sedes obtenidas`);
+      } else {
+        console.warn('⚠️ CRM Customer Orders: No se encontraron sede_ids en las órdenes');
+      }
+
       // Procesar cada orden para obtener conteos y detalles
       const ordersWithDetails = await Promise.all(
         orders.map(async (order) => {
@@ -366,17 +539,29 @@ class CRMService {
             .select('*', { count: 'exact', head: true })
             .eq('orden_id', order.id);
 
+          // CORREGIDO: Sumar AMBOS payment_id y payment_id_2
+          const pago1 = order.payment_id ? (pagosMap[order.payment_id] || 0) : 0;
+          const pago2 = order.payment_id_2 ? (pagosMap[order.payment_id_2] || 0) : 0;
+
+          const sedeNombre = order.sede_id ? sedesMap[order.sede_id] : undefined;
+
+          // Log para debug
+          if (order.sede_id) {
+            console.log(`🏢 Orden ${order.id}: sede_id=${order.sede_id}, sede_nombre=${sedeNombre}`);
+          }
+
           return {
             id: order.id,
             order_at: order.created_at,
             status: order.status,
-            total_amount: order.payment_id ? pagosMap[order.payment_id] || 0 : 0,
+            total_amount: pago1 + pago2,
             cliente_name: cliente?.nombre || 'Cliente desconocido',
             cliente_telefono: cliente?.telefono || '',
             cliente_direccion: order.address || 'Sin dirección',
             repartidor_name: order.repartidor_id ? repartidoresMap[order.repartidor_id] : undefined,
             platos_count: platosCount || 0,
-            bebidas_count: bebidasCount || 0
+            bebidas_count: bebidasCount || 0,
+            sede_nombre: sedeNombre
           };
         })
       );
@@ -395,44 +580,83 @@ class CRMService {
     try {
       console.log('🔄 CRM: Obteniendo top customers...', { sedeId, limit });
 
-      // Obtener órdenes básicas con payment_id
-      let ordersQuery = supabase
-        .from('ordenes')
-        .select('id, cliente_id, sede_id, payment_id');
+      // NUEVO: Obtener TODAS las órdenes sin límite usando paginación
+      let allOrders: any[] = [];
+      let offset = 0;
+      const batchSize = 1000;
+      let hasMore = true;
 
-      if (sedeId) {
-        ordersQuery = ordersQuery.eq('sede_id', sedeId);
+      while (hasMore) {
+        let ordersQuery = supabase
+          .from('ordenes')
+          .select('id, cliente_id, sede_id, payment_id, payment_id_2')
+          .range(offset, offset + batchSize - 1);
+
+        if (sedeId) {
+          ordersQuery = ordersQuery.eq('sede_id', sedeId);
+        }
+
+        const { data: ordersBatch, error: ordersError } = await ordersQuery;
+
+        if (ordersError) {
+          console.error('❌ CRM: Error obteniendo órdenes para top customers:', ordersError);
+          throw ordersError;
+        }
+
+        if (!ordersBatch || ordersBatch.length === 0) {
+          hasMore = false;
+        } else {
+          allOrders = allOrders.concat(ordersBatch);
+
+          if (ordersBatch.length < batchSize) {
+            hasMore = false;
+          } else {
+            offset += batchSize;
+          }
+        }
       }
 
-      const { data: orders, error: ordersError } = await ordersQuery;
-      if (ordersError) {
-        console.error('❌ CRM: Error obteniendo órdenes para top customers:', ordersError);
-        throw ordersError;
-      }
+      const orders = allOrders;
 
       if (!orders || orders.length === 0) {
         console.log('ℹ️ CRM: No hay órdenes para calcular top customers');
         return [];
       }
 
-      // Obtener pagos usando payment_id
-      const paymentIds = orders.filter(o => o.payment_id).map(o => o.payment_id);
+      // Obtener pagos usando payment_id Y payment_id_2
+      const paymentIds1 = orders.filter(o => o.payment_id).map(o => o.payment_id);
+      const paymentIds2 = orders.filter(o => o.payment_id_2).map(o => o.payment_id_2);
+      const paymentIds = [...new Set([...paymentIds1, ...paymentIds2])];
       let pagosMap: Record<number, number> = {};
 
-      if (paymentIds.length > 0) {
-        const { data: pagos, error: pagosError } = await supabase
-          .from('pagos')
-          .select('id, total_pago')
-          .in('id', paymentIds);
+      console.log(`🔄 CRM Top Customers: Obteniendo ${paymentIds.length} pagos únicos (incluyendo payment_id_2)...`);
 
-        if (pagosError) {
-          console.warn('⚠️ CRM: Error obteniendo pagos para top customers:', pagosError);
-        } else {
-          pagosMap = pagos?.reduce((acc, pago) => {
-            acc[pago.id] = pago.total_pago || 0;
-            return acc;
-          }, {} as Record<number, number>) || {};
+      if (paymentIds.length > 0) {
+        // NUEVO: Dividir en lotes para evitar límites de .in()
+        const batchSize = 1000;
+        let allPagos: any[] = [];
+
+        for (let i = 0; i < paymentIds.length; i += batchSize) {
+          const batchIds = paymentIds.slice(i, i + batchSize);
+
+          const { data: pagosBatch, error: pagosError } = await supabase
+            .from('pagos')
+            .select('id, total_pago')
+            .in('id', batchIds);
+
+          if (pagosError) {
+            console.warn(`⚠️ CRM Top Customers: Error obteniendo lote de pagos (${i}-${i + batchSize}):`, pagosError);
+          } else if (pagosBatch) {
+            allPagos = allPagos.concat(pagosBatch);
+          }
         }
+
+        pagosMap = allPagos.reduce((acc, pago) => {
+          acc[pago.id] = pago.total_pago || 0;
+          return acc;
+        }, {} as Record<number, number>) || {};
+
+        console.log(`✅ CRM Top Customers: Total pagos en mapa: ${Object.keys(pagosMap).length}`);
       }
 
       // Agrupar órdenes por cliente y calcular estadísticas
@@ -445,7 +669,10 @@ class CRMService {
           };
         }
         acc[customerId].total_orders += 1;
-        acc[customerId].total_spent += order.payment_id ? pagosMap[order.payment_id] || 0 : 0;
+        // CORREGIDO: Sumar AMBOS payment_id y payment_id_2
+        const pago1 = order.payment_id ? (pagosMap[order.payment_id] || 0) : 0;
+        const pago2 = order.payment_id_2 ? (pagosMap[order.payment_id_2] || 0) : 0;
+        acc[customerId].total_spent += pago1 + pago2;
         return acc;
       }, {} as Record<string, { total_orders: number; total_spent: number }>);
 

@@ -6,13 +6,13 @@ import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { 
-  Users, 
-  TrendingUp, 
-  DollarSign, 
-  ShoppingCart, 
-  Search, 
-  Eye, 
+import {
+  Users,
+  TrendingUp,
+  DollarSign,
+  ShoppingCart,
+  Search,
+  Eye,
   Calendar,
   Phone,
   MapPin,
@@ -20,7 +20,10 @@ import {
   Coffee,
   Clock,
   Star,
-  User
+  User,
+  ArrowUpDown,
+  ArrowUp,
+  ArrowDown
 } from 'lucide-react';
 import { ExportButton } from '@/components/ui/ExportButton';
 import { useToast } from '@/hooks/use-toast';
@@ -46,6 +49,10 @@ export const CRM: React.FC<CRMProps> = ({ effectiveSedeId }) => {
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage] = useState(15);
   const [activeTab, setActiveTab] = useState('customers');
+
+  // Estados para ordenamiento
+  const [sortColumn, setSortColumn] = useState<keyof CRMCustomer>('total_spent');
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
 
   // Determinar qué sede usar - CRM debería mostrar datos globales para admin_global
   const sedeToUse = profile?.role === 'admin_global'
@@ -107,6 +114,19 @@ export const CRM: React.FC<CRMProps> = ({ effectiveSedeId }) => {
     await loadCustomerOrders(customer.id);
   };
 
+  // Función para manejar el ordenamiento
+  const handleSort = (column: keyof CRMCustomer) => {
+    if (sortColumn === column) {
+      // Si ya está ordenado por esta columna, invertir la dirección
+      setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
+    } else {
+      // Si es una columna nueva, ordenar descendente por defecto
+      setSortColumn(column);
+      setSortDirection('desc');
+    }
+    setCurrentPage(1); // Resetear a la primera página
+  };
+
   // Filtrar clientes por término de búsqueda
   const filteredCustomers = customers.filter(customer =>
     customer.nombre.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -114,11 +134,44 @@ export const CRM: React.FC<CRMProps> = ({ effectiveSedeId }) => {
     customer.direccion.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
-  // Lógica de paginación
-  const totalPages = Math.ceil(filteredCustomers.length / itemsPerPage);
+  // Ordenar clientes filtrados
+  const sortedCustomers = [...filteredCustomers].sort((a, b) => {
+    const aValue = a[sortColumn];
+    const bValue = b[sortColumn];
+
+    // Manejar valores null/undefined
+    if (aValue === null || aValue === undefined) return 1;
+    if (bValue === null || bValue === undefined) return -1;
+
+    // Comparación según el tipo de dato
+    let comparison = 0;
+    if (typeof aValue === 'string' && typeof bValue === 'string') {
+      comparison = aValue.localeCompare(bValue);
+    } else if (typeof aValue === 'number' && typeof bValue === 'number') {
+      comparison = aValue - bValue;
+    } else {
+      // Para fechas en string o cualquier otro tipo
+      const aStr = String(aValue);
+      const bStr = String(bValue);
+      const aDate = new Date(aStr);
+      const bDate = new Date(bStr);
+
+      // Verificar si son fechas válidas
+      if (!isNaN(aDate.getTime()) && !isNaN(bDate.getTime())) {
+        comparison = aDate.getTime() - bDate.getTime();
+      } else {
+        comparison = aStr.localeCompare(bStr);
+      }
+    }
+
+    return sortDirection === 'asc' ? comparison : -comparison;
+  });
+
+  // Lógica de paginación usando los datos ordenados
+  const totalPages = Math.ceil(sortedCustomers.length / itemsPerPage);
   const indexOfLastItem = currentPage * itemsPerPage;
   const indexOfFirstItem = indexOfLastItem - itemsPerPage;
-  const currentCustomers = filteredCustomers.slice(indexOfFirstItem, indexOfLastItem);
+  const currentCustomers = sortedCustomers.slice(indexOfFirstItem, indexOfLastItem);
 
   const handlePageChange = (pageNumber: number) => {
     if (pageNumber > 0 && pageNumber <= totalPages) {
@@ -349,7 +402,7 @@ export const CRM: React.FC<CRMProps> = ({ effectiveSedeId }) => {
                     />
                   </div>
                   <ExportButton
-                    data={filteredCustomers}
+                    data={sortedCustomers}
                     columns={customerColumns}
                     filename={`reporte_clientes_${sedeToUse || 'global'}`}
                     title="Reporte de Clientes"
@@ -363,12 +416,102 @@ export const CRM: React.FC<CRMProps> = ({ effectiveSedeId }) => {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Cliente</TableHead>
+                    <TableHead>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-8 px-2 hover:bg-muted"
+                        onClick={() => handleSort('nombre')}
+                      >
+                        Cliente
+                        {sortColumn === 'nombre' ? (
+                          sortDirection === 'asc' ? (
+                            <ArrowUp className="ml-2 h-4 w-4" />
+                          ) : (
+                            <ArrowDown className="ml-2 h-4 w-4" />
+                          )
+                        ) : (
+                          <ArrowUpDown className="ml-2 h-4 w-4 opacity-50" />
+                        )}
+                      </Button>
+                    </TableHead>
                     <TableHead>Teléfono</TableHead>
-                    <TableHead>Órdenes</TableHead>
-                    <TableHead>Total Gastado</TableHead>
-                    <TableHead>Última Orden</TableHead>
-                    <TableHead>Promedio</TableHead>
+                    <TableHead>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-8 px-2 hover:bg-muted"
+                        onClick={() => handleSort('total_orders')}
+                      >
+                        Órdenes
+                        {sortColumn === 'total_orders' ? (
+                          sortDirection === 'asc' ? (
+                            <ArrowUp className="ml-2 h-4 w-4" />
+                          ) : (
+                            <ArrowDown className="ml-2 h-4 w-4" />
+                          )
+                        ) : (
+                          <ArrowUpDown className="ml-2 h-4 w-4 opacity-50" />
+                        )}
+                      </Button>
+                    </TableHead>
+                    <TableHead>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-8 px-2 hover:bg-muted"
+                        onClick={() => handleSort('total_spent')}
+                      >
+                        Total Gastado
+                        {sortColumn === 'total_spent' ? (
+                          sortDirection === 'asc' ? (
+                            <ArrowUp className="ml-2 h-4 w-4" />
+                          ) : (
+                            <ArrowDown className="ml-2 h-4 w-4" />
+                          )
+                        ) : (
+                          <ArrowUpDown className="ml-2 h-4 w-4 opacity-50" />
+                        )}
+                      </Button>
+                    </TableHead>
+                    <TableHead>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-8 px-2 hover:bg-muted"
+                        onClick={() => handleSort('last_order_date')}
+                      >
+                        Última Orden
+                        {sortColumn === 'last_order_date' ? (
+                          sortDirection === 'asc' ? (
+                            <ArrowUp className="ml-2 h-4 w-4" />
+                          ) : (
+                            <ArrowDown className="ml-2 h-4 w-4" />
+                          )
+                        ) : (
+                          <ArrowUpDown className="ml-2 h-4 w-4 opacity-50" />
+                        )}
+                      </Button>
+                    </TableHead>
+                    <TableHead>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-8 px-2 hover:bg-muted"
+                        onClick={() => handleSort('average_order_value')}
+                      >
+                        Promedio
+                        {sortColumn === 'average_order_value' ? (
+                          sortDirection === 'asc' ? (
+                            <ArrowUp className="ml-2 h-4 w-4" />
+                          ) : (
+                            <ArrowDown className="ml-2 h-4 w-4" />
+                          )
+                        ) : (
+                          <ArrowUpDown className="ml-2 h-4 w-4 opacity-50" />
+                        )}
+                      </Button>
+                    </TableHead>
                     <TableHead>Acciones</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -496,11 +639,16 @@ export const CRM: React.FC<CRMProps> = ({ effectiveSedeId }) => {
                                         {customerOrders.map((order) => (
                                           <div key={order.id} className="border rounded-lg p-4">
                                             <div className="flex items-center justify-between mb-2">
-                                              <div className="flex items-center gap-2">
+                                              <div className="flex items-center gap-2 flex-wrap">
                                                 <span className="font-medium">Orden #{order.id}</span>
                                                 <Badge variant={getStatusBadgeColor(order.status)}>
                                                   {getStatusText(order.status)}
                                                 </Badge>
+                                                {order.sede_nombre && (
+                                                  <Badge variant="outline" className="text-xs bg-blue-50 text-blue-700 border-blue-200">
+                                                    📍 {order.sede_nombre}
+                                                  </Badge>
+                                                )}
                                               </div>
                                               <div className="text-right">
                                                 <p className="font-bold">{formatCurrency(order.total_amount)}</p>
@@ -552,7 +700,7 @@ export const CRM: React.FC<CRMProps> = ({ effectiveSedeId }) => {
               {totalPages > 1 && (
                 <div className="flex items-center justify-between mt-4">
                   <span className="text-sm text-muted-foreground">
-                    Página {currentPage} de {totalPages} ({filteredCustomers.length} clientes)
+                    Página {currentPage} de {totalPages} ({sortedCustomers.length} clientes)
                   </span>
                   <div className="flex items-center gap-1">
                     <Button
