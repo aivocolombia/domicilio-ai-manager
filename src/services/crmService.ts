@@ -500,7 +500,7 @@ class CRMService {
       if (sedeIds.length > 0) {
         const { data: sedes, error: sedesError } = await supabase
           .from('sedes')
-          .select('id, nombre')
+          .select('id, name')
           .in('id', sedeIds);
 
         if (sedesError) {
@@ -514,7 +514,7 @@ class CRMService {
           });
         } else {
           sedesMap = sedes?.reduce((acc, sede) => {
-            acc[sede.id] = sede.nombre;
+            acc[sede.id] = sede.name;
             return acc;
           }, {} as Record<string, string>) || {};
           console.log('✅ CRM Customer Orders: Sedes mapeadas:', sedesMap);
