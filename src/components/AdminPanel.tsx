@@ -396,7 +396,7 @@ export function AdminPanel({ onBack, onNavigateToTimeMetrics }: AdminPanelProps)
         title: "Usuario creado exitosamente",
         description: `${formData.name} ha sido creado y puede iniciar sesión inmediatamente con: ${formData.nickname}`,
       });
-      
+
       setFormData({
         name: '',
         nickname: '',
@@ -405,11 +405,18 @@ export function AdminPanel({ onBack, onNavigateToTimeMetrics }: AdminPanelProps)
         sede_id: '',
         is_active: true
       });
-      
+
       setIsCreateUserOpen(false);
-      
-      // Reload users data
+
+      // Reload users data - primero remover el temporal, luego recargar
+      setUsers(prev => prev.filter(u => u.id !== tempUser.id));
       adminDataLoader.invalidateCache(['users']);
+
+      // Recargar inmediatamente los usuarios reales
+      const reloadResult = await adminDataLoader.loadUsers({ useCache: false });
+      if (reloadResult.success && reloadResult.data) {
+        setUsers(reloadResult.data);
+      }
         
       } catch (error: any) {
         // Remove temp user on error
@@ -764,44 +771,72 @@ export function AdminPanel({ onBack, onNavigateToTimeMetrics }: AdminPanelProps)
   }
 
   const handleDeleteUser = async (userId: string, userDisplayName: string, userNickname: string) => {
+    // Validar que no sea un usuario temporal
+    if (userId.startsWith('temp-')) {
+      toast({
+        title: "No se puede eliminar",
+        description: "El usuario se está creando. Espera un momento y refresca la página.",
+        variant: "destructive",
+      })
+      return
+    }
+
     if (!confirm(`¿Estás seguro de que deseas eliminar el usuario "${userDisplayName}" (@${userNickname})? Esta acción no se puede deshacer.`)) {
       return
     }
 
     try {
-      const { optimisticItems, execute } = optimisticDelete(
-        users,
-        userId,
-        () => adminService.deleteUser(userId),
-        {
-          onSuccess: () => {
-            toast({
-              title: "Usuario eliminado",
-              description: `El usuario ${userDisplayName} ha sido eliminado exitosamente`,
-            })
-            adminDataLoader.invalidateCache(['users'])
-          },
-          onError: (error, rollback) => {
-            const deletedUser = users.find(u => u.id === userId)
-            if (deletedUser) {
-              setUsers(prev => [...prev, deletedUser])
-            }
-            toast({
-              title: "Error",
-              description: "No se pudo eliminar el usuario",
-              variant: "destructive",
-            })
-          }
+      logger.info('Starting user deletion', { userId, userDisplayName, userNickname })
+
+      // Actualizar UI optimísticamente primero
+      setUsers(users.filter(u => u.id !== userId))
+
+      // Ejecutar la eliminación
+      try {
+        await adminService.deleteUser(userId)
+
+        // Éxito - mostrar mensaje y recargar
+        logger.info('User deletion successful', { userId })
+        toast({
+          title: "Usuario eliminado",
+          description: `El usuario ${userDisplayName} ha sido eliminado exitosamente`,
+        })
+        adminDataLoader.invalidateCache(['users'])
+
+        // Reload users to ensure consistency
+        const result = await adminDataLoader.loadUsers({ useCache: false })
+        if (result.success && result.data) {
+          setUsers(result.data)
         }
-      )
-      
-      setUsers(optimisticItems)
-      await execute()
+      } catch (deleteError: any) {
+        // Error - restaurar el usuario en la UI
+        logger.error('User deletion failed', { error: deleteError, userId })
+        const deletedUser = users.find(u => u.id === userId)
+        if (deletedUser) {
+          setUsers(prev => [...prev, deletedUser])
+        }
+
+        // Show more detailed error message
+        const errorMessage = deleteError?.message || "No se pudo eliminar el usuario"
+        toast({
+          title: "Error al eliminar usuario",
+          description: errorMessage,
+          variant: "destructive",
+        })
+        throw deleteError // Re-lanzar para el catch externo
+      }
     } catch (error: any) {
-      logger.error('Error deleting user:', error)
+      logger.error('Unexpected error deleting user:', error)
+
+      // Restore the user in the list
+      const deletedUser = users.find(u => u.id === userId)
+      if (deletedUser) {
+        setUsers(prev => [...prev, deletedUser])
+      }
+
       toast({
-        title: "Error",
-        description: "No se pudo eliminar el usuario",
+        title: "Error inesperado",
+        description: error?.message || "No se pudo eliminar el usuario",
         variant: "destructive",
       })
     }
@@ -1573,7 +1608,8 @@ export function AdminPanel({ onBack, onNavigateToTimeMetrics }: AdminPanelProps)
                                     variant="destructive"
                                     size="sm"
                                     onClick={() => handleDeleteUser(tableUser.id, tableUser.display_name, tableUser.nickname)}
-                                    title="Eliminar usuario"
+                                    disabled={tableUser.id.startsWith('temp-')}
+                                    title={tableUser.id.startsWith('temp-') ? "Creando usuario... refresca para eliminar" : "Eliminar usuario"}
                                   >
                                     <Trash2 className="h-4 w-4" />
                                   </Button>
@@ -2287,14 +2323,14 @@ export function AdminPanel({ onBack, onNavigateToTimeMetrics }: AdminPanelProps)
                         formats={['excel', 'csv']}
                       />
                     </CardHeader>
-                    <CardContent className="max-h-[300px] overflow-y-auto">
+                    <CardContent className="max-h-[500px] overflow-y-auto">
                       <div className="space-y-4 pr-2">
-                        {metricsData.productosMasVendidos.slice(0, 5).map((item, index) => (
+                        {metricsData.productosMasVendidos.map((item, index) => (
                           <div key={index} className="flex items-center justify-between">
                             <div className="flex items-center gap-3">
-                              <div 
+                              <div
                                 className="w-4 h-4 rounded-full"
-                                style={{ backgroundColor: `hsl(${index * 60}, 70%, 50%)` }}
+                                style={{ backgroundColor: `hsl(${(index * 40) % 360}, 70%, 50%)` }}
                               ></div>
                               <span className="font-medium">{item.producto_nombre}</span>
                             </div>

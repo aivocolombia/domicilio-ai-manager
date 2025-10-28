@@ -461,6 +461,15 @@ export class MetricsService {
       // Procesar datos para contar productos vendidos usando precios de sede
       const productosMap = new Map<string, { cantidad: number; ingresos: number }>();
 
+      // Función para normalizar nombres de productos (agrupa por nombre en vista global)
+      const normalizeProductName = (name: string): string => {
+        return name.toLowerCase().trim().replace(/\s+/g, ' ');
+      };
+
+      // Determinar si agrupamos por ID o por nombre normalizado
+      const isGlobalView = !filters.sede_id;
+      console.log(`🔍 Vista de productos: ${isGlobalView ? 'GLOBAL (agrupa por nombre)' : 'POR SEDE (agrupa por ID)'}`);
+
       data?.forEach(orden => {
         const sedeId = orden.sede_id;
 
@@ -549,10 +558,10 @@ export class MetricsService {
           total_ingresos: datos.ingresos,
           porcentaje_ventas: totalVentas > 0 ? (datos.cantidad / totalVentas) * 100 : 0
         }))
-        .sort((a, b) => b.total_vendido - a.total_vendido)
-        .slice(0, 10); // Top 10
+        .sort((a, b) => b.total_vendido - a.total_vendido);
+        // ELIMINADO: .slice(0, 10) - Ahora muestra TODOS los productos
 
-      console.log('✅ Métricas de productos obtenidas:', resultado.length);
+      console.log('✅ Métricas de productos obtenidas:', resultado.length, 'productos');
       return resultado;
     } catch (error) {
       console.error('❌ Error en getProductMetrics:', error);

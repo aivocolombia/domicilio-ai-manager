@@ -5,12 +5,12 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
-import { 
-  Clock, 
-  Package, 
-  Truck, 
-  CheckCircle, 
-  Phone, 
+import {
+  Clock,
+  Package,
+  Truck,
+  CheckCircle,
+  Phone,
   Bot,
   Settings,
   Power,
@@ -36,7 +36,8 @@ import {
   Printer,
   Plus,
   Calculator,
-  Repeat
+  Repeat,
+  ArrowLeftRight
 } from 'lucide-react';
 import { Calendar as CalendarComponent } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
@@ -54,6 +55,7 @@ import { ChangePaymentMethodModal } from './ChangePaymentMethodModal';
 import { EditOrderModal } from './EditOrderModal';
 import { MinutaModal } from './MinutaModal';
 import { DiscountDialog } from './DiscountDialog';
+import { ChangeOrderTypeDialog } from './ChangeOrderTypeDialog';
 import { PaymentDetailsModal } from './PaymentDetailsModal';
 import { cn } from '@/lib/utils';
 import { useDashboard } from '@/hooks/useDashboard';
@@ -269,6 +271,10 @@ export const Dashboard: React.FC<DashboardProps> = ({
   const [isDiscountDialogOpen, setIsDiscountDialogOpen] = useState(false);
   const [selectedOrderForDiscount, setSelectedOrderForDiscount] = useState<DashboardOrder | null>(null);
 
+  // Estados para modal de cambiar tipo de orden (delivery/pickup)
+  const [isChangeOrderTypeDialogOpen, setIsChangeOrderTypeDialogOpen] = useState(false);
+  const [selectedOrderForTypeChange, setSelectedOrderForTypeChange] = useState<DashboardOrder | null>(null);
+
   // Estados para ordenamiento
   const [sortField, setSortField] = useState<keyof DashboardOrder>('creado_fecha');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
@@ -466,6 +472,18 @@ export const Dashboard: React.FC<DashboardProps> = ({
       currentPaymentMethod: (order.pago_metodo || 'cash') as PaymentMethod
     });
     setChangePaymentModalOpen(true);
+  };
+
+  // Función para cambiar tipo de orden (delivery/pickup)
+  const handleChangeOrderType = (order: DashboardOrder) => {
+    logDebug('Dashboard', 'Abriendo modal para cambiar tipo de orden', {
+      orderId: order.orden_id,
+      currentType: order.type_order,
+      currentStatus: order.estado
+    });
+
+    setSelectedOrderForTypeChange(order);
+    setIsChangeOrderTypeDialogOpen(true);
   };
 
   const handleDiscountApplied = (orderId: number, discountAmount: number) => {
@@ -2315,6 +2333,19 @@ export const Dashboard: React.FC<DashboardProps> = ({
                               <Repeat className="h-4 w-4" />
                             </Button>
 
+                            {/* Botón para cambiar tipo de orden (delivery/pickup) - solo en Recibidos o Cocina */}
+                            {(realOrder.estado === 'Recibidos' || realOrder.estado === 'Cocina') && (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => handleChangeOrderType(realOrder)}
+                                className="h-8 w-8 p-0 border-amber-300 text-amber-600 hover:bg-amber-50"
+                                title={`Cambiar tipo: ${realOrder.type_order === 'delivery' ? 'Cambiar a Recogida' : 'Cambiar a Domicilio'}`}
+                              >
+                                <ArrowLeftRight className="h-4 w-4" />
+                              </Button>
+                            )}
+
                             {/* Botón de cancelar - solo para pedidos que no estén cancelados o entregados */}
                             {realOrder.estado !== 'Cancelado' && realOrder.estado !== 'Entregados' && (
                               <Button
@@ -2777,6 +2808,19 @@ export const Dashboard: React.FC<DashboardProps> = ({
           orderId={selectedOrderForPaymentChange.orderId}
           currentPaymentMethod={selectedOrderForPaymentChange.currentPaymentMethod}
           onPaymentMethodChanged={() => {
+            // Recargar datos después del cambio
+            refreshDataWithCurrentFilters();
+          }}
+        />
+      )}
+
+      {/* Modal para cambiar tipo de orden (delivery/pickup) */}
+      {selectedOrderForTypeChange && (
+        <ChangeOrderTypeDialog
+          open={isChangeOrderTypeDialogOpen}
+          onOpenChange={setIsChangeOrderTypeDialogOpen}
+          order={selectedOrderForTypeChange}
+          onSuccess={() => {
             // Recargar datos después del cambio
             refreshDataWithCurrentFilters();
           }}

@@ -295,7 +295,7 @@ export class AdminService {
       // Verificar permisos usando el servicio de autenticación personalizado
       const { customAuthService } = await import('@/services/customAuthService');
       const currentUser = customAuthService.getCurrentUser();
-      
+
       if (!currentUser) {
         throw new Error('Usuario no autenticado');
       }
@@ -304,17 +304,71 @@ export class AdminService {
         throw new Error('Solo los administradores pueden eliminar usuarios');
       }
 
-      const { error } = await supabase
+      // Verificar que el usuario existe antes de intentar eliminarlo
+      const { data: userToDelete, error: fetchError } = await supabase
+        .from('profiles')
+        .select('id, nickname, display_name')
+        .eq('id', userId)
+        .single();
+
+      if (fetchError || !userToDelete) {
+        console.error('❌ Usuario no encontrado:', fetchError);
+        throw new Error('Usuario no encontrado');
+      }
+
+      console.log('📋 Usuario a eliminar:', userToDelete);
+
+      // Intentar eliminar el usuario
+      const { data: deletedData, error, count } = await supabase
         .from('profiles')
         .delete()
-        .eq('id', userId);
+        .eq('id', userId)
+        .select();
 
       if (error) {
         console.error('❌ Error al eliminar usuario:', error);
+        console.error('Error details:', {
+          code: error.code,
+          message: error.message,
+          details: error.details,
+          hint: error.hint
+        });
+
+        // Manejar errores específicos de foreign key
+        if (error.code === '23503') {
+          // Foreign key violation
+          if (error.message.includes('ordenes_descuento_aplicado_por_fkey')) {
+            throw new Error(
+              'No se puede eliminar el usuario porque tiene descuentos aplicados en órdenes. ' +
+              'Primero debes actualizar las órdenes o modificar la restricción de la base de datos.'
+            );
+          }
+          throw new Error(
+            'No se puede eliminar el usuario porque tiene registros asociados en la base de datos. ' +
+            'Verifica que no tenga órdenes, descuentos u otros datos relacionados.'
+          );
+        }
+
         throw new Error(`Error al eliminar usuario: ${error.message}`);
       }
 
       console.log('✅ Usuario eliminado exitosamente');
+      console.log('Deleted data:', deletedData);
+      console.log('Count:', count);
+
+      // Verificar que realmente se eliminó
+      const { data: verifyData, error: verifyError } = await supabase
+        .from('profiles')
+        .select('id')
+        .eq('id', userId)
+        .maybeSingle();
+
+      if (verifyData) {
+        console.error('⚠️ ADVERTENCIA: El usuario todavía existe después de la eliminación!');
+        throw new Error('El usuario no se pudo eliminar completamente');
+      }
+
+      console.log('✅ Verificado: Usuario eliminado de la base de datos');
     } catch (error) {
       console.error('❌ Error en deleteUser:', error);
       throw error;
