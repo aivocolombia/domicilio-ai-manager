@@ -37,14 +37,10 @@ export const DeliveryPersonMetrics: React.FC<DeliveryPersonMetricsProps> = ({
     try {
       setLoading(true);
       setError(null);
-      console.log('📊 Cargando métricas de rendimiento de repartidores...');
-      
       const data = await metricsService.getDeliveryPersonPerformance(filters);
       setPerformanceData(data);
-      console.log('✅ Métricas de repartidores cargadas:', data);
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Error desconocido';
-      console.error('❌ Error cargando métricas de repartidores:', err);
       setError(errorMessage);
     } finally {
       setLoading(false);

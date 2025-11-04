@@ -81,6 +81,8 @@ export function AdminPanel({ onBack, onNavigateToTimeMetrics }: AdminPanelProps)
   const [isCancelledOrdersModalOpen, setIsCancelledOrdersModalOpen] = useState(false)
   const [selectedSedeForCancelled, setSelectedSedeForCancelled] = useState<{id: string, nombre: string} | null>(null)
   const [searchTerm, setSearchTerm] = useState('')
+  const [usersCurrentPage, setUsersCurrentPage] = useState(1)
+  const usersPerPage = 10
   // Removed global loading state - now using section-specific states
   const [isCreateUserOpen, setIsCreateUserOpen] = useState(false)
   const [isCreateSedeOpen, setIsCreateSedeOpen] = useState(false)
@@ -145,6 +147,11 @@ export function AdminPanel({ onBack, onNavigateToTimeMetrics }: AdminPanelProps)
       loadMetricsOptimized()
     }
   }, [dateRange, selectedSedeFilter])
+
+  // Reset pagination when search term changes
+  useEffect(() => {
+    setUsersCurrentPage(1);
+  }, [searchTerm])
 
   // Optimized data loading functions with timeout and retry
   const loadInitialData = useCallback(async () => {
@@ -1057,19 +1064,24 @@ export function AdminPanel({ onBack, onNavigateToTimeMetrics }: AdminPanelProps)
   }
 
   const filteredUsers = users.filter(userRow => {
-    // Filtro de b├║squeda
     // Filtro de búsqueda
     const matchesSearch = userRow.display_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          userRow.nickname?.toLowerCase().includes(searchTerm.toLowerCase());
-    
+
     // Filtro por rol: admin_punto solo ve usuarios de su sede
     if (user?.role === 'admin_punto') {
       return matchesSearch && userRow.sede_id === user?.sede_id;
     }
-    
+
     // admin_global ve todos los usuarios
     return matchesSearch;
   })
+
+  // Paginación de usuarios
+  const totalUsersPages = Math.ceil(filteredUsers.length / usersPerPage);
+  const startUserIndex = (usersCurrentPage - 1) * usersPerPage;
+  const endUserIndex = startUserIndex + usersPerPage;
+  const paginatedUsers = filteredUsers.slice(startUserIndex, endUserIndex);
 
   const filteredRepartidores = repartidores.filter(repartidor => {
     // Filtro de b├║squeda
@@ -1557,7 +1569,7 @@ export function AdminPanel({ onBack, onNavigateToTimeMetrics }: AdminPanelProps)
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {filteredUsers.map((tableUser) => (
+                        {paginatedUsers.map((tableUser) => (
                           <TableRow key={tableUser.id}>
                             <TableCell>
                               <div>
@@ -1620,6 +1632,46 @@ export function AdminPanel({ onBack, onNavigateToTimeMetrics }: AdminPanelProps)
                         ))}
                       </TableBody>
                     </Table>
+                  )}
+
+                  {/* Paginación de usuarios */}
+                  {!loadingStates.users.isLoading && !loadingStates.users.error && filteredUsers.length > usersPerPage && (
+                    <div className="flex items-center justify-between mt-4">
+                      <div className="text-sm text-muted-foreground">
+                        Mostrando {startUserIndex + 1} a {Math.min(endUserIndex, filteredUsers.length)} de {filteredUsers.length} usuarios
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setUsersCurrentPage(prev => Math.max(1, prev - 1))}
+                          disabled={usersCurrentPage === 1}
+                        >
+                          Anterior
+                        </Button>
+                        <div className="flex items-center gap-1">
+                          {Array.from({ length: totalUsersPages }, (_, i) => i + 1).map(page => (
+                            <Button
+                              key={page}
+                              variant={page === usersCurrentPage ? "default" : "outline"}
+                              size="sm"
+                              onClick={() => setUsersCurrentPage(page)}
+                              className="w-8 h-8 p-0"
+                            >
+                              {page}
+                            </Button>
+                          ))}
+                        </div>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setUsersCurrentPage(prev => Math.min(totalUsersPages, prev + 1))}
+                          disabled={usersCurrentPage === totalUsersPages}
+                        >
+                          Siguiente
+                        </Button>
+                      </div>
+                    </div>
                   )}
                 </div>
               </CardContent>

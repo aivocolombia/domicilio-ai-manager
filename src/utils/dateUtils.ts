@@ -68,13 +68,6 @@ export const formatDateForQuery = (date: Date, isEndOfDay: boolean = false): str
 
   // Formato sin Z para evitar problemas de zona horaria - Colombia UTC-5
   const result = `${localYear}-${localMonth}-${localDay}T${localHour}:${localMinute}:${localSecond}-05:00`;
-
-  console.log(`🔍 formatDateForQuery: ${isEndOfDay ? 'Final' : 'Inicio'} del día`, {
-    inputDate: date.toLocaleDateString('es-CO'),
-    targetLocal: `${localDay}/${localMonth}/${localYear} ${localHour}:${localMinute}:${localSecond}`,
-    result
-  });
-
   return result;
 };
 
@@ -122,38 +115,3 @@ export const formatDateTimeForDisplay = (date: Date): string => {
   });
 };
 
-/**
- * Diagnóstico específico para el filtro "hoy"
- */
-export const debugTodayFilter = () => {
-  console.log('🔍 === DIAGNÓSTICO FILTRO "HOY" ===');
-  
-  const now = new Date();
-  console.log('⏰ Fecha/hora actual del sistema:');
-  console.log('  - Local string:', now.toString());
-  console.log('  - ISO string:', now.toISOString());
-  console.log('  - Timezone offset:', now.getTimezoneOffset(), 'minutos');
-  console.log('  - Fecha local (es-CO):', now.toLocaleDateString('es-CO'));
-  console.log('  - Hora local (es-CO):', now.toLocaleTimeString('es-CO'));
-  
-  const startOfDay = getStartOfDay(now);
-  const endOfDay = getEndOfDay(now);
-  
-  console.log('\n🌅 Inicio del día:');
-  console.log('  - Date object:', startOfDay);
-  console.log('  - String local:', startOfDay.toString());
-  console.log('  - Formatted query:', formatDateForQuery(now, false));
-  
-  console.log('\n🌇 Final del día:');
-  console.log('  - Date object:', endOfDay);
-  console.log('  - String local:', endOfDay.toString());
-  console.log('  - Formatted query:', formatDateForQuery(now, true));
-  
-  const range = createDateRangeForQuery(now, now);
-  console.log('\n📊 Rango de consulta generado:');
-  console.log('  - fechaInicio:', range.fechaInicio);
-  console.log('  - fechaFin:', range.fechaFin);
-  
-  console.log('\n✅ Prueba completada - Revisar logs arriba');
-  return range;
-};

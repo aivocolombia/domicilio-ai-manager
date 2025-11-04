@@ -7,10 +7,21 @@ if (!SUPABASE_CONFIG.URL || !SUPABASE_CONFIG.ANON_KEY) {
   throw new Error('Variables de entorno de Supabase no configuradas');
 }
 
-// Crear cliente de Supabase
+// Crear cliente de Supabase con configuración personalizada
 export const supabase = createClient(
   SUPABASE_CONFIG.URL,
-  SUPABASE_CONFIG.ANON_KEY
+  SUPABASE_CONFIG.ANON_KEY,
+  {
+    db: {
+      schema: 'public',
+    },
+    global: {
+      headers: {
+        // Preferencia para obtener más de 1000 registros
+        'Prefer': 'return=representation',
+      },
+    },
+  }
 );
 
 // Tipos para las tablas de Supabase - Actualizados para coincidir con el esquema real

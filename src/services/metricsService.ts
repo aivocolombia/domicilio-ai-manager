@@ -1136,64 +1136,91 @@ export class MetricsService {
   // Obtener métricas de rendimiento de repartidores
   async getDeliveryPersonPerformance(filters: MetricsFilters): Promise<DeliveryPersonPerformance> {
     try {
-      console.log('🚚 Obteniendo métricas de rendimiento de repartidores:', filters);
+      // Preparar filtros de fecha
+      let startQuery: string | undefined;
+      let endQuery: string | undefined;
 
-      // Query para obtener órdenes con repartidores asignados
-      let query = supabase
-        .from('ordenes')
-        .select(`
-          id,
-          status,
-          repartidor_id,
-          created_at,
-          hora_entrega,
-          repartidores!left(id, nombre),
-          pagos!payment_id(total_pago)
-        `)
-        .not('repartidor_id', 'is', null)
-        .order('created_at', { ascending: false });
-
-      // Aplicar filtros de fecha con formato correcto de zona horaria
       if (filters.fecha_inicio && filters.fecha_fin) {
         const startDate = new Date(`${filters.fecha_inicio}T00:00:00`);
         const endDate = new Date(`${filters.fecha_fin}T23:59:59`);
-        const startQuery = formatDateForQuery(startDate, false);
-        const endQuery = formatDateForQuery(endDate, true);
-
-        console.log('🔍 DEBUG: Filtros de fecha aplicados:', {
-          fecha_inicio: filters.fecha_inicio,
-          fecha_fin: filters.fecha_fin,
-          startQuery,
-          endQuery
-        });
-
-        query = query
-          .gte('created_at', startQuery)
-          .lte('created_at', endQuery);
+        startQuery = formatDateForQuery(startDate, false);
+        endQuery = formatDateForQuery(endDate, true);
       }
 
-      // Aplicar filtro de sede si se especifica
-      if (filters.sede_id && filters.sede_id !== 'all') {
-        console.log('🔍 DEBUG: Filtro de sede aplicado:', filters.sede_id);
-        query = query.eq('sede_id', filters.sede_id);
+      // IMPORTANTE: Paginación manual para evitar límite de 1000 de PostgREST
+      // Obtener todos los registros con paginación
+      const pageSize = 1000;
+      let allOrdenes: any[] = [];
+      let currentPage = 0;
+      let totalCount: number | null = null;
+
+      while (true) {
+        const from = currentPage * pageSize;
+        const to = from + pageSize - 1;
+
+        // Construir query para esta página
+        let pageQuery = supabase
+          .from('ordenes')
+          .select(`
+            id,
+            status,
+            repartidor_id,
+            created_at,
+            hora_entrega,
+            repartidores!left(id, nombre),
+            pagos!payment_id(total_pago)
+          `, { count: currentPage === 0 ? 'exact' : undefined })
+          .not('repartidor_id', 'is', null)
+          .order('created_at', { ascending: false });
+
+        // Aplicar filtros de fecha
+        if (startQuery && endQuery) {
+          pageQuery = pageQuery
+            .gte('created_at', startQuery)
+            .lte('created_at', endQuery);
+        }
+
+        // Aplicar filtro de sede
+        if (filters.sede_id && filters.sede_id !== 'all') {
+          pageQuery = pageQuery.eq('sede_id', filters.sede_id);
+        }
+
+        // Aplicar rango de paginación
+        pageQuery = pageQuery.range(from, to);
+
+        const { data: pageData, error: pageError, count: pageCount } = await pageQuery;
+
+        if (pageError) {
+          throw new Error(`Error obteniendo página: ${pageError.message}`);
+        }
+
+        // Guardar el count total de la primera página
+        if (currentPage === 0) {
+          totalCount = pageCount;
+        }
+
+        if (!pageData || pageData.length === 0) {
+          break;
+        }
+
+        allOrdenes = allOrdenes.concat(pageData);
+
+        // Si obtuvimos menos registros que el pageSize, ya no hay más páginas
+        if (pageData.length < pageSize) {
+          break;
+        }
+
+        currentPage++;
+
+        // Seguridad: no paginar más de 100 páginas (100,000 registros)
+        if (currentPage >= 100) {
+          break;
+        }
       }
 
-      const { data: ordenes, error } = await query;
-
-      if (error) {
-        console.error('❌ Error obteniendo órdenes para métricas de repartidores:', error);
-        throw new Error(`Error obteniendo órdenes: ${error.message}`);
-      }
-
-      // 🔍 DEBUG: Ver cuántas órdenes se obtuvieron y sus status
-      console.log('🔍 DEBUG: Total de órdenes obtenidas:', ordenes?.length || 0);
-      if (ordenes && ordenes.length > 0) {
-        const statusCounts = ordenes.reduce((acc, orden) => {
-          acc[orden.status] = (acc[orden.status] || 0) + 1;
-          return acc;
-        }, {} as Record<string, number>);
-        console.log('🔍 DEBUG: Distribución de status en las órdenes:', statusCounts);
-      }
+      const ordenes = allOrdenes;
+      const count = totalCount;
+      const error = null;
 
       // Procesar datos por repartidor
       const repartidorMap = new Map<number, {
@@ -1261,23 +1288,15 @@ export class MetricsService {
         monto_total_entregado: stats.monto_total
       }));
 
-      // 🔍 DEBUG: Mostrar métricas por repartidor
-      console.log('🔍 DEBUG: Métricas por repartidor:', repartidores.map(r => ({
-        nombre: r.repartidor_nombre,
-        asignados: r.total_asignados,
-        entregados: r.total_entregados,
-        cancelados: r.total_cancelados
-      })));
-
       // Calcular resumen
       const totalRepartidores = repartidores.length;
-      const promedioEntregas = totalRepartidores > 0 
+      const promedioEntregas = totalRepartidores > 0
         ? repartidores.reduce((sum, r) => sum + r.total_entregados, 0) / totalRepartidores
         : 0;
       const promedioExito = totalRepartidores > 0
         ? repartidores.reduce((sum, r) => sum + r.porcentaje_exito, 0) / totalRepartidores
         : 0;
-      
+
       // Encontrar mejor repartidor (por porcentaje de éxito y cantidad de entregas)
       const mejorRepartidor = repartidores.length > 0
         ? repartidores.reduce((mejor, actual) => {
@@ -1297,15 +1316,8 @@ export class MetricsService {
         }
       };
 
-      console.log('✅ Métricas de repartidores obtenidas:', {
-        totalRepartidores,
-        mejorRepartidor,
-        promedioEntregas: resultado.resumen.promedio_entregas
-      });
-
       return resultado;
     } catch (error) {
-      console.error('❌ Error en getDeliveryPersonPerformance:', error);
       throw error;
     }
   }
