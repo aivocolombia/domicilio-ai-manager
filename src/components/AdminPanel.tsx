@@ -1,5 +1,5 @@
 ﻿import { useState, useEffect, useCallback } from 'react'
-import { Plus, Search, Edit, Trash2, Users, Building2, UserCheck, UserX, TrendingUp, DollarSign, Package, Clock, LayoutDashboard, Phone, MapPin, Settings, RefreshCw, Cog, ChartLine, Timer, BarChart3, Truck, Eye, AlertTriangle, ChevronLeft, ChevronRight, XCircle, Star, BarChart, Activity, Download } from 'lucide-react'
+import { Plus, Search, Edit, Trash2, Users, Building2, UserCheck, UserX, TrendingUp, DollarSign, Package, Clock, LayoutDashboard, Phone, MapPin, Settings, RefreshCw, Cog, ChartLine, Timer, BarChart3, Truck, Eye, AlertTriangle, ChevronLeft, ChevronRight, XCircle, Star, BarChart, Activity, Download, FileText, FileSpreadsheet } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -19,6 +19,7 @@ import { useLoadingStates } from '@/hooks/useLoadingStates'
 import { adminService, CreateUserData, User, CreateSedeData, UpdateSedeData, Sede, Repartidor } from '@/services/adminService'
 import { customAuthService } from '@/services/customAuthService'
 import { metricsService, DashboardMetrics, MetricsFilters } from '@/services/metricsService'
+import { reportService } from '@/services/reportService'
 import { adminDataLoader } from '@/services/adminDataLoader'
 import { optimisticAdd, optimisticUpdate, optimisticDelete } from '@/utils/optimisticUpdates'
 import { SectionLoading, TableSectionLoading, MetricsLoading, StatusIndicator } from '@/components/LoadingIndicators'
@@ -125,6 +126,10 @@ export function AdminPanel({ onBack, onNavigateToTimeMetrics }: AdminPanelProps)
     from: new Date(), // Hoy por defecto
     to: new Date()    // Hoy por defecto
   })
+
+  // Estados para reportes
+  const [isGeneratingExcelReport, setIsGeneratingExcelReport] = useState(false)
+  const [isGeneratingPDFReport, setIsGeneratingPDFReport] = useState(false)
 
   // Configurar filtro de sede automáticamente para admin_punto
   useEffect(() => {
@@ -291,6 +296,63 @@ export function AdminPanel({ onBack, onNavigateToTimeMetrics }: AdminPanelProps)
   const handleShowCancelledOrders = (sedeId: string, sedeNombre: string) => {
     setSelectedSedeForCancelled({ id: sedeId, nombre: sedeNombre });
     setIsCancelledOrdersModalOpen(true);
+  };
+
+  // Report handlers
+  const handleDownloadExcelReport = async () => {
+    try {
+      setIsGeneratingExcelReport(true);
+
+      const filters: MetricsFilters = {
+        fecha_inicio: format(dateRange.from, 'yyyy-MM-dd'),
+        fecha_fin: format(dateRange.to, 'yyyy-MM-dd'),
+        sede_id: selectedSedeFilter === 'all' ? undefined : selectedSedeFilter
+      };
+
+      await reportService.downloadExcelReport(filters);
+
+      toast({
+        title: "Reporte Excel Generado",
+        description: "El reporte ha sido descargado exitosamente",
+      });
+    } catch (error) {
+      console.error('Error generando reporte Excel:', error);
+      toast({
+        title: "Error",
+        description: "No se pudo generar el reporte Excel. Por favor, intenta nuevamente.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsGeneratingExcelReport(false);
+    }
+  };
+
+  const handleDownloadPDFReport = async () => {
+    try {
+      setIsGeneratingPDFReport(true);
+
+      const filters: MetricsFilters = {
+        fecha_inicio: format(dateRange.from, 'yyyy-MM-dd'),
+        fecha_fin: format(dateRange.to, 'yyyy-MM-dd'),
+        sede_id: selectedSedeFilter === 'all' ? undefined : selectedSedeFilter
+      };
+
+      await reportService.downloadPDFReport(filters);
+
+      toast({
+        title: "Reporte PDF Generado",
+        description: "El reporte ha sido descargado exitosamente",
+      });
+    } catch (error) {
+      console.error('Error generando reporte PDF:', error);
+      toast({
+        title: "Error",
+        description: "No se pudo generar el reporte PDF. Por favor, intenta nuevamente.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsGeneratingPDFReport(false);
+    }
   };
 
   // Real-time metrics updates
@@ -2252,7 +2314,7 @@ export function AdminPanel({ onBack, onNavigateToTimeMetrics }: AdminPanelProps)
 
                       {/* Bot├│n de Actualizar */}
                       {/* Botón de Actualizar */}
-                      <Button 
+                      <Button
                         onClick={loadMetricsOptimized}
                         disabled={loadingStates.metrics.isLoading}
                         className="w-[120px]"
@@ -2264,6 +2326,37 @@ export function AdminPanel({ onBack, onNavigateToTimeMetrics }: AdminPanelProps)
                         )}
                         Actualizar
                       </Button>
+
+                      {/* Botones de Reportes */}
+                      <div className="flex gap-2">
+                        <Button
+                          onClick={handleDownloadExcelReport}
+                          disabled={isGeneratingExcelReport || !metricsData}
+                          variant="outline"
+                          className="border-green-300 hover:bg-green-50"
+                        >
+                          {isGeneratingExcelReport ? (
+                            <RefreshCw className="h-4 w-4 animate-spin mr-2" />
+                          ) : (
+                            <FileSpreadsheet className="h-4 w-4 mr-2 text-green-600" />
+                          )}
+                          {isGeneratingExcelReport ? 'Generando...' : 'Reporte Excel'}
+                        </Button>
+
+                        <Button
+                          onClick={handleDownloadPDFReport}
+                          disabled={isGeneratingPDFReport || !metricsData}
+                          variant="outline"
+                          className="border-red-300 hover:bg-red-50"
+                        >
+                          {isGeneratingPDFReport ? (
+                            <RefreshCw className="h-4 w-4 animate-spin mr-2" />
+                          ) : (
+                            <FileText className="h-4 w-4 mr-2 text-red-600" />
+                          )}
+                          {isGeneratingPDFReport ? 'Generando...' : 'Reporte PDF'}
+                        </Button>
+                      </div>
                     </div>
 
                     <div className="mt-4 p-3 bg-muted/30 rounded-lg">
