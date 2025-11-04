@@ -29,11 +29,14 @@ import { ExportButton } from '@/components/ui/ExportButton';
 import { useToast } from '@/hooks/use-toast';
 import { formatCurrency } from '@/utils/format';
 import { crmService, CRMCustomer, CRMOrder, CRMStats } from '@/services/crmService';
+import { getOrderItemsSummary, CRMOrderItemSummary, CRMCustomerFavoriteProductSummary } from '@/services/crmOrderItemsService';
 import { useAuth } from '@/hooks/useAuth';
 
 interface CRMProps {
   effectiveSedeId?: string;
 }
+
+type CustomerOrderWithItems = CRMOrder & { items?: CRMOrderItemSummary[] };
 
 export const CRM: React.FC<CRMProps> = ({ effectiveSedeId }) => {
   const { profile } = useAuth();
@@ -42,13 +45,26 @@ export const CRM: React.FC<CRMProps> = ({ effectiveSedeId }) => {
   const [stats, setStats] = useState<CRMStats | null>(null);
   const [customers, setCustomers] = useState<CRMCustomer[]>([]);
   const [selectedCustomer, setSelectedCustomer] = useState<CRMCustomer | null>(null);
-  const [customerOrders, setCustomerOrders] = useState<CRMOrder[]>([]);
+  const [customerOrders, setCustomerOrders] = useState<CustomerOrderWithItems[]>([]);
+  const [customerFavoriteProduct, setCustomerFavoriteProduct] = useState<CRMCustomerFavoriteProductSummary | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadingOrders, setLoadingOrders] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage] = useState(15);
   const [activeTab, setActiveTab] = useState('customers');
+
+  const getOrderItemIcon = (type: CRMOrderItemSummary['type']) => {
+    const baseClasses = 'h-3.5 w-3.5';
+    switch (type) {
+      case 'bebida':
+        return <Coffee className={`${baseClasses} text-sky-600`} />;
+      case 'topping':
+        return <Star className={`${baseClasses} text-amber-500`} />;
+      default:
+        return <Package className={`${baseClasses} text-emerald-600`} />;
+    }
+  };
 
   // Estados para ordenamiento
   const [sortColumn, setSortColumn] = useState<keyof CRMCustomer>('total_spent');
@@ -94,8 +110,30 @@ export const CRM: React.FC<CRMProps> = ({ effectiveSedeId }) => {
   const loadCustomerOrders = async (customerId: string) => {
     try {
       setLoadingOrders(true);
+      setCustomerFavoriteProduct(null);
       const orders = await crmService.getCustomerOrders(customerId, 20, sedeToUse || undefined);
-      setCustomerOrders(orders);
+
+      if (!orders || orders.length === 0) {
+        setCustomerOrders([]);
+        return;
+      }
+
+      const summary = await getOrderItemsSummary(orders.map((order) => order.id));
+
+      const enrichedOrders: CustomerOrderWithItems[] = orders.map((order) => {
+        const key = String(order.id);
+        const counts = summary.countsByOrder[key];
+
+        return {
+          ...order,
+          platos_count: counts ? counts.platos : order.platos_count,
+          bebidas_count: counts ? counts.bebidas : order.bebidas_count,
+          items: summary.itemsByOrder[key] || []
+        };
+      });
+
+      setCustomerOrders(enrichedOrders);
+      setCustomerFavoriteProduct(summary.favoriteProduct ?? null);
     } catch (error) {
       console.error('Error loading customer orders:', error);
       toast({
@@ -103,6 +141,8 @@ export const CRM: React.FC<CRMProps> = ({ effectiveSedeId }) => {
         description: "No se pudieron cargar las órdenes del cliente",
         variant: "destructive"
       });
+      setCustomerOrders([]);
+      setCustomerFavoriteProduct(null);
     } finally {
       setLoadingOrders(false);
     }
@@ -111,6 +151,8 @@ export const CRM: React.FC<CRMProps> = ({ effectiveSedeId }) => {
   // Abrir modal de cliente
   const openCustomerModal = async (customer: CRMCustomer) => {
     setSelectedCustomer(customer);
+    setCustomerOrders([]);
+    setCustomerFavoriteProduct(null);
     await loadCustomerOrders(customer.id);
   };
 
@@ -618,6 +660,29 @@ export const CRM: React.FC<CRMProps> = ({ effectiveSedeId }) => {
                                           {selectedCustomer.last_order_date ? formatDate(selectedCustomer.last_order_date) : 'Sin órdenes'}
                                         </span>
                                       </div>
+                                      <div className="pt-3 border-t border-border space-y-2">
+                                        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                                          <Star className="h-4 w-4 text-amber-500" />
+                                          <span>Producto favorito</span>
+                                        </div>
+                                        {selectedCustomer.total_orders > 0 ? (
+                                          customerFavoriteProduct ? (
+                                            <div className="flex items-center justify-between gap-3">
+                                              <div className="flex items-center gap-2">
+                                                {getOrderItemIcon(customerFavoriteProduct.type)}
+                                                <span className="font-medium">{customerFavoriteProduct.name}</span>
+                                              </div>
+                                              <Badge variant="outline" className="text-xs">
+                                                {customerFavoriteProduct.count} pedidos
+                                              </Badge>
+                                            </div>
+                                          ) : (
+                                            <span className="text-xs text-muted-foreground">Sin datos suficientes para calcular el favorito</span>
+                                          )
+                                        ) : (
+                                          <span className="text-xs text-muted-foreground">El cliente aún no tiene órdenes registradas</span>
+                                        )}
+                                      </div>
                                     </CardContent>
                                   </Card>
                                 </div>
@@ -674,6 +739,32 @@ export const CRM: React.FC<CRMProps> = ({ effectiveSedeId }) => {
                                             {order.repartidor_name && (
                                               <div className="mt-2 text-sm text-muted-foreground">
                                                 Repartidor: {order.repartidor_name}
+                                              </div>
+                                            )}
+                                            {(order.items?.length ?? 0) > 0 ? (
+                                              <div className="mt-3 border-t border-dashed pt-3">
+                                                <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">
+                                                  Detalle del pedido
+                                                </p>
+                                                <div className="flex flex-wrap gap-2">
+                                                  {order.items.map((item) => (
+                                                    <Badge
+                                                      key={`${order.id}-${item.type}-${item.id}`}
+                                                      variant="secondary"
+                                                      className="flex items-center gap-1 rounded-full px-2 py-1 text-xs font-medium"
+                                                    >
+                                                      {getOrderItemIcon(item.type)}
+                                                      <span>{item.name}</span>
+                                                      {item.quantity > 1 && (
+                                                        <span className="text-muted-foreground font-semibold">×{item.quantity}</span>
+                                                      )}
+                                                    </Badge>
+                                                  ))}
+                                                </div>
+                                              </div>
+                                            ) : (
+                                              <div className="mt-3 border-t border-dashed pt-3 text-xs text-muted-foreground">
+                                                Sin detalle disponible para esta orden
                                               </div>
                                             )}
                                           </div>

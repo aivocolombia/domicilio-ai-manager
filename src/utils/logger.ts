@@ -1,96 +1,114 @@
-// Logger configurable para desarrollo y producción
+type LoggerLevel = 'debug' | 'info' | 'warn' | 'error';
+type ConsoleWriter = (...args: unknown[]) => void;
+type LegacyLogMethod = (scope: string, message?: unknown, ...meta: unknown[]) => void;
 
-export type LogLevel = 'debug' | 'info' | 'warn' | 'error' | 'none'
+const resolveEnv = () => {
+  try {
+    if (typeof import.meta !== 'undefined' && import.meta.env) {
+      return {
+        dev: Boolean(import.meta.env.DEV),
+        enableDebug: import.meta.env.VITE_ENABLE_DEBUG_LOGS === 'true'
+      };
+    }
+  } catch {
+    // ignore when import.meta is not available
+  }
 
-interface LoggerConfig {
-  level: LogLevel
-  enableConsole: boolean
-  enablePersistence: boolean
+  return {
+    dev: process.env.NODE_ENV !== 'production',
+    enableDebug: process.env.VITE_ENABLE_DEBUG_LOGS === 'true'
+  };
+};
+
+const env = resolveEnv();
+const shouldEmitDebug = env.enableDebug === true;
+
+const originalConsole = {
+  log: console.log.bind(console),
+  info: console.info.bind(console),
+  debug: (console.debug || console.log).bind(console),
+  warn: console.warn.bind(console),
+  error: console.error.bind(console)
+};
+
+const noop = () => {
+  /* intentionally empty */
+};
+
+if (!shouldEmitDebug) {
+  console.log = noop as typeof console.log;
+  console.info = noop as typeof console.info;
+  console.debug = noop as typeof console.debug;
+} else {
+  console.log = originalConsole.log;
+  console.info = originalConsole.info;
+  console.debug = originalConsole.debug;
 }
 
-class Logger {
-  private config: LoggerConfig
-  private levels: Record<LogLevel, number> = {
-    debug: 0,
-    info: 1,
-    warn: 2,
-    error: 3,
-    none: 4
+const buildArgs = (scope: string, args: unknown[]): unknown[] => {
+  if (!scope) {
+    return args;
   }
 
-  constructor(config: LoggerConfig) {
-    this.config = config
+  if (args.length === 0) {
+    return [`[${scope}]`];
   }
 
-  private shouldLog(level: LogLevel): boolean {
-    return this.levels[level] >= this.levels[this.config.level]
+  const [first, ...rest] = args;
+
+  if (typeof first === 'string') {
+    return [`[${scope}] ${first}`, ...rest];
   }
 
-  private formatMessage(level: LogLevel, category: string, message: string, data?: any): string {
-    const timestamp = new Date().toISOString()
-    const baseMessage = `[${timestamp}] [${level.toUpperCase()}] [${category}] ${message}`
-    
-    if (data) {
-      return `${baseMessage} ${JSON.stringify(data)}`
-    }
-    return baseMessage
-  }
+  return [`[${scope}]`, first, ...rest];
+};
 
-  debug(category: string, message: string, data?: any) {
-    if (!this.shouldLog('debug')) return
-    
-    if (this.config.enableConsole) {
-      console.debug(this.formatMessage('debug', category, message, data))
-    }
+const emit = (writer: ConsoleWriter, scope: string, args: unknown[], guardDebug = false) => {
+  if (guardDebug && !shouldEmitDebug) {
+    return;
   }
+  writer(...buildArgs(scope, args));
+};
 
-  info(category: string, message: string, data?: any) {
-    if (!this.shouldLog('info')) return
-    
-    if (this.config.enableConsole) {
-      console.info(this.formatMessage('info', category, message, data))
-    }
-  }
+const legacyEmit = (
+  writer: ConsoleWriter,
+  scope: string,
+  message: unknown,
+  meta: unknown[],
+  guardDebug = false
+) => {
+  const args = message === undefined ? meta : [message, ...meta];
+  emit(writer, scope, args, guardDebug);
+};
 
-  warn(category: string, message: string, data?: any) {
-    if (!this.shouldLog('warn')) return
-    
-    if (this.config.enableConsole) {
-      console.warn(this.formatMessage('warn', category, message, data))
-    }
-  }
+export const logDebug: LegacyLogMethod = (scope, message, ...meta) => {
+  legacyEmit(originalConsole.debug, scope, message, meta, true);
+};
 
-  error(category: string, message: string, data?: any) {
-    if (!this.shouldLog('error')) return
-    
-    if (this.config.enableConsole) {
-      console.error(this.formatMessage('error', category, message, data))
-    }
-  }
+export const logInfo: LegacyLogMethod = (scope, message, ...meta) => {
+  legacyEmit(originalConsole.info, scope, message, meta, true);
+};
 
-  setLevel(level: LogLevel) {
-    this.config.level = level
-  }
+export const logWarn: LegacyLogMethod = (scope, message, ...meta) => {
+  legacyEmit(originalConsole.warn, scope, message, meta, true);
+};
+
+export const logError: LegacyLogMethod = (scope, message, ...meta) => {
+  legacyEmit(originalConsole.error, scope, message, meta);
+};
+
+export interface Logger {
+  debug: (...args: unknown[]) => void;
+  info: (...args: unknown[]) => void;
+  warn: (...args: unknown[]) => void;
+  error: (...args: unknown[]) => void;
 }
 
-// Configuración basada en el entorno
-const isDevelopment = import.meta.env?.DEV ?? process.env.NODE_ENV === 'development'
+export const createLogger = (scope: string): Logger => ({
+  debug: (...args: unknown[]) => emit(originalConsole.debug, scope, args, true),
+  info: (...args: unknown[]) => emit(originalConsole.info, scope, args, true),
+  warn: (...args: unknown[]) => emit(originalConsole.warn, scope, args, true),
+  error: (...args: unknown[]) => emit(originalConsole.error, scope, args)
+});
 
-export const logger = new Logger({
-  level: isDevelopment ? 'debug' : 'warn',
-  enableConsole: true,
-  enablePersistence: false
-})
-
-// Exports de conveniencia para uso directo
-export const logDebug = (category: string, message: string, data?: any) => 
-  logger.debug(category, message, data)
-
-export const logInfo = (category: string, message: string, data?: any) => 
-  logger.info(category, message, data)
-
-export const logWarn = (category: string, message: string, data?: any) => 
-  logger.warn(category, message, data)
-
-export const logError = (category: string, message: string, data?: any) => 
-  logger.error(category, message, data)
+export const logger = createLogger('App');

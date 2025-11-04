@@ -77,7 +77,7 @@ export class ReportService {
     ] = await Promise.all([
       metricsService.getPhaseTimeStats(filters),
       metricsService.getCancelledOrderMetrics(filters),
-      discountService.getDiscountMetrics(filters.fecha_inicio, filters.fecha_fin, filters.sede_id),
+      discountService.getDiscountMetrics(filters.sede_id, filters.fecha_inicio, filters.fecha_fin),
       metricsService.getProductMetrics(filters),
       metricsService.getSedeMetrics(filters),
       metricsService.getDashboardMetrics(filters),
@@ -106,12 +106,12 @@ export class ReportService {
       },
 
       discountMetrics: {
-        totalDescuentos: discountMetrics.totalDescuentos,
-        montoTotalDescuentos: discountMetrics.montoTotalDescuentos,
-        causales: discountMetrics.descuentosPorRazon.map(d => ({
-          razon: d.razon,
-          cantidad: d.cantidad,
-          monto: d.montoTotal,
+        totalDescuentos: discountMetrics.totalDiscounts,
+        montoTotalDescuentos: discountMetrics.totalDiscountAmount,
+        causales: Object.entries(discountMetrics.discountsByStatus).map(([razon, cantidad]) => ({
+          razon,
+          cantidad,
+          monto: 0, // No tenemos monto individual por razón en este servicio
         })),
       },
 
@@ -397,7 +397,7 @@ export class ReportService {
     );
     addMetricCard(
       'Ingresos Totales',
-      `$${(reportData.salesMetrics.totalIngresos / 1000000).toFixed(1)}M`,
+      `$${reportData.salesMetrics.totalIngresos.toLocaleString('es-CO')}`,
       primaryColor,
       10 + cardWidth + 5,
       cardWidth
@@ -422,14 +422,14 @@ export class ReportService {
     );
     addMetricCard(
       'Monto Perdido',
-      `$${(reportData.cancellationMetrics.montoPerdido / 1000).toFixed(0)}k`,
+      `$${reportData.cancellationMetrics.montoPerdido.toLocaleString('es-CO')}`,
       warningColor,
       10 + cardWidth + 5,
       cardWidth
     );
     addMetricCard(
-      'Total Descuentos',
-      reportData.discountMetrics.totalDescuentos.toString(),
+      'Monto Descuentos',
+      `$${reportData.discountMetrics.montoTotalDescuentos.toLocaleString('es-CO')}`,
       warningColor,
       10 + (cardWidth + 5) * 2,
       cardWidth
@@ -521,7 +521,7 @@ export class ReportService {
       body: reportData.sedesMetrics.map(s => [
         s.nombre,
         s.totalPedidos.toString(),
-        `$${(s.totalIngresos / 1000).toFixed(0)}k`,
+        `$${s.totalIngresos.toLocaleString('es-CO')}`,
         s.cancelados.toString(),
         `${s.tasaCancelacion.toFixed(1)}%`
       ]),

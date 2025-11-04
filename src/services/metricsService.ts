@@ -630,26 +630,41 @@ export class MetricsService {
 
       console.log('✅ Total órdenes obtenidas para métricas de sede:', sedeData.length);
 
-      // Obtener pagos por separado
+      // Obtener pagos por separado con PAGINACIÓN para evitar límite de URL
       let pagosData: any[] = [];
       if (sedeData && sedeData.length > 0) {
         const ordenIds = sedeData.map(o => o.id).filter(id => id !== undefined && id !== null);
-        
+
         // Solo hacer la consulta si hay IDs válidos
         if (ordenIds.length > 0) {
-          const { data: pagosResult, error: pagosError } = await supabase
-            .from('ordenes')
-            .select(`
-              id,
-              pagos!payment_id(total_pago)
-            `)
-            .in('id', ordenIds);
+          // Dividir IDs en lotes de 500 para evitar límite de URL
+          const batchSize = 500;
+          const totalBatches = Math.ceil(ordenIds.length / batchSize);
 
-          if (pagosError) {
-            console.error('⚠️ Error obteniendo pagos para sede metrics:', pagosError);
-          } else {
-            pagosData = pagosResult || [];
+          console.log(`💰 Obteniendo pagos en ${totalBatches} lotes de ${batchSize} IDs...`);
+
+          for (let i = 0; i < totalBatches; i++) {
+            const start = i * batchSize;
+            const end = Math.min(start + batchSize, ordenIds.length);
+            const batchIds = ordenIds.slice(start, end);
+
+            const { data: pagosResult, error: pagosError } = await supabase
+              .from('ordenes')
+              .select(`
+                id,
+                pagos!payment_id(total_pago)
+              `)
+              .in('id', batchIds);
+
+            if (pagosError) {
+              console.error(`⚠️ Error obteniendo pagos para sede metrics (lote ${i + 1}):`, pagosError);
+            } else {
+              pagosData = pagosData.concat(pagosResult || []);
+              console.log(`💰 Pagos lote ${i + 1}/${totalBatches}: ${pagosResult?.length || 0} registros`);
+            }
           }
+
+          console.log(`✅ Total pagos obtenidos: ${pagosData.length}`);
         }
       }
 
