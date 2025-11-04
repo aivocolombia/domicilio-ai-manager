@@ -166,7 +166,7 @@ export class SedeServiceSimple {
               .select('available, price_override')
               .eq('topping_id', toppingItem.topping_id)
               .eq('sede_id', sedeId)
-              .single();
+              .maybeSingle();
 
             toppingsWithSedeInfo.push({
               ...toppingItem,
