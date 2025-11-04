@@ -1160,6 +1160,13 @@ export class MetricsService {
         const startQuery = formatDateForQuery(startDate, false);
         const endQuery = formatDateForQuery(endDate, true);
 
+        console.log('🔍 DEBUG: Filtros de fecha aplicados:', {
+          fecha_inicio: filters.fecha_inicio,
+          fecha_fin: filters.fecha_fin,
+          startQuery,
+          endQuery
+        });
+
         query = query
           .gte('created_at', startQuery)
           .lte('created_at', endQuery);
@@ -1167,6 +1174,7 @@ export class MetricsService {
 
       // Aplicar filtro de sede si se especifica
       if (filters.sede_id && filters.sede_id !== 'all') {
+        console.log('🔍 DEBUG: Filtro de sede aplicado:', filters.sede_id);
         query = query.eq('sede_id', filters.sede_id);
       }
 
@@ -1175,6 +1183,16 @@ export class MetricsService {
       if (error) {
         console.error('❌ Error obteniendo órdenes para métricas de repartidores:', error);
         throw new Error(`Error obteniendo órdenes: ${error.message}`);
+      }
+
+      // 🔍 DEBUG: Ver cuántas órdenes se obtuvieron y sus status
+      console.log('🔍 DEBUG: Total de órdenes obtenidas:', ordenes?.length || 0);
+      if (ordenes && ordenes.length > 0) {
+        const statusCounts = ordenes.reduce((acc, orden) => {
+          acc[orden.status] = (acc[orden.status] || 0) + 1;
+          return acc;
+        }, {} as Record<string, number>);
+        console.log('🔍 DEBUG: Distribución de status en las órdenes:', statusCounts);
       }
 
       // Procesar datos por repartidor
@@ -1209,10 +1227,12 @@ export class MetricsService {
         repartidorStats.asignados += 1;
         repartidorStats.dias_trabajados.add(fechaOrden);
 
-        if (orden.status === 'Entregados') {
+        // 🔄 Comparación flexible de status para Entregados
+        const statusLower = orden.status?.toLowerCase() || '';
+        if (statusLower === 'entregados' || statusLower === 'delivered' || statusLower === 'entregado') {
           repartidorStats.entregados += 1;
           repartidorStats.monto_total += orden.pagos?.total_pago || 0;
-          
+
           // Calcular tiempo de entrega si está disponible
           if (orden.hora_entrega && orden.created_at) {
             const tiempoEntrega = new Date(orden.hora_entrega).getTime() - new Date(orden.created_at).getTime();
@@ -1221,7 +1241,7 @@ export class MetricsService {
               repartidorStats.tiempos_entrega.push(minutosEntrega);
             }
           }
-        } else if (orden.status === 'Cancelado') {
+        } else if (statusLower === 'cancelado' || statusLower === 'cancelled' || statusLower === 'canceled') {
           repartidorStats.cancelados += 1;
         }
       });
@@ -1234,12 +1254,20 @@ export class MetricsService {
         total_entregados: stats.entregados,
         total_cancelados: stats.cancelados,
         porcentaje_exito: stats.asignados > 0 ? (stats.entregados / stats.asignados) * 100 : 0,
-        promedio_tiempo_entrega: stats.tiempos_entrega.length > 0 
+        promedio_tiempo_entrega: stats.tiempos_entrega.length > 0
           ? stats.tiempos_entrega.reduce((sum, time) => sum + time, 0) / stats.tiempos_entrega.length
           : 0,
         dias_trabajados: stats.dias_trabajados.size,
         monto_total_entregado: stats.monto_total
       }));
+
+      // 🔍 DEBUG: Mostrar métricas por repartidor
+      console.log('🔍 DEBUG: Métricas por repartidor:', repartidores.map(r => ({
+        nombre: r.repartidor_nombre,
+        asignados: r.total_asignados,
+        entregados: r.total_entregados,
+        cancelados: r.total_cancelados
+      })));
 
       // Calcular resumen
       const totalRepartidores = repartidores.length;
