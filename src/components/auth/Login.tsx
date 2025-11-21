@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Eye, EyeOff, Loader2 } from 'lucide-react'
+import { Eye, EyeOff, Loader2, AlertCircle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -21,12 +21,25 @@ export function Login() {
     setLoading(true)
     setError('')
 
+    // Validaciones básicas
+    if (!nickname.trim()) {
+      setError('Por favor ingresa tu nickname')
+      setLoading(false)
+      return
+    }
+
+    if (!password.trim()) {
+      setError('Por favor ingresa tu contraseña')
+      setLoading(false)
+      return
+    }
+
     const result = await signIn(nickname.trim(), password.trim())
-    
+
     if (result.error) {
       setError(result.error)
     }
-    
+
     setLoading(false)
   }
 
@@ -55,8 +68,9 @@ export function Login() {
           <CardContent>
             <form onSubmit={handleSubmit} className="space-y-4">
               {error && (
-                <Alert variant="destructive" className="bg-destructive/10">
-                  <AlertDescription>{error}</AlertDescription>
+                <Alert variant="destructive" className="bg-destructive/10 border-destructive/50">
+                  <AlertCircle className="h-4 w-4" />
+                  <AlertDescription className="ml-2">{error}</AlertDescription>
                 </Alert>
               )}
 

@@ -12,7 +12,7 @@ import { useMenu } from '@/hooks/useMenu';
 import { addressService } from '@/services/addressService';
 import { supabase } from '@/lib/supabase';
 import { sedeService } from '@/services/sedeService';
-import { ProductSubstitutionDialog } from '@/components/ProductSubstitutionDialog';
+import { ProductSubstitutionDialog } from '@/components/inventory/ProductSubstitutionDialog';
 import type { SubstitutionDetails } from '@/services/substitutionService';
 import { substitutionHistoryService } from '@/services/substitutionHistoryService';
 

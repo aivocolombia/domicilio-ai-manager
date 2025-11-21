@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
+import { Switch } from '@/components/ui/switch';
 import {
   Clock,
   Package,
@@ -49,14 +50,14 @@ import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { createDateRangeForQuery, formatDateTimeForDisplay, debugTodayFilter } from '@/utils/dateUtils';
 import { Order, OrderStatus, OrderSource, DeliverySettings, DeliveryPerson, PaymentMethod } from '@/types/delivery';
-import { OrderConfigModal } from './OrderConfigModal';
-import { OrderDetailsModal } from './OrderDetailsModal';
-import { ChangePaymentMethodModal } from './ChangePaymentMethodModal';
-import { EditOrderModal } from './EditOrderModal';
-import { MinutaModal } from './MinutaModal';
-import { DiscountDialog } from './DiscountDialog';
-import { ChangeOrderTypeDialog } from './ChangeOrderTypeDialog';
-import { PaymentDetailsModal } from './PaymentDetailsModal';
+import { OrderConfigModal } from './modals/OrderConfigModal';
+import { OrderDetailsModal } from './modals/OrderDetailsModal';
+import { ChangePaymentMethodModal } from './payment/ChangePaymentMethodModal';
+import { EditOrderModal } from './modals/EditOrderModal';
+import { MinutaModal } from './modals/MinutaModal';
+import { DiscountDialog } from '@/components/discounts/DiscountDialog';
+import { ChangeOrderTypeDialog } from './modals/ChangeOrderTypeDialog';
+import { PaymentDetailsModal } from './payment/PaymentDetailsModal';
 import { cn } from '@/lib/utils';
 import { useDashboard } from '@/hooks/useDashboard';
 import { logDebug, logError, logWarn } from '@/utils/logger';
@@ -178,6 +179,10 @@ export const Dashboard: React.FC<DashboardProps> = ({
     paymentAmount1: 0,
     paymentAmount2: 0
   });
+
+  // Estado para manejar tiempo custom vs preset
+  const [useCustomTime, setUseCustomTime] = useState(false);
+  const [customTimeMinutes, setCustomTimeMinutes] = useState('');
   const [searchingPrice, setSearchingPrice] = useState(false);
   const [sedeProducts, setSedeProducts] = useState({
     platos: [] as any[],
@@ -1707,6 +1712,9 @@ export const Dashboard: React.FC<DashboardProps> = ({
         phone: '',
         address: ''
       });
+      // Resetear estados de tiempo custom
+      setUseCustomTime(false);
+      setCustomTimeMinutes('');
       setShowCreateOrderModal(false);
       setShowZeroDeliveryConfirm(false);
 
@@ -3365,21 +3373,70 @@ export const Dashboard: React.FC<DashboardProps> = ({
               </div>
             )}
 
-            <div>
-              <Label htmlFor="deliveryTime">Tiempo de Entrega</Label>
-              <Select
-                value={newOrder.deliveryTimeMinutes.toString()}
-                onValueChange={(value) => setNewOrder({ ...newOrder, deliveryTimeMinutes: parseInt(value) })}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Seleccionar tiempo de entrega" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="60">🚀 Rápido - 60 minutos</SelectItem>
-                  <SelectItem value="75">⏰ Estándar - 75 minutos</SelectItem>
-                  <SelectItem value="90">🕒 Normal - 90 minutos</SelectItem>
-                </SelectContent>
-              </Select>
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <Label htmlFor="deliveryTime">Tiempo de Entrega</Label>
+                <div className="flex items-center gap-2">
+                  <Label htmlFor="customTime" className="text-sm text-muted-foreground">
+                    Tiempo personalizado
+                  </Label>
+                  <Switch
+                    id="customTime"
+                    checked={useCustomTime}
+                    onCheckedChange={(checked) => {
+                      setUseCustomTime(checked);
+                      if (checked) {
+                        // Si activa custom, limpiar el preset y usar el custom si existe
+                        if (customTimeMinutes) {
+                          setNewOrder({ ...newOrder, deliveryTimeMinutes: parseInt(customTimeMinutes) });
+                        }
+                      } else {
+                        // Si desactiva custom, volver al preset por defecto
+                        setCustomTimeMinutes('');
+                        setNewOrder({ ...newOrder, deliveryTimeMinutes: 90 });
+                      }
+                    }}
+                  />
+                </div>
+              </div>
+
+              {!useCustomTime ? (
+                <Select
+                  value={newOrder.deliveryTimeMinutes.toString()}
+                  onValueChange={(value) => setNewOrder({ ...newOrder, deliveryTimeMinutes: parseInt(value) })}
+                  disabled={useCustomTime}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Seleccionar tiempo de entrega" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="60">🚀 Rápido - 60 minutos</SelectItem>
+                    <SelectItem value="75">⏰ Estándar - 75 minutos</SelectItem>
+                    <SelectItem value="90">🕒 Normal - 90 minutos</SelectItem>
+                  </SelectContent>
+                </Select>
+              ) : (
+                <div className="space-y-2">
+                  <Input
+                    type="number"
+                    min="10"
+                    max="240"
+                    placeholder="Ej: 45 minutos"
+                    value={customTimeMinutes}
+                    onChange={(e) => {
+                      const value = e.target.value;
+                      setCustomTimeMinutes(value);
+                      if (value && parseInt(value) >= 10 && parseInt(value) <= 240) {
+                        setNewOrder({ ...newOrder, deliveryTimeMinutes: parseInt(value) });
+                      }
+                    }}
+                    className="w-full"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Ingresa un tiempo entre 10 y 240 minutos
+                  </p>
+                </div>
+              )}
             </div>
 
             <div>
@@ -3400,7 +3457,8 @@ export const Dashboard: React.FC<DashboardProps> = ({
                 !customerData.phone ||
                 (newOrder.deliveryType === 'delivery' && !customerData.address) ||
                 newOrder.items.length === 0 ||
-                sedeOrdersLoading
+                sedeOrdersLoading ||
+                (useCustomTime && (!customTimeMinutes || parseInt(customTimeMinutes) < 10 || parseInt(customTimeMinutes) > 240))
               }
               className="w-full bg-brand-primary hover:bg-brand-primary/90"
             >

@@ -21,8 +21,8 @@ import { sedeServiceSimple } from '@/services/sedeServiceSimple';
 import { PlatoConSede, BebidaConSede, ToppingConSede } from '@/types/menu';
 import { debugUtils } from '@/utils/debug';
 import { supabase } from '@/lib/supabase';
-import { AddToppingsModal } from '@/components/AddToppingsModal';
-import { CreateProductModal } from '@/components/CreateProductModal';
+import { AddToppingsModal } from '@/components/inventory/AddToppingsModal';
+import { CreateProductModal } from '@/components/inventory/CreateProductModal';
 
 interface InventoryProps {
   effectiveSedeId: string;

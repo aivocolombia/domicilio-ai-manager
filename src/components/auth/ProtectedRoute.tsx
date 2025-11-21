@@ -1,7 +1,7 @@
 import { ReactNode } from 'react'
 import { useAuth } from '@/hooks/useAuth'
 import { usePermissions, UserRole } from '@/hooks/usePermissions'
-import { Login } from '@/components/Login'
+import { Login } from '@/components/auth/Login'
 import { Loader2 } from 'lucide-react'
 import { logDebug, logWarn, logError } from '@/utils/logger'
 

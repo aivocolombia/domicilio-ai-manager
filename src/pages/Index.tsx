@@ -1,19 +1,19 @@
 import React, { useState, useEffect, Suspense, lazy } from 'react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Dashboard } from '@/components/Dashboard';
-import { Inventory } from '@/components/Inventory';
-import { DeliveryPersonnel } from '@/components/DeliveryPersonnel';
-import { UserProfile } from '@/components/UserProfile';
+import { Dashboard } from '@/components/orders/Dashboard';
+import { Inventory } from '@/components/inventory/Inventory';
+import { DeliveryPersonnel } from '@/components/delivery/DeliveryPersonnel';
+import { UserProfile } from '@/components/auth/UserProfile';
 
 // Lazy loading para componentes pesados
-const AdminPanel = lazy(() => import('@/components/AdminPanel').then(module => ({ default: module.AdminPanel })));
-const TimeMetricsPage = lazy(() => import('@/components/TimeMetricsPage').then(module => ({ default: module.TimeMetricsPage })));
+const AdminPanel = lazy(() => import('@/components/metrics/AdminPanel').then(module => ({ default: module.AdminPanel })));
+const TimeMetricsPage = lazy(() => import('@/components/metrics/TimeMetricsPage').then(module => ({ default: module.TimeMetricsPage })));
 
 import { Order, DeliverySettings, OrderSource, DeliveryPerson, PaymentMethod, PaymentStatus, User as UserType, Sede, OrderStatus, DeliveryType } from '@/types/delivery';
 import { LayoutDashboard, Package, Users, Settings, Building2, ChevronDown } from 'lucide-react';
-import { StatusBar } from '@/components/StatusBar';
-import { Loading } from '@/components/Loading';
-import { PerformanceMonitor } from '@/components/PerformanceMonitor';
+import { StatusBar } from '@/components/layout/StatusBar';
+import { Loading } from '@/components/layout/Loading';
+import { PerformanceMonitor } from '@/components/layout/PerformanceMonitor';
 import { InventoryProvider } from '@/contexts/InventoryContext';
 import { SedeProvider } from '@/contexts/SedeContext';
 import { useAuth } from '@/hooks/useAuth';

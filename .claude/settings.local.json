@@ -28,7 +28,9 @@
       "Bash(del check_sedes.cjs)",
       "Bash(del nul)",
       "Bash(git remote set-url:*)",
-      "Bash(del:*)"
+      "Bash(del:*)",
+      "Bash(2)",
+      "Bash(nul)"
     ],
     "deny": [],
     "ask": [],

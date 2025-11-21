@@ -22,19 +22,19 @@ import { metricsService, DashboardMetrics, MetricsFilters } from '@/services/met
 import { reportService } from '@/services/reportService'
 import { adminDataLoader } from '@/services/adminDataLoader'
 import { optimisticAdd, optimisticUpdate, optimisticDelete } from '@/utils/optimisticUpdates'
-import { SectionLoading, TableSectionLoading, MetricsLoading, StatusIndicator } from '@/components/LoadingIndicators'
+import { SectionLoading, TableSectionLoading, MetricsLoading, StatusIndicator } from '@/components/layout/LoadingIndicators'
 import { Calendar } from '@/components/ui/calendar'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { CalendarIcon } from 'lucide-react'
 import { format } from 'date-fns'
 import { es } from 'date-fns/locale'
 import { logger } from '@/utils/logger'
-import { CancelledOrdersModal } from '@/components/CancelledOrdersModal'
+import { CancelledOrdersModal } from '@/components/orders/modals/CancelledOrdersModal'
 import { useRealtimeMetrics } from '@/hooks/useRealtimeMetrics'
-import { DeliveryPersonMetrics } from '@/components/DeliveryPersonMetrics'
-import { CRM } from '@/components/CRM'
-import { DiscountMetrics } from '@/components/DiscountMetrics'
-import { OrderStatesStatsPanel } from '@/components/OrderStatesStatsPanel'
+import { DeliveryPersonMetrics } from '@/components/metrics/DeliveryPersonMetrics'
+import { CRM } from '@/components/crm/CRM'
+import { DiscountMetrics } from '@/components/metrics/DiscountMetrics'
+import { OrderStatesStatsPanel } from '@/components/metrics/OrderStatesStatsPanel'
 import { ExportButton } from '@/components/ui/ExportButton'
 import { formatters, type TableColumn } from '@/utils/exportUtils'
 
@@ -2510,8 +2510,19 @@ export function AdminPanel({ onBack, onNavigateToTimeMetrics }: AdminPanelProps)
                         data={metricsData.pedidosCancelados.porSede}
                         columns={[
                           { key: 'nombre', header: 'Sede' },
+                          { key: 'totalPedidos', header: 'Pedidos Totales' },
                           { key: 'cancelados', header: 'Cancelados' },
-                          { key: 'monto', header: 'Monto Perdido', format: formatters.currency },
+                          {
+                            key: 'porcentaje',
+                            header: 'Tasa de Cancelación',
+                            format: (value: number) => `${(value ?? 0).toFixed(1)}%`
+                          },
+                          {
+                            key: 'participacion',
+                            header: 'Participación en cancelados',
+                            format: (value: number) => `${(value ?? 0).toFixed(1)}%`
+                          },
+                          { key: 'monto', header: 'Monto Perdido', format: formatters.currency }
                         ]}
                         filename={`analisis_cancelaciones_${format(dateRange.from, 'yyyy-MM-dd')}_${format(dateRange.to, 'yyyy-MM-dd')}`}
                         formats={['excel', 'csv']}
@@ -2599,10 +2610,16 @@ export function AdminPanel({ onBack, onNavigateToTimeMetrics }: AdminPanelProps)
                                 <div className="text-right">
                                   <div className="font-bold text-red-600">{sede.cancelados}</div>
                                   <div className="text-xs text-muted-foreground">
-                                    {user?.role === 'admin_punto'
-                                      ? `${sede.cancelados} cancelaciones`
-                                      : `${sede.porcentaje ? sede.porcentaje.toFixed(1) : '0'}% del total`
-                                    }
+                                    Tasa: {sede.porcentaje ? sede.porcentaje.toFixed(1) : '0.0'}%
+                                    {user?.role === 'admin_global' && (
+                                      <>
+                                        {' · Participación: '}
+                                        {sede.participacion ? sede.participacion.toFixed(1) : '0.0'}%
+                                      </>
+                                    )}
+                                  </div>
+                                  <div className="text-xs text-muted-foreground">
+                                    Pedidos: {(sede.totalPedidos ?? 0).toLocaleString('es-CO')}
                                   </div>
                                 </div>
                               </div>

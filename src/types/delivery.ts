@@ -181,6 +181,13 @@ export interface DiscountApplication {
   discountComment: string;
   appliedBy: string;
   appliedDate: string;
+  orderStatus?: string;
+  orderDate?: string;
+  sedeId?: string | null;
+  sedeName?: string;
+  netTotal?: number;
+  originalTotal?: number;
+  discountPercent?: number;
 }
 
 export interface DiscountValidation {
@@ -201,7 +208,13 @@ export interface DiscountRequest {
 export interface DiscountMetrics {
   totalDiscounts: number;
   totalDiscountAmount: number;
+  totalNetAmount?: number;
   averageDiscount: number;
+  discountShare?: number;
   discountsByStatus: Record<string, number>;
   recentDiscounts: DiscountApplication[];
+  detailedDiscounts?: DiscountApplication[];
+  discountsByUser?: Array<{ user: string; count: number; totalAmount: number; averageAmount: number }>;
+  dailyDiscounts?: Array<{ date: string; count: number; totalAmount: number }>;
+  topDiscounts?: DiscountApplication[];
 }

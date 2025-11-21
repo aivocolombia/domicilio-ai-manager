@@ -7,6 +7,13 @@ export interface DiscountApplication {
   discountComment: string;
   appliedBy: string;
   appliedDate: string;
+  orderStatus?: string;
+  orderDate?: string;
+  sedeId?: string | null;
+  sedeName?: string;
+  netTotal?: number;
+  originalTotal?: number;
+  discountPercent?: number;
 }
 
 export interface DiscountValidation {
@@ -36,9 +43,15 @@ export interface PaymentOption {
 export interface DiscountMetrics {
   totalDiscounts: number;
   totalDiscountAmount: number;
+  totalNetAmount: number;
   averageDiscount: number;
+  discountShare: number;
   discountsByStatus: Record<string, number>;
   recentDiscounts: DiscountApplication[];
+  detailedDiscounts: DiscountApplication[];
+  discountsByUser: Array<{ user: string; count: number; totalAmount: number; averageAmount: number }>;
+  dailyDiscounts: Array<{ date: string; count: number; totalAmount: number }>;
+  topDiscounts: DiscountApplication[];
 }
 
 export class DiscountService {
@@ -343,11 +356,16 @@ export class DiscountService {
         .select(`
           id,
           status,
+          created_at,
+          sede_id,
           descuento_valor,
           descuento_comentario,
           descuento_aplicado_por,
           descuento_aplicado_fecha,
-          profiles!descuento_aplicado_por(display_name)
+          profiles!descuento_aplicado_por(display_name),
+          sedes!sede_id(name),
+          pagos!payment_id(total_pago),
+          pagos2:pagos!payment_id_2(total_pago)
         `)
         .not('descuento_valor', 'is', null)
         .gt('descuento_valor', 0);
@@ -381,41 +399,116 @@ export class DiscountService {
         return {
           totalDiscounts: 0,
           totalDiscountAmount: 0,
+          totalNetAmount: 0,
           averageDiscount: 0,
+          discountShare: 0,
           discountsByStatus: {},
-          recentDiscounts: []
+          recentDiscounts: [],
+          detailedDiscounts: [],
+          discountsByUser: [],
+          dailyDiscounts: [],
+          topDiscounts: []
         };
       }
 
-      // Calcular métricas
-      const totalDiscounts = discountData.length;
-      const totalDiscountAmount = discountData.reduce((sum, item) => sum + (item.descuento_valor || 0), 0);
-      const averageDiscount = totalDiscountAmount / totalDiscounts;
+      const detailedDiscounts: DiscountApplication[] = discountData.map((item: any) => {
+        const primaryPayment = Array.isArray(item.pagos)
+          ? item.pagos[0]?.total_pago ?? 0
+          : item.pagos?.total_pago ?? 0;
+        const secondaryPayment = Array.isArray(item.pagos2)
+          ? item.pagos2[0]?.total_pago ?? 0
+          : item.pagos2?.total_pago ?? 0;
+        const netTotal = (primaryPayment || 0) + (secondaryPayment || 0);
+        const discountAmount = item.descuento_valor || 0;
+        const originalTotal = netTotal + discountAmount;
+        const discountPercent = originalTotal > 0 ? discountAmount / originalTotal : 0;
 
-      // Agrupar por estado
-      const discountsByStatus = discountData.reduce((acc, item) => {
-        const status = item.status || 'Desconocido';
+        return {
+          orderId: item.id,
+          orderStatus: item.status || 'Desconocido',
+          orderDate: item.created_at || item.descuento_aplicado_fecha || '',
+          sedeId: item.sede_id,
+          sedeName: item.sedes?.name || 'Sin sede',
+          discountAmount,
+          discountComment: item.descuento_comentario || '',
+          appliedBy: item.profiles?.display_name || item.descuento_aplicado_por || 'Usuario desconocido',
+          appliedDate: item.descuento_aplicado_fecha || item.created_at || '',
+          netTotal,
+          originalTotal,
+          discountPercent
+        };
+      });
+
+      const totalDiscounts = detailedDiscounts.length;
+      const totalDiscountAmount = detailedDiscounts.reduce((sum, item) => sum + item.discountAmount, 0);
+      const totalNetAmount = detailedDiscounts.reduce((sum, item) => sum + (item.netTotal || 0), 0);
+      const averageDiscount = totalDiscounts > 0 ? totalDiscountAmount / totalDiscounts : 0;
+      const discountShare = totalDiscountAmount + totalNetAmount > 0
+        ? totalDiscountAmount / (totalDiscountAmount + totalNetAmount)
+        : 0;
+
+      const discountsByStatus = detailedDiscounts.reduce<Record<string, number>>((acc, item) => {
+        const status = item.orderStatus || 'Desconocido';
         acc[status] = (acc[status] || 0) + 1;
         return acc;
-      }, {} as Record<string, number>);
+      }, {});
 
-      // Obtener descuentos recientes (últimos 10)
-      const recentDiscounts: DiscountApplication[] = discountData.slice(0, 10).map(item => ({
-        orderId: item.id,
-        discountAmount: item.descuento_valor || 0,
-        discountComment: item.descuento_comentario || '',
-        appliedBy: item.profiles?.display_name || item.descuento_aplicado_por || 'Usuario desconocido',
-        appliedDate: item.descuento_aplicado_fecha || ''
-      }));
+      const discountsByUserMap = detailedDiscounts.reduce<Record<string, { user: string; count: number; totalAmount: number }>>((acc, item) => {
+        const key = item.appliedBy || 'Usuario desconocido';
+        if (!acc[key]) {
+          acc[key] = { user: key, count: 0, totalAmount: 0 };
+        }
+        acc[key].count += 1;
+        acc[key].totalAmount += item.discountAmount;
+        return acc;
+      }, {});
+
+      const discountsByUser = Object.values(discountsByUserMap)
+        .map(entry => ({
+          ...entry,
+          averageAmount: entry.count > 0 ? entry.totalAmount / entry.count : 0
+        }))
+        .sort((a, b) => b.totalAmount - a.totalAmount);
+
+      const dailyDiscountsMap = detailedDiscounts.reduce<Record<string, { date: string; count: number; totalAmount: number }>>((acc, item) => {
+        const dateKey = item.appliedDate
+          ? new Date(item.appliedDate).toISOString().slice(0, 10)
+          : 'Sin fecha';
+        if (!acc[dateKey]) {
+          acc[dateKey] = { date: dateKey, count: 0, totalAmount: 0 };
+        }
+        acc[dateKey].count += 1;
+        acc[dateKey].totalAmount += item.discountAmount;
+        return acc;
+      }, {});
+
+      const dailyDiscounts = Object.values(dailyDiscountsMap)
+        .sort((a, b) => {
+          const timeA = new Date(a.date).getTime();
+          const timeB = new Date(b.date).getTime();
+          const safeA = Number.isNaN(timeA) ? Number.MAX_SAFE_INTEGER : timeA;
+          const safeB = Number.isNaN(timeB) ? Number.MAX_SAFE_INTEGER : timeB;
+          return safeA - safeB;
+        });
+
+      const recentDiscounts = detailedDiscounts.slice(0, 10);
+      const topDiscounts = [...detailedDiscounts]
+        .sort((a, b) => b.discountAmount - a.discountAmount)
+        .slice(0, 5);
 
       const metrics: DiscountMetrics = {
         totalDiscounts,
         totalDiscountAmount,
+        totalNetAmount,
         averageDiscount,
+        discountShare,
         discountsByStatus,
-        recentDiscounts
+        recentDiscounts,
+        detailedDiscounts,
+        discountsByUser,
+        dailyDiscounts,
+        topDiscounts
       };
-
       console.log('✅ Métricas obtenidas:', metrics);
       return metrics;
     } catch (error) {

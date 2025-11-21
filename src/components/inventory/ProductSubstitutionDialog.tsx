@@ -13,7 +13,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Loader2, ArrowRight, ArrowUpDown, Info, Settings } from 'lucide-react';
 import { useSubstitutions } from '@/hooks/useSubstitutions';
 import type { AvailableSubstitution, SubstitutionDetails } from '@/services/substitutionService';
-import { PlatoToppingsDialog } from '@/components/PlatoToppingsDialog';
+import { PlatoToppingsDialog } from '@/components/inventory/PlatoToppingsDialog';
 
 interface ProductSubstitutionDialogProps {
   isOpen: boolean;

@@ -34,6 +34,8 @@ export interface CancelledOrderMetrics {
     nombre: string;
     cancelados: number;
     porcentaje: number;
+    participacion: number;
+    totalPedidos: number;
     monto: number;
   }>;
 }
@@ -834,7 +836,7 @@ export class MetricsService {
       // También obtener el total de pedidos para calcular porcentaje
       let totalQuery = supabase
         .from('ordenes')
-        .select('id, pagos!payment_id(total_pago)')
+        .select('id, sede_id')
         .neq('status', null);
 
       // Aplicar filtros de fecha y sede consistentes
@@ -863,6 +865,11 @@ export class MetricsService {
       // Procesar datos
       const totalCancelados = cancelados?.length || 0;
       const totalGeneral = totalPedidos?.length || 0;
+      const totalPedidosPorSede = new Map<string, number>();
+      totalPedidos?.forEach(order => {
+        const sedeId = order.sede_id || 'sin-sede';
+        totalPedidosPorSede.set(sedeId, (totalPedidosPorSede.get(sedeId) || 0) + 1);
+      });
       const porcentajeCancelacion = totalGeneral > 0 ? (totalCancelados / totalGeneral) * 100 : 0;
 
       // Calcular monto total perdido
@@ -893,13 +900,20 @@ export class MetricsService {
       });
 
       // Convertir a array y calcular porcentajes por sede
-      const porSede = Array.from(sedeMap.entries()).map(([sede_id, data]) => ({
-        sede_id,
-        nombre: data.nombre,
-        cancelados: data.cancelados,
-        porcentaje: totalCancelados > 0 ? (data.cancelados / totalCancelados) * 100 : 0,
-        monto: data.monto
-      })).sort((a, b) => b.cancelados - a.cancelados); // Ordenar por cantidad
+      const porSede = Array.from(sedeMap.entries()).map(([sede_id, data]) => {
+        const totalPedidosSede = totalPedidosPorSede.get(sede_id) || 0;
+        const tasaCancelacion = totalPedidosSede > 0 ? (data.cancelados / totalPedidosSede) * 100 : 0;
+        const participacion = totalCancelados > 0 ? (data.cancelados / totalCancelados) * 100 : 0;
+        return {
+          sede_id,
+          nombre: data.nombre,
+          cancelados: data.cancelados,
+          porcentaje: tasaCancelacion,
+          participacion,
+          totalPedidos: totalPedidosSede,
+          monto: data.monto
+        };
+      }).sort((a, b) => b.cancelados - a.cancelados);
 
       const resultado: CancelledOrderMetrics = {
         total: totalCancelados,

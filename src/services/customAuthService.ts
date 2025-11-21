@@ -61,7 +61,7 @@ export class CustomAuthService {
         return { error: 'Nickname o contraseña incorrectos' };
       }
 
-      // Buscar usuario por nickname sin la relación de sede primero
+      // Buscar usuario por nickname sin filtrar por is_active primero
       const { data, error } = await supabase
         .from('profiles')
         .select(`
@@ -74,17 +74,26 @@ export class CustomAuthService {
           is_active
         `)
         .eq('nickname', cleanNickname)
-        .eq('is_active', true)
         .single();
 
       if (error) {
         console.error('❌ Error buscando usuario:', error);
-        return { error: 'Nickname o contraseña incorrectos' };
+        if (error.code === 'PGRST116') {
+          // No rows returned
+          return { error: 'Usuario no encontrado. Verifica tu nickname.' };
+        }
+        return { error: 'Error al conectar con la base de datos. Intenta nuevamente.' };
       }
 
       if (!data) {
         console.log('❌ Usuario no encontrado:', cleanNickname);
-        return { error: 'Nickname o contraseña incorrectos' };
+        return { error: 'Usuario no encontrado. Verifica tu nickname.' };
+      }
+
+      // Verificar si el usuario está activo
+      if (!data.is_active) {
+        console.log('❌ Usuario inactivo:', cleanNickname);
+        return { error: 'Tu cuenta está desactivada. Contacta al administrador.' };
       }
 
       // Verificar contraseña usando la función crypt de PostgreSQL
@@ -98,23 +107,23 @@ export class CustomAuthService {
         console.log('ℹ️ Función verify_password no existe, usando verificación directa');
         // Crear una verificación temporal usando una query que devuelva el usuario solo si la password coincide
         const { data: verifyData, error: verifyError } = await supabase
-          .from('profiles') 
+          .from('profiles')
           .select('id')
           .eq('nickname', cleanNickname)
           .eq('is_active', true)
           .filter('password_hash', 'eq', `crypt('${cleanPassword}', password_hash)`)
           .single();
-          
+
         if (verifyError || !verifyData) {
           console.log('❌ Contraseña incorrecta para:', cleanNickname);
-          return { error: 'Nickname o contraseña incorrectos' };
+          return { error: 'Contraseña incorrecta. Verifica e intenta nuevamente.' };
         }
       } else if (passwordError) {
         console.error('❌ Error verificando contraseña:', passwordError);
-        return { error: 'Error de autenticación: ' + passwordError.message };
+        return { error: 'Error al verificar las credenciales. Intenta nuevamente.' };
       } else if (!passwordCheck) {
         console.log('❌ Contraseña incorrecta para:', cleanNickname);
-        return { error: 'Nickname o contraseña incorrectos' };
+        return { error: 'Contraseña incorrecta. Verifica e intenta nuevamente.' };
       }
 
       // Obtener nombre de la sede por separado
