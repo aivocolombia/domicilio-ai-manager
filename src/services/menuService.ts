@@ -25,43 +25,35 @@ class MenuService {
   // Obtener todo el menú (solo productos disponibles - para el menú público)
   async getMenu(): Promise<MenuResponse> {
     try {
-      console.log('🔍 Consultando tabla platos:', TABLES.PLATOS);
-      
-      // Platos (sin filtro available ya que se maneja por sede)
-      const { data: platos, error: platosError } = await supabase
-        .from(TABLES.PLATOS)
-        .select('id, name, description, pricing, created_at, updated_at')
-        .order('name', { ascending: true });
+      // Ejecutar todas las queries en paralelo para mejor rendimiento
+      const [platosResult, toppingsResult, relationsResult, bebidasResult] = await Promise.all([
+        supabase
+          .from(TABLES.PLATOS)
+          .select('id, name, description, pricing, created_at, updated_at')
+          .order('name', { ascending: true }),
+        supabase
+          .from(TABLES.TOPPINGS)
+          .select('id, name, pricing, created_at, updated_at')
+          .order('name', { ascending: true }),
+        supabase
+          .from(TABLES.PLATO_TOPPINGS)
+          .select('plato_id, topping_id'),
+        supabase
+          .from(TABLES.BEBIDAS)
+          .select('id, name, pricing, created_at, updated_at')
+          .order('name', { ascending: true })
+      ]);
 
-      console.log('📊 Resultado consulta platos - data:', platos);
-      console.log('📊 Resultado consulta platos - error:', platosError);
+      // Validar errores
+      if (platosResult.error) throw platosResult.error;
+      if (toppingsResult.error) throw toppingsResult.error;
+      if (relationsResult.error) throw relationsResult.error;
+      if (bebidasResult.error) throw bebidasResult.error;
 
-      if (platosError) throw platosError;
-
-      console.log('🔍 Consultando tabla toppings:', TABLES.TOPPINGS);
-      
-      // Toppings (sin filtro available ya que se maneja por sede)
-      const { data: allToppings, error: toppingsError } = await supabase
-        .from(TABLES.TOPPINGS)
-        .select('id, name, pricing, created_at, updated_at')
-        .order('name', { ascending: true });
-
-      console.log('📊 Resultado consulta toppings - data:', allToppings);
-      console.log('📊 Resultado consulta toppings - error:', toppingsError);
-
-      if (toppingsError) throw toppingsError;
-
-      console.log('🔍 Consultando tabla plato_toppings:', TABLES.PLATO_TOPPINGS);
-      
-      // Relaciones plato-toppings
-      const { data: platoToppings, error: relationsError } = await supabase
-        .from(TABLES.PLATO_TOPPINGS)
-        .select('plato_id, topping_id');
-
-      console.log('📊 Resultado consulta relaciones - data:', platoToppings);
-      console.log('📊 Resultado consulta relaciones - error:', relationsError);
-
-      if (relationsError) throw relationsError;
+      const platos = platosResult.data;
+      const allToppings = toppingsResult.data;
+      const platoToppings = relationsResult.data;
+      const bebidas = bebidasResult.data;
 
       // Índice de toppings por id para lookup O(1)
       const toppingById = new Map<number, Topping>((allToppings || []).map(t => [t.id, t]));
@@ -82,19 +74,6 @@ class MenuService {
           .filter((t): t is Topping => Boolean(t));
         return { ...plato, toppings };
       });
-
-      console.log('🔍 Consultando tabla bebidas:', TABLES.BEBIDAS);
-      
-      // Bebidas (sin filtro available ya que se maneja por sede)
-      const { data: bebidas, error: bebidasError } = await supabase
-        .from(TABLES.BEBIDAS)
-        .select('id, name, pricing, created_at, updated_at')
-        .order('name', { ascending: true });
-
-      console.log('📊 Resultado consulta bebidas - data:', bebidas);
-      console.log('📊 Resultado consulta bebidas - error:', bebidasError);
-
-      if (bebidasError) throw bebidasError;
 
       return { platos: platosConToppings, bebidas: bebidas || [] };
     } catch (error) {

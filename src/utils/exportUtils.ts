@@ -1,7 +1,9 @@
-import * as XLSX from 'xlsx';
-import jsPDF from 'jspdf';
-import html2canvas from 'html2canvas';
-import { saveAs } from 'file-saver';
+// Imports dinámicos para reducir bundle inicial (~900KB)
+// Las librerías se cargan solo cuando se necesitan exportar
+const loadXLSX = () => import('xlsx');
+const loadJsPDF = () => import('jspdf');
+const loadHtml2Canvas = () => import('html2canvas');
+const loadFileSaver = () => import('file-saver');
 
 export interface ExportOptions {
   filename: string;
@@ -25,14 +27,14 @@ export interface PDFSection {
   calculate?: (data: any[]) => Record<string, any>;
 }
 
-// Exportar tabla a Excel
-export const exportToExcel = (data: any[], columns: TableColumn[], options: ExportOptions) => {
+// Exportar tabla a Excel (con import dinámico)
+export const exportToExcel = async (data: any[], columns: TableColumn[], options: ExportOptions) => {
   try {
-    console.log('📊 Exportando a Excel:', {
-      rows: data.length,
-      columns: columns.length,
-      filename: options.filename
-    });
+    // Cargar librerías bajo demanda
+    const [XLSX, { saveAs }] = await Promise.all([
+      loadXLSX(),
+      loadFileSaver()
+    ]);
 
     // Crear encabezados
     const headers = columns.map(col => col.header);
@@ -105,7 +107,6 @@ export const exportToExcel = (data: any[], columns: TableColumn[], options: Expo
 
     saveAs(blob, filename);
 
-    console.log('✅ Excel exportado exitosamente:', filename);
     return true;
   } catch (error) {
     console.error('❌ Error exportando a Excel:', error);
@@ -113,14 +114,11 @@ export const exportToExcel = (data: any[], columns: TableColumn[], options: Expo
   }
 };
 
-// Exportar tabla a CSV
-export const exportToCSV = (data: any[], columns: TableColumn[], options: ExportOptions) => {
+// Exportar tabla a CSV (con import dinámico)
+export const exportToCSV = async (data: any[], columns: TableColumn[], options: ExportOptions) => {
   try {
-    console.log('📊 Exportando a CSV:', {
-      rows: data.length,
-      columns: columns.length,
-      filename: options.filename
-    });
+    // Cargar file-saver bajo demanda
+    const { saveAs } = await loadFileSaver();
 
     // Crear encabezados
     const headers = columns.map(col => col.header);
@@ -155,7 +153,6 @@ export const exportToCSV = (data: any[], columns: TableColumn[], options: Export
 
     saveAs(blob, filename);
 
-    console.log('✅ CSV exportado exitosamente:', filename);
     return true;
   } catch (error) {
     console.error('❌ Error exportando a CSV:', error);
@@ -163,7 +160,7 @@ export const exportToCSV = (data: any[], columns: TableColumn[], options: Export
   }
 };
 
-// Generar PDF con texto y tablas
+// Generar PDF con texto y tablas (con import dinámico)
 export const exportToPDF = async (
   sections: PDFSection[],
   options: ExportOptions,
@@ -171,7 +168,13 @@ export const exportToPDF = async (
   data: any[] = []
 ) => {
   try {
-    console.log('📊 Generando PDF:', options.filename);
+    // Cargar librerías bajo demanda
+    const [jsPDFModule, html2canvasModule] = await Promise.all([
+      loadJsPDF(),
+      loadHtml2Canvas()
+    ]);
+    const jsPDF = jsPDFModule.default;
+    const html2canvas = html2canvasModule.default;
 
     const pdf = new jsPDF();
     let yPosition = 20;

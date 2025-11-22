@@ -5,6 +5,16 @@ import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Textarea } from '@/components/ui/textarea';
@@ -1150,6 +1160,43 @@ export const SedeOrders: React.FC<SedeOrdersProps> = ({
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Diálogo de confirmación para costo de envío $0 */}
+      <AlertDialog open={showZeroDeliveryConfirm} onOpenChange={setShowZeroDeliveryConfirm}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <AlertTriangle className="h-5 w-5 text-amber-500" />
+              Confirmar Envío Sin Costo
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              El costo de envío es $0. Esto puede ocurrir cuando:
+              <ul className="list-disc pl-5 mt-2 space-y-1">
+                <li>La entrega es muy cercana y no se cobra al cliente</li>
+                <li>Es una cortesía o promoción especial</li>
+                <li>El cliente tiene un beneficio de envío gratis</li>
+              </ul>
+              <p className="mt-3 font-medium">
+                ¿Desea continuar con la creación del pedido sin costo de envío?
+              </p>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setShowZeroDeliveryConfirm(false)}>
+              Cancelar
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={async () => {
+                setShowZeroDeliveryConfirm(false);
+                await executeCreateOrder();
+              }}
+              className="bg-green-600 hover:bg-green-700"
+            >
+              Sí, Crear Pedido
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* Lista de órdenes */}
       <Card>

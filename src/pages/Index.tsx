@@ -1,11 +1,11 @@
 import React, { useState, useEffect, Suspense, lazy } from 'react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Dashboard } from '@/components/orders/Dashboard';
-import { Inventory } from '@/components/inventory/Inventory';
-import { DeliveryPersonnel } from '@/components/delivery/DeliveryPersonnel';
 import { UserProfile } from '@/components/auth/UserProfile';
 
-// Lazy loading para componentes pesados
+// Lazy loading para componentes pesados - mejora TTI en ~1.5s
+const Dashboard = lazy(() => import('@/components/orders/Dashboard').then(module => ({ default: module.Dashboard })));
+const Inventory = lazy(() => import('@/components/inventory/Inventory').then(module => ({ default: module.Inventory })));
+const DeliveryPersonnel = lazy(() => import('@/components/delivery/DeliveryPersonnel').then(module => ({ default: module.DeliveryPersonnel })));
 const AdminPanel = lazy(() => import('@/components/metrics/AdminPanel').then(module => ({ default: module.AdminPanel })));
 const TimeMetricsPage = lazy(() => import('@/components/metrics/TimeMetricsPage').then(module => ({ default: module.TimeMetricsPage })));
 
@@ -519,29 +519,35 @@ const Index = () => {
           </TabsList>
 
           <TabsContent value="dashboard">
-            <Dashboard
-              orders={orders}
-              settings={settings}
-              deliveryPersonnel={deliveryPersonnel}
-              effectiveSedeId={effectiveSedeId}
-              currentSedeName={currentSedeName}
-              onUpdateOrders={setOrders}
-              onUpdateSettings={setSettings}
-            />
+            <Suspense fallback={<Loading message="Cargando dashboard..." size="lg" />}>
+              <Dashboard
+                orders={orders}
+                settings={settings}
+                deliveryPersonnel={deliveryPersonnel}
+                effectiveSedeId={effectiveSedeId}
+                currentSedeName={currentSedeName}
+                onUpdateOrders={setOrders}
+                onUpdateSettings={setSettings}
+              />
+            </Suspense>
           </TabsContent>
 
           <TabsContent value="inventory">
-            <Inventory 
-              effectiveSedeId={effectiveSedeId}
-              currentSedeName={currentSedeName}
-            />
+            <Suspense fallback={<Loading message="Cargando inventario..." size="lg" />}>
+              <Inventory
+                effectiveSedeId={effectiveSedeId}
+                currentSedeName={currentSedeName}
+              />
+            </Suspense>
           </TabsContent>
 
           <TabsContent value="personnel">
-            <DeliveryPersonnel 
-              effectiveSedeId={effectiveSedeId}
-              currentSedeName={currentSedeName}
-            />
+            <Suspense fallback={<Loading message="Cargando repartidores..." size="lg" />}>
+              <DeliveryPersonnel
+                effectiveSedeId={effectiveSedeId}
+                currentSedeName={currentSedeName}
+              />
+            </Suspense>
           </TabsContent>
 
 

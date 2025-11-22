@@ -72,13 +72,13 @@ export const DeliveryPersonMetrics: React.FC<DeliveryPersonMetricsProps> = ({
           return {
             ...baseData,
             value: Math.round(repartidor.porcentaje_exito * 100) / 100,
-            label: 'Tasa de Ã‰xito (%)'
+            label: 'Tasa de Exito (%)'
           };
         case 'days':
           return {
             ...baseData,
             value: repartidor.dias_trabajados,
-            label: 'DÃ­as Trabajados'
+            label: 'Dias Trabajados'
           };
         case 'amount':
           return {
@@ -95,8 +95,8 @@ export const DeliveryPersonMetrics: React.FC<DeliveryPersonMetricsProps> = ({
   const getViewTitle = () => {
     switch (performanceView) {
       case 'orders': return 'Pedidos Entregados vs Asignados';
-      case 'success': return 'Tasa de Ã‰xito por Repartidor';
-      case 'days': return 'DÃ­as Trabajados por Repartidor';
+      case 'success': return 'Tasa de Exito por Repartidor';
+      case 'days': return 'Dias Trabajados por Repartidor';
       case 'amount': return 'Monto Total Entregado por Repartidor';
       default: return 'Rendimiento de Repartidores';
     }
@@ -134,7 +134,7 @@ export const DeliveryPersonMetrics: React.FC<DeliveryPersonMetricsProps> = ({
       {/* Header with Metric Type Selector */}
       <div className="flex flex-col lg:flex-row gap-4 items-start lg:items-center justify-between">
         <div>
-          <h2 className="text-2xl font-bold">MÃ©tricas Avanzadas</h2>
+          <h2 className="text-2xl font-bold">Metricas Avanzadas</h2>
           <p className="text-muted-foreground flex items-center gap-2">
             <Calendar className="h-4 w-4" />
             {formatDateRange() || 'Sin filtros de fecha'}
@@ -147,7 +147,7 @@ export const DeliveryPersonMetrics: React.FC<DeliveryPersonMetricsProps> = ({
             onValueChange={(value: MetricType) => setMetricType(value)}
           >
             <SelectTrigger className="w-[200px]">
-              <SelectValue placeholder="Tipo de mÃ©trica" />
+              <SelectValue placeholder="Tipo de metrica" />
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="performance">
@@ -167,7 +167,7 @@ export const DeliveryPersonMetrics: React.FC<DeliveryPersonMetricsProps> = ({
           
           {metricType === 'time' && onNavigateToTimeMetrics && (
             <Button onClick={onNavigateToTimeMetrics} variant="outline">
-              Ver MÃ©tricas de Tiempo
+              Ver Metricas de Tiempo
             </Button>
           )}
         </div>
@@ -208,7 +208,7 @@ export const DeliveryPersonMetrics: React.FC<DeliveryPersonMetricsProps> = ({
                     <p className="text-2xl font-bold text-orange-600">
                       {performanceData.resumen.promedio_exito.toFixed(1)}%
                     </p>
-                    <p className="text-sm text-muted-foreground">Tasa de Ã‰xito Promedio</p>
+                    <p className="text-sm text-muted-foreground">Tasa de Exito Promedio</p>
                   </div>
                   <TrendingUp className="h-8 w-8 text-orange-600" />
                 </CardContent>
@@ -238,7 +238,7 @@ export const DeliveryPersonMetrics: React.FC<DeliveryPersonMetricsProps> = ({
                     {getViewTitle()}
                   </CardTitle>
                   <CardDescription>
-                    ComparaciÃ³n de rendimiento entre repartidores
+                    Comparacion de rendimiento entre repartidores
                   </CardDescription>
                 </div>
                 <Select
@@ -250,8 +250,8 @@ export const DeliveryPersonMetrics: React.FC<DeliveryPersonMetricsProps> = ({
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="orders">Pedidos Entregados</SelectItem>
-                    <SelectItem value="success">Tasa de Ã‰xito</SelectItem>
-                    <SelectItem value="days">DÃ­as Trabajados</SelectItem>
+                    <SelectItem value="success">Tasa de Exito</SelectItem>
+                    <SelectItem value="days">Dias Trabajados</SelectItem>
                     <SelectItem value="amount">Monto Entregado</SelectItem>
                   </SelectContent>
                 </Select>
@@ -262,12 +262,12 @@ export const DeliveryPersonMetrics: React.FC<DeliveryPersonMetricsProps> = ({
                 <div className="flex items-center justify-center py-8">
                   <div className="text-center">
                     <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mx-auto mb-2"></div>
-                    <p className="text-sm text-muted-foreground">Cargando mÃ©tricas de repartidores...</p>
+                    <p className="text-sm text-muted-foreground">Cargando metricas de repartidores...</p>
                   </div>
                 </div>
               ) : error ? (
                 <div className="text-center py-8">
-                  <div className="text-red-500 mb-2">Error al cargar las mÃ©tricas</div>
+                  <div className="text-red-500 mb-2">Error al cargar las metricas</div>
                   <div className="text-sm text-muted-foreground mb-4">{error}</div>
                   <Button variant="outline" size="sm" onClick={loadPerformanceData}>
                     Reintentar
@@ -295,9 +295,9 @@ export const DeliveryPersonMetrics: React.FC<DeliveryPersonMetricsProps> = ({
                           <Bar dataKey="secondary" name="Asignados" fill="#F59E0B" />
                         </>
                       ) : performanceView === 'success' ? (
-                        <Bar dataKey="value" name="Tasa de Ã‰xito (%)" fill="#10B981" />
+                        <Bar dataKey="value" name="Tasa de Exito (%)" fill="#10B981" />
                       ) : performanceView === 'days' ? (
-                        <Bar dataKey="value" name="DÃ­as Trabajados" fill="#8B5CF6" />
+                        <Bar dataKey="value" name="Dias Trabajados" fill="#8B5CF6" />
                       ) : (
                         <Bar dataKey="value" name="Monto (miles)" fill="#EF4444" />
                       )}
@@ -309,7 +309,7 @@ export const DeliveryPersonMetrics: React.FC<DeliveryPersonMetricsProps> = ({
                   <Truck className="h-12 w-12 mx-auto text-muted-foreground mb-4 opacity-50" />
                   <h3 className="text-lg font-semibold mb-2">No hay datos de repartidores</h3>
                   <p className="text-sm text-muted-foreground">
-                    No se encontraron repartidores con Ã³rdenes en el perÃ­odo seleccionado.
+                    No se encontraron repartidores con ordenes en el periodo seleccionado.
                   </p>
                 </div>
               )}
@@ -322,7 +322,7 @@ export const DeliveryPersonMetrics: React.FC<DeliveryPersonMetricsProps> = ({
               <CardHeader>
                 <CardTitle>Detalle de Rendimiento</CardTitle>
                 <CardDescription>
-                  MÃ©tricas detalladas de cada repartidor
+                  Metricas detalladas de cada repartidor
                 </CardDescription>
               </CardHeader>
               <CardContent>
@@ -334,8 +334,8 @@ export const DeliveryPersonMetrics: React.FC<DeliveryPersonMetricsProps> = ({
                         <th className="text-center py-2">Asignados</th>
                         <th className="text-center py-2">Entregados</th>
                         <th className="text-center py-2">Cancelados</th>
-                        <th className="text-center py-2">Tasa de Ã‰xito</th>
-                        <th className="text-center py-2">DÃ­as Trabajados</th>
+                        <th className="text-center py-2">Tasa de Exito</th>
+                        <th className="text-center py-2">Dias Trabajados</th>
                         <th className="text-right py-2">Monto Entregado</th>
                       </tr>
                     </thead>
@@ -387,17 +387,17 @@ export const DeliveryPersonMetrics: React.FC<DeliveryPersonMetricsProps> = ({
           <CardContent className="py-8">
             <div className="text-center mb-6">
               <Clock className="h-16 w-16 text-blue-500 mx-auto mb-4" />
-              <h3 className="text-xl font-semibold mb-2">AnÃ¡lisis de Tiempo por Etapas</h3>
+              <h3 className="text-xl font-semibold mb-2">Analisis de Tiempo por Etapas</h3>
               <p className="text-muted-foreground max-w-2xl mx-auto">
-                Accede al anÃ¡lisis detallado de tiempos de procesamiento con grÃ¡ficos de lÃ­neas interactivos que muestran 
-                el flujo temporal completo desde la recepciÃ³n hasta la entrega de pedidos.
+                Accede al analisis detallado de tiempos de procesamiento con graficos de lineas interactivos que muestran
+                el flujo temporal completo desde la recepcion hasta la entrega de pedidos.
               </p>
             </div>
             
             <div className="grid md:grid-cols-3 gap-4 mb-6">
               <div className="text-center p-4 bg-blue-50 rounded-lg">
                 <div className="text-2xl font-bold text-blue-600 mb-1">ðŸ“ˆ</div>
-                <div className="font-semibold text-blue-800 mb-1">GrÃ¡ficos de LÃ­neas</div>
+                <div className="font-semibold text-blue-800 mb-1">Graficos de Lineas</div>
                 <div className="text-sm text-blue-600">Tendencias temporales por fase</div>
               </div>
               <div className="text-center p-4 bg-green-50 rounded-lg">
@@ -407,7 +407,7 @@ export const DeliveryPersonMetrics: React.FC<DeliveryPersonMetricsProps> = ({
               </div>
               <div className="text-center p-4 bg-purple-50 rounded-lg">
                 <div className="text-2xl font-bold text-purple-600 mb-1">ðŸŽ¯</div>
-                <div className="font-semibold text-purple-800 mb-1">AnÃ¡lisis por Estado</div>
+                <div className="font-semibold text-purple-800 mb-1">Analisis por Estado</div>
                 <div className="text-sm text-purple-600">Recibido, Cocina, Camino, Entregado</div>
               </div>
             </div>
@@ -416,11 +416,11 @@ export const DeliveryPersonMetrics: React.FC<DeliveryPersonMetricsProps> = ({
               {onNavigateToTimeMetrics ? (
                 <Button onClick={onNavigateToTimeMetrics} size="lg" className="px-8">
                   <Clock className="h-5 w-5 mr-2" />
-                  Abrir AnÃ¡lisis de Tiempo por Etapas
+                  Abrir Analisis de Tiempo por Etapas
                 </Button>
               ) : (
                 <div className="text-sm text-muted-foreground">
-                  FunciÃ³n de navegaciÃ³n no disponible
+                  Funcion de navegacion no disponible
                 </div>
               )}
             </div>

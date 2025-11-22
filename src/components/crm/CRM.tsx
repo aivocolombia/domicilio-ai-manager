@@ -1,10 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
   Users,
@@ -53,6 +53,7 @@ export const CRM: React.FC<CRMProps> = ({ effectiveSedeId }) => {
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage] = useState(15);
   const [activeTab, setActiveTab] = useState('customers');
+  const [isDialogOpen, setIsDialogOpen] = useState(false); // OPTIMIZADO: Control del dialog único
 
   const getOrderItemIcon = (type: CRMOrderItemSummary['type']) => {
     const baseClasses = 'h-3.5 w-3.5';
@@ -148,13 +149,14 @@ export const CRM: React.FC<CRMProps> = ({ effectiveSedeId }) => {
     }
   };
 
-  // Abrir modal de cliente
-  const openCustomerModal = async (customer: CRMCustomer) => {
+  // OPTIMIZADO: Abrir modal de cliente con control del dialog
+  const openCustomerModal = useCallback(async (customer: CRMCustomer) => {
     setSelectedCustomer(customer);
     setCustomerOrders([]);
     setCustomerFavoriteProduct(null);
+    setIsDialogOpen(true);
     await loadCustomerOrders(customer.id);
-  };
+  }, [sedeToUse]);
 
   // Función para manejar el ordenamiento
   const handleSort = (column: keyof CRMCustomer) => {
@@ -169,51 +171,57 @@ export const CRM: React.FC<CRMProps> = ({ effectiveSedeId }) => {
     setCurrentPage(1); // Resetear a la primera página
   };
 
-  // Filtrar clientes por término de búsqueda
-  const filteredCustomers = customers.filter(customer =>
-    customer.nombre.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    customer.telefono.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    customer.direccion.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  // OPTIMIZADO: Filtrar y ordenar clientes con useMemo para evitar recálculos innecesarios
+  const sortedCustomers = useMemo(() => {
+    // Primero filtrar
+    const filtered = customers.filter(customer =>
+      customer.nombre.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      customer.telefono.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      customer.direccion.toLowerCase().includes(searchTerm.toLowerCase())
+    );
 
-  // Ordenar clientes filtrados
-  const sortedCustomers = [...filteredCustomers].sort((a, b) => {
-    const aValue = a[sortColumn];
-    const bValue = b[sortColumn];
+    // Luego ordenar
+    return [...filtered].sort((a, b) => {
+      const aValue = a[sortColumn];
+      const bValue = b[sortColumn];
 
-    // Manejar valores null/undefined
-    if (aValue === null || aValue === undefined) return 1;
-    if (bValue === null || bValue === undefined) return -1;
+      // Manejar valores null/undefined
+      if (aValue === null || aValue === undefined) return 1;
+      if (bValue === null || bValue === undefined) return -1;
 
-    // Comparación según el tipo de dato
-    let comparison = 0;
-    if (typeof aValue === 'string' && typeof bValue === 'string') {
-      comparison = aValue.localeCompare(bValue);
-    } else if (typeof aValue === 'number' && typeof bValue === 'number') {
-      comparison = aValue - bValue;
-    } else {
-      // Para fechas en string o cualquier otro tipo
-      const aStr = String(aValue);
-      const bStr = String(bValue);
-      const aDate = new Date(aStr);
-      const bDate = new Date(bStr);
-
-      // Verificar si son fechas válidas
-      if (!isNaN(aDate.getTime()) && !isNaN(bDate.getTime())) {
-        comparison = aDate.getTime() - bDate.getTime();
+      // Comparación según el tipo de dato
+      let comparison = 0;
+      if (typeof aValue === 'string' && typeof bValue === 'string') {
+        comparison = aValue.localeCompare(bValue);
+      } else if (typeof aValue === 'number' && typeof bValue === 'number') {
+        comparison = aValue - bValue;
       } else {
-        comparison = aStr.localeCompare(bStr);
+        // Para fechas en string o cualquier otro tipo
+        const aStr = String(aValue);
+        const bStr = String(bValue);
+        const aDate = new Date(aStr);
+        const bDate = new Date(bStr);
+
+        // Verificar si son fechas válidas
+        if (!isNaN(aDate.getTime()) && !isNaN(bDate.getTime())) {
+          comparison = aDate.getTime() - bDate.getTime();
+        } else {
+          comparison = aStr.localeCompare(bStr);
+        }
       }
-    }
 
-    return sortDirection === 'asc' ? comparison : -comparison;
-  });
+      return sortDirection === 'asc' ? comparison : -comparison;
+    });
+  }, [customers, searchTerm, sortColumn, sortDirection]);
 
-  // Lógica de paginación usando los datos ordenados
-  const totalPages = Math.ceil(sortedCustomers.length / itemsPerPage);
-  const indexOfLastItem = currentPage * itemsPerPage;
-  const indexOfFirstItem = indexOfLastItem - itemsPerPage;
-  const currentCustomers = sortedCustomers.slice(indexOfFirstItem, indexOfLastItem);
+  // OPTIMIZADO: Lógica de paginación memoizada
+  const { totalPages, currentCustomers } = useMemo(() => {
+    const total = Math.ceil(sortedCustomers.length / itemsPerPage);
+    const indexOfLastItem = currentPage * itemsPerPage;
+    const indexOfFirstItem = indexOfLastItem - itemsPerPage;
+    const current = sortedCustomers.slice(indexOfFirstItem, indexOfLastItem);
+    return { totalPages: total, currentCustomers: current };
+  }, [sortedCustomers, currentPage, itemsPerPage]);
 
   const handlePageChange = (pageNumber: number) => {
     if (pageNumber > 0 && pageNumber <= totalPages) {
@@ -588,200 +596,15 @@ export const CRM: React.FC<CRMProps> = ({ effectiveSedeId }) => {
                         <p className="font-bold">{formatCurrency(customer.average_order_value)}</p>
                       </TableCell>
                       <TableCell>
-                        <Dialog>
-                          <DialogTrigger asChild>
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => openCustomerModal(customer)}
-                            >
-                              <Eye className="h-4 w-4 mr-2" />
-                              Ver Detalles
-                            </Button>
-                          </DialogTrigger>
-                          <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
-                            <DialogHeader>
-                              <DialogTitle>Detalles del Cliente</DialogTitle>
-                              <DialogDescription>
-                                Información completa e historial de órdenes de {selectedCustomer?.nombre}
-                              </DialogDescription>
-                            </DialogHeader>
-                            
-                            {selectedCustomer && (
-                              <div className="space-y-6">
-                                {/* Información del cliente */}
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                  <Card>
-                                    <CardHeader>
-                                      <CardTitle className="text-lg">Información Personal</CardTitle>
-                                    </CardHeader>
-                                    <CardContent className="space-y-3">
-                                      <div className="flex items-center gap-2">
-                                        <User className="h-4 w-4 text-muted-foreground" />
-                                        <span className="font-medium">{selectedCustomer.nombre}</span>
-                                      </div>
-                                      <div className="flex items-center gap-2">
-                                        <Phone className="h-4 w-4 text-muted-foreground" />
-                                        <span className="font-mono">{selectedCustomer.telefono}</span>
-                                      </div>
-                                      <div className="flex items-start gap-2">
-                                        <MapPin className="h-4 w-4 text-muted-foreground mt-0.5" />
-                                        <span className="text-sm">{selectedCustomer.direccion}</span>
-                                      </div>
-                                      <div className="flex items-center gap-2">
-                                        <Calendar className="h-4 w-4 text-muted-foreground" />
-                                        <span className="text-sm">
-                                          Cliente desde: {formatDate(selectedCustomer.created_at)}
-                                        </span>
-                                      </div>
-                                    </CardContent>
-                                  </Card>
-
-                                  <Card>
-                                    <CardHeader>
-                                      <CardTitle className="text-lg">Estadísticas</CardTitle>
-                                    </CardHeader>
-                                    <CardContent className="space-y-3">
-                                      <div className="flex justify-between">
-                                        <span className="text-sm text-muted-foreground">Total de órdenes:</span>
-                                        <span className="font-bold">{selectedCustomer.total_orders}</span>
-                                      </div>
-                                      <div className="flex justify-between">
-                                        <span className="text-sm text-muted-foreground">Total gastado:</span>
-                                        <span className="font-bold">{formatCurrency(selectedCustomer.total_spent)}</span>
-                                      </div>
-                                      <div className="flex justify-between">
-                                        <span className="text-sm text-muted-foreground">Valor promedio:</span>
-                                        <span className="font-bold">{formatCurrency(selectedCustomer.average_order_value)}</span>
-                                      </div>
-                                      <div className="flex justify-between">
-                                        <span className="text-sm text-muted-foreground">Última orden:</span>
-                                        <span className="text-sm">
-                                          {selectedCustomer.last_order_date ? formatDate(selectedCustomer.last_order_date) : 'Sin órdenes'}
-                                        </span>
-                                      </div>
-                                      <div className="pt-3 border-t border-border space-y-2">
-                                        <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                                          <Star className="h-4 w-4 text-amber-500" />
-                                          <span>Producto favorito</span>
-                                        </div>
-                                        {selectedCustomer.total_orders > 0 ? (
-                                          customerFavoriteProduct ? (
-                                            <div className="flex items-center justify-between gap-3">
-                                              <div className="flex items-center gap-2">
-                                                {getOrderItemIcon(customerFavoriteProduct.type)}
-                                                <span className="font-medium">{customerFavoriteProduct.name}</span>
-                                              </div>
-                                              <Badge variant="outline" className="text-xs">
-                                                {customerFavoriteProduct.count} pedidos
-                                              </Badge>
-                                            </div>
-                                          ) : (
-                                            <span className="text-xs text-muted-foreground">Sin datos suficientes para calcular el favorito</span>
-                                          )
-                                        ) : (
-                                          <span className="text-xs text-muted-foreground">El cliente aún no tiene órdenes registradas</span>
-                                        )}
-                                      </div>
-                                    </CardContent>
-                                  </Card>
-                                </div>
-
-                                {/* Historial de órdenes */}
-                                <Card>
-                                  <CardHeader>
-                                    <CardTitle className="text-lg">Historial de Órdenes</CardTitle>
-                                    <CardDescription>Últimas 20 órdenes del cliente</CardDescription>
-                                  </CardHeader>
-                                  <CardContent>
-                                    {loadingOrders ? (
-                                      <div className="text-center py-4">
-                                        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto"></div>
-                                        <p className="text-sm text-muted-foreground mt-2">Cargando órdenes...</p>
-                                      </div>
-                                    ) : customerOrders.length > 0 ? (
-                                      <div className="space-y-3">
-                                        {customerOrders.map((order) => (
-                                          <div key={order.id} className="border rounded-lg p-4">
-                                            <div className="flex items-center justify-between mb-2">
-                                              <div className="flex items-center gap-2 flex-wrap">
-                                                <span className="font-medium">Orden #{order.id}</span>
-                                                <Badge variant={getStatusBadgeColor(order.status)}>
-                                                  {getStatusText(order.status)}
-                                                </Badge>
-                                                {order.sede_nombre && (
-                                                  <Badge variant="outline" className="text-xs bg-blue-50 text-blue-700 border-blue-200">
-                                                    📍 {order.sede_nombre}
-                                                  </Badge>
-                                                )}
-                                              </div>
-                                              <div className="text-right">
-                                                <p className="font-bold">{formatCurrency(order.total_amount)}</p>
-                                                <p className="text-sm text-muted-foreground">
-                                                  {formatDate(order.order_at)}
-                                                </p>
-                                              </div>
-                                            </div>
-                                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
-                                              <div className="flex items-center gap-2">
-                                                <Phone className="h-4 w-4 text-muted-foreground" />
-                                                <span>{order.cliente_telefono}</span>
-                                              </div>
-                                              <div className="flex items-center gap-2">
-                                                <MapPin className="h-4 w-4 text-muted-foreground" />
-                                                <span className="truncate">{order.cliente_direccion}</span>
-                                              </div>
-                                              <div className="flex items-center gap-2">
-                                                <Package className="h-4 w-4 text-muted-foreground" />
-                                                <span>{order.platos_count} platos, {order.bebidas_count} bebidas</span>
-                                              </div>
-                                            </div>
-                                            {order.repartidor_name && (
-                                              <div className="mt-2 text-sm text-muted-foreground">
-                                                Repartidor: {order.repartidor_name}
-                                              </div>
-                                            )}
-                                            {(order.items?.length ?? 0) > 0 ? (
-                                              <div className="mt-3 border-t border-dashed pt-3">
-                                                <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">
-                                                  Detalle del pedido
-                                                </p>
-                                                <div className="flex flex-wrap gap-2">
-                                                  {order.items.map((item) => (
-                                                    <Badge
-                                                      key={`${order.id}-${item.type}-${item.id}`}
-                                                      variant="secondary"
-                                                      className="flex items-center gap-1 rounded-full px-2 py-1 text-xs font-medium"
-                                                    >
-                                                      {getOrderItemIcon(item.type)}
-                                                      <span>{item.name}</span>
-                                                      {item.quantity > 1 && (
-                                                        <span className="text-muted-foreground font-semibold">×{item.quantity}</span>
-                                                      )}
-                                                    </Badge>
-                                                  ))}
-                                                </div>
-                                              </div>
-                                            ) : (
-                                              <div className="mt-3 border-t border-dashed pt-3 text-xs text-muted-foreground">
-                                                Sin detalle disponible para esta orden
-                                              </div>
-                                            )}
-                                          </div>
-                                        ))}
-                                      </div>
-                                    ) : (
-                                      <div className="text-center py-8">
-                                        <ShoppingCart className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-                                        <p className="text-muted-foreground">Este cliente no tiene órdenes registradas</p>
-                                      </div>
-                                    )}
-                                  </CardContent>
-                                </Card>
-                              </div>
-                            )}
-                          </DialogContent>
-                        </Dialog>
+                        {/* OPTIMIZADO: Solo el botón, Dialog movido fuera del loop */}
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => openCustomerModal(customer)}
+                        >
+                          <Eye className="h-4 w-4 mr-2" />
+                          Ver Detalles
+                        </Button>
                       </TableCell>
                     </TableRow>
                   ))}
@@ -847,6 +670,192 @@ export const CRM: React.FC<CRMProps> = ({ effectiveSedeId }) => {
           </Card>
         </TabsContent>
       </Tabs>
+
+      {/* OPTIMIZADO: Dialog único fuera del loop de la tabla */}
+      <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+        <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Detalles del Cliente</DialogTitle>
+            <DialogDescription>
+              Información completa e historial de órdenes de {selectedCustomer?.nombre}
+            </DialogDescription>
+          </DialogHeader>
+
+          {selectedCustomer && (
+            <div className="space-y-6">
+              {/* Información del cliente */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-lg">Información Personal</CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    <div className="flex items-center gap-2">
+                      <User className="h-4 w-4 text-muted-foreground" />
+                      <span className="font-medium">{selectedCustomer.nombre}</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Phone className="h-4 w-4 text-muted-foreground" />
+                      <span className="font-mono">{selectedCustomer.telefono}</span>
+                    </div>
+                    <div className="flex items-start gap-2">
+                      <MapPin className="h-4 w-4 text-muted-foreground mt-0.5" />
+                      <span className="text-sm">{selectedCustomer.direccion}</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Calendar className="h-4 w-4 text-muted-foreground" />
+                      <span className="text-sm">
+                        Cliente desde: {formatDate(selectedCustomer.created_at)}
+                      </span>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-lg">Estadísticas</CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    <div className="flex justify-between">
+                      <span className="text-sm text-muted-foreground">Total de órdenes:</span>
+                      <span className="font-bold">{selectedCustomer.total_orders}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-sm text-muted-foreground">Total gastado:</span>
+                      <span className="font-bold">{formatCurrency(selectedCustomer.total_spent)}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-sm text-muted-foreground">Valor promedio:</span>
+                      <span className="font-bold">{formatCurrency(selectedCustomer.average_order_value)}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-sm text-muted-foreground">Última orden:</span>
+                      <span className="text-sm">
+                        {selectedCustomer.last_order_date ? formatDate(selectedCustomer.last_order_date) : 'Sin órdenes'}
+                      </span>
+                    </div>
+                    <div className="pt-3 border-t border-border space-y-2">
+                      <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                        <Star className="h-4 w-4 text-amber-500" />
+                        <span>Producto favorito</span>
+                      </div>
+                      {selectedCustomer.total_orders > 0 ? (
+                        customerFavoriteProduct ? (
+                          <div className="flex items-center justify-between gap-3">
+                            <div className="flex items-center gap-2">
+                              {getOrderItemIcon(customerFavoriteProduct.type)}
+                              <span className="font-medium">{customerFavoriteProduct.name}</span>
+                            </div>
+                            <Badge variant="outline" className="text-xs">
+                              {customerFavoriteProduct.count} pedidos
+                            </Badge>
+                          </div>
+                        ) : (
+                          <span className="text-xs text-muted-foreground">Sin datos suficientes para calcular el favorito</span>
+                        )
+                      ) : (
+                        <span className="text-xs text-muted-foreground">El cliente aún no tiene órdenes registradas</span>
+                      )}
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
+
+              {/* Historial de órdenes */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-lg">Historial de Órdenes</CardTitle>
+                  <CardDescription>Últimas 20 órdenes del cliente</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  {loadingOrders ? (
+                    <div className="text-center py-4">
+                      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto"></div>
+                      <p className="text-sm text-muted-foreground mt-2">Cargando órdenes...</p>
+                    </div>
+                  ) : customerOrders.length > 0 ? (
+                    <div className="space-y-3">
+                      {customerOrders.map((order) => (
+                        <div key={order.id} className="border rounded-lg p-4">
+                          <div className="flex items-center justify-between mb-2">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="font-medium">Orden #{order.id}</span>
+                              <Badge variant={getStatusBadgeColor(order.status)}>
+                                {getStatusText(order.status)}
+                              </Badge>
+                              {order.sede_nombre && (
+                                <Badge variant="outline" className="text-xs bg-blue-50 text-blue-700 border-blue-200">
+                                  {order.sede_nombre}
+                                </Badge>
+                              )}
+                            </div>
+                            <div className="text-right">
+                              <p className="font-bold">{formatCurrency(order.total_amount)}</p>
+                              <p className="text-sm text-muted-foreground">
+                                {formatDate(order.order_at)}
+                              </p>
+                            </div>
+                          </div>
+                          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
+                            <div className="flex items-center gap-2">
+                              <Phone className="h-4 w-4 text-muted-foreground" />
+                              <span>{order.cliente_telefono}</span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <MapPin className="h-4 w-4 text-muted-foreground" />
+                              <span className="truncate">{order.cliente_direccion}</span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <Package className="h-4 w-4 text-muted-foreground" />
+                              <span>{order.platos_count} platos, {order.bebidas_count} bebidas</span>
+                            </div>
+                          </div>
+                          {order.repartidor_name && (
+                            <div className="mt-2 text-sm text-muted-foreground">
+                              Repartidor: {order.repartidor_name}
+                            </div>
+                          )}
+                          {(order.items?.length ?? 0) > 0 ? (
+                            <div className="mt-3 border-t border-dashed pt-3">
+                              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">
+                                Detalle del pedido
+                              </p>
+                              <div className="flex flex-wrap gap-2">
+                                {order.items?.map((item) => (
+                                  <Badge
+                                    key={`${order.id}-${item.type}-${item.id}`}
+                                    variant="secondary"
+                                    className="flex items-center gap-1 rounded-full px-2 py-1 text-xs font-medium"
+                                  >
+                                    {getOrderItemIcon(item.type)}
+                                    <span>{item.name}</span>
+                                    {item.quantity > 1 && (
+                                      <span className="text-muted-foreground font-semibold">x{item.quantity}</span>
+                                    )}
+                                  </Badge>
+                                ))}
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="mt-3 border-t border-dashed pt-3 text-xs text-muted-foreground">
+                              Sin detalle disponible para esta orden
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="text-center py-8">
+                      <ShoppingCart className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+                      <p className="text-muted-foreground">Este cliente no tiene órdenes registradas</p>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

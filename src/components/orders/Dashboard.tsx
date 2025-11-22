@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -182,6 +182,10 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
   // Estado para manejar tiempo custom vs preset
   const [useCustomTime, setUseCustomTime] = useState(false);
+
+  // Estado y ref para prevenir duplicación de pedidos
+  const [isCreatingOrder, setIsCreatingOrder] = useState(false);
+  const lastOrderCreationTime = useRef<number>(0);
   const [customTimeMinutes, setCustomTimeMinutes] = useState('');
   const [searchingPrice, setSearchingPrice] = useState(false);
   const [sedeProducts, setSedeProducts] = useState({
@@ -1558,6 +1562,22 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
   // Función para crear pedido
   const handleCreateOrder = async () => {
+    // Protección anti-duplicación: bloquear si ya está creando o si pasó menos de 5 segundos
+    const now = Date.now();
+    if (isCreatingOrder || sedeOrdersLoading) {
+      console.log('⚠️ Creación de pedido bloqueada: ya hay una creación en progreso');
+      return;
+    }
+    if (now - lastOrderCreationTime.current < 5000) {
+      console.log('⚠️ Creación de pedido bloqueada: muy pronto después del último pedido');
+      toast({
+        title: "Espera un momento",
+        description: "Por favor espera unos segundos antes de crear otro pedido",
+        variant: "destructive",
+      });
+      return;
+    }
+
     if (newOrder.deliveryType === 'delivery' && !customerData.address) return;
     if (newOrder.items.length === 0) return;
     if (!sedeIdToUse) return;
@@ -1594,6 +1614,15 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
   // Función para ejecutar creación de pedido
   const executeCreateOrder = async () => {
+    // Doble verificación de protección anti-duplicación
+    if (isCreatingOrder || sedeOrdersLoading) {
+      console.log('⚠️ executeCreateOrder bloqueado: ya hay una creación en progreso');
+      return;
+    }
+
+    // Activar bloqueo local inmediatamente
+    setIsCreatingOrder(true);
+
     try {
       // Validar productos
       for (const item of newOrder.items) {
@@ -1721,6 +1750,10 @@ export const Dashboard: React.FC<DashboardProps> = ({
       // Limpiar búsqueda para evitar mostrar pedidos antiguos
       setSearchTerm('');
 
+      // Registrar tiempo de creación exitosa para prevenir duplicados
+      lastOrderCreationTime.current = Date.now();
+      console.log('✅ Pedido creado exitosamente, tiempo registrado para anti-duplicación');
+
       // Refresh dashboard data respetando filtros actuales
       refreshDataWithCurrentFilters();
 
@@ -1731,6 +1764,9 @@ export const Dashboard: React.FC<DashboardProps> = ({
         description: error instanceof Error ? error.message : "No se pudo crear el pedido",
         variant: "destructive"
       });
+    } finally {
+      // Siempre desbloquear al terminar
+      setIsCreatingOrder(false);
     }
   };
 
@@ -3458,11 +3494,12 @@ export const Dashboard: React.FC<DashboardProps> = ({
                 (newOrder.deliveryType === 'delivery' && !customerData.address) ||
                 newOrder.items.length === 0 ||
                 sedeOrdersLoading ||
+                isCreatingOrder ||
                 (useCustomTime && (!customTimeMinutes || parseInt(customTimeMinutes) < 10 || parseInt(customTimeMinutes) > 240))
               }
               className="w-full bg-brand-primary hover:bg-brand-primary/90"
             >
-              {sedeOrdersLoading ? 'Creando...' : 'Crear Pedido'}
+              {(sedeOrdersLoading || isCreatingOrder) ? 'Creando...' : 'Crear Pedido'}
             </Button>
           </div>
         </DialogContent>
@@ -3485,9 +3522,10 @@ export const Dashboard: React.FC<DashboardProps> = ({
               </Button>
               <Button
                 onClick={executeCreateOrder}
+                disabled={sedeOrdersLoading || isCreatingOrder}
                 className="bg-brand-primary hover:bg-brand-primary/90"
               >
-                Confirmar
+                {(sedeOrdersLoading || isCreatingOrder) ? 'Creando...' : 'Confirmar'}
               </Button>
             </div>
           </div>

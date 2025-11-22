@@ -580,10 +580,28 @@ class SedeOrdersService {
       }
 
       // Paso 4: Crear orden con hora_entrega personalizable
+      // REGLA: Si el pedido se crea antes de las 12 PM, la hora base es las 12 PM
+      // (reciben pedidos desde las 9 AM pero solo entregan después de las 12 PM)
       const now = new Date();
+      const colombiaOffset = -5 * 60; // UTC-5 en minutos
+      const localMinutes = now.getUTCMinutes() + now.getUTCHours() * 60 + colombiaOffset;
+      const colombiaHour = Math.floor(((localMinutes % 1440) + 1440) % 1440 / 60); // Hora en Colombia (0-23)
+
+      let baseTime: Date;
+      if (colombiaHour < 12) {
+        // Si es antes de las 12 PM, usar las 12 PM como hora base
+        baseTime = new Date(now);
+        baseTime.setUTCHours(12 - Math.floor(colombiaOffset / 60), 0, 0, 0); // 12 PM Colombia = 17:00 UTC
+        console.log(`⏰ Pedido tomado antes de las 12 PM (${colombiaHour}:xx) - Usando 12:00 PM como hora base`);
+      } else {
+        // Después de las 12 PM, usar la hora actual
+        baseTime = now;
+        console.log(`⏰ Pedido tomado después de las 12 PM (${colombiaHour}:xx) - Usando hora actual como base`);
+      }
+
       const deliveryMinutes = orderData.delivery_time_minutes || 90; // Por defecto 90 minutos
-      const horaEntrega = new Date(now.getTime() + deliveryMinutes * 60 * 1000); // Convertir minutos a milisegundos
-      
+      const horaEntrega = new Date(baseTime.getTime() + deliveryMinutes * 60 * 1000); // Convertir minutos a milisegundos
+
       console.log(`⏰ Tiempo de entrega configurado: ${deliveryMinutes} minutos - Entrega programada: ${horaEntrega.toLocaleString('es-CO')}`);
 
       // Debug del precio de envío antes de guardar

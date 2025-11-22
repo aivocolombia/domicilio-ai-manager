@@ -85,30 +85,45 @@ class RealtimeManager {
         this.handleRealtimeChange(payload);
       });
 
-    // Suscribirse al canal
-    const subscriptionResult = await this.channel.subscribe((status) => {
-      console.log(`📡 [SHARED_REALTIME] Canal status: ${status}`);
-      this.connectionStatus = status;
+    // Suscribirse al canal con manejo mejorado de errores
+    try {
+      const subscriptionResult = await this.channel.subscribe((status, err) => {
+        console.log(`📡 [SHARED_REALTIME] Canal status: ${status}`, err ? `Error: ${err.message}` : '');
+        this.connectionStatus = status;
 
-      if (status === 'SUBSCRIBED') {
-        console.log('✅ [SHARED_REALTIME] Canal suscrito exitosamente');
-        this.isConnected = true;
-        this.reconnectAttempts = 0;
-      } else if (status === 'CHANNEL_ERROR') {
-        console.error('❌ [SHARED_REALTIME] Error en canal');
-        this.isConnected = false;
-        this.scheduleReconnect();
-      } else if (status === 'TIMED_OUT') {
-        console.error('⏰ [SHARED_REALTIME] Timeout en canal');
-        this.isConnected = false;
-        this.scheduleReconnect();
-      } else if (status === 'CLOSED') {
-        console.log('🔒 [SHARED_REALTIME] Canal cerrado');
-        this.isConnected = false;
-      }
-    });
+        if (status === 'SUBSCRIBED') {
+          console.log('✅ [SHARED_REALTIME] Canal suscrito exitosamente');
+          this.isConnected = true;
+          this.reconnectAttempts = 0;
+        } else if (status === 'CHANNEL_ERROR') {
+          // CHANNEL_ERROR puede ocurrir si Realtime no está habilitado en Supabase
+          // o si hay problemas de red/autenticación
+          console.warn('⚠️ [SHARED_REALTIME] Error en canal - esto puede ser normal si Realtime no está habilitado para estas tablas');
+          console.warn('⚠️ [SHARED_REALTIME] Verifica en Supabase Dashboard > Database > Replication que las tablas tengan Realtime habilitado');
+          if (err) {
+            console.warn('⚠️ [SHARED_REALTIME] Detalle del error:', err);
+          }
+          this.isConnected = false;
+          // Solo reconectar si no es un error de configuración
+          if (this.reconnectAttempts < 2) {
+            this.scheduleReconnect();
+          }
+        } else if (status === 'TIMED_OUT') {
+          console.error('⏰ [SHARED_REALTIME] Timeout en canal');
+          this.isConnected = false;
+          this.scheduleReconnect();
+        } else if (status === 'CLOSED') {
+          console.log('🔒 [SHARED_REALTIME] Canal cerrado');
+          this.isConnected = false;
+        }
+      });
 
-    return subscriptionResult;
+      return subscriptionResult;
+    } catch (error) {
+      console.warn('⚠️ [SHARED_REALTIME] Error al suscribirse al canal:', error);
+      this.isConnected = false;
+      return null;
+    }
   }
 
   private handleRealtimeChange(payload: any) {

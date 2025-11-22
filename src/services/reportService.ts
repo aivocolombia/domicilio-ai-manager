@@ -87,7 +87,7 @@ export class ReportService {
    * Recopila todos los datos necesarios para el reporte
    */
   async collectReportData(filters: MetricsFilters): Promise<ReportData> {
-    // Obtener todas las mÃƒÂ©tricas en paralelo
+    // Obtener todas las metricas en paralelo
     const [
       phaseStats,
       cancelledMetrics,
@@ -106,10 +106,10 @@ export class ReportService {
       metricsService.getDeliveryPersonPerformance(filters),
     ]);
 
-    // Obtener causales de cancelaciÃƒÂ³n
+    // Obtener causales de cancelacion
     const cancellationCausals = await this.getCancellationCausals(filters);
 
-    // Obtener mÃƒÂ©tricas de agentes (usuarios que crearon ÃƒÂ³rdenes)
+    // Obtener metricas de agentes (usuarios que crearon ordenes)
     const agentMetrics = await this.getAgentMetrics(filters);
 
     // Construir objeto de reporte
@@ -154,7 +154,7 @@ export class ReportService {
         totalIngresos: s.total_ingresos,
         cancelados: cancelledMetrics.porSede.find(ps => ps.sede_id === s.sede_id)?.cancelados || 0,
         tasaCancelacion: cancelledMetrics.porSede.find(ps => ps.sede_id === s.sede_id)?.porcentaje || 0,
-        avgTiempoEntrega: 0, // Se calcularÃƒÂ¡ despuÃƒÂ©s
+        avgTiempoEntrega: 0, // Se calculara despues
       })),
 
       agentMetrics,
@@ -190,7 +190,7 @@ export class ReportService {
   }
 
   /**
-   * Obtiene causales de cancelaciÃƒÂ³n con sus conteos
+   * Obtiene causales de cancelacion con sus conteos
    */
   private async getCancellationCausals(filters: MetricsFilters): Promise<Array<{ motivo: string; cantidad: number; porcentaje: number }>> {
     const { data, error } = await supabase
@@ -223,10 +223,10 @@ export class ReportService {
   }
 
   /**
-   * Obtiene mÃƒÂ©tricas de agentes call center
+   * Obtiene metricas de agentes call center
    */
   private async getAgentMetrics(filters: MetricsFilters): Promise<Array<{ nombre: string; totalOrdenes: number; sede: string }>> {
-    // Por ahora retornamos array vacÃƒÂ­o ya que no tenemos tracking de quÃƒÂ© usuario creÃƒÂ³ cada orden
+    // Por ahora retornamos array vacio ya que no tenemos tracking de que usuario creo cada orden
     // Esto se puede implementar agregando un campo created_by en la tabla ordenes
     return [];
   }
@@ -242,18 +242,18 @@ export class ReportService {
 
     // Hoja 1: Resumen General
     const summaryData = [
-      ['REPORTE DE MÃƒâ€°TRICAS GLOBALES'],
+      ['REPORTE DE METRICAS GLOBALES'],
       [''],
-      ['PerÃƒÂ­odo del Reporte'],
+      ['Periodo del Reporte'],
       ['Fecha Inicio:', reportData.reportInfo.fechaInicio],
       ['Fecha Fin:', reportData.reportInfo.fechaFin],
-      ['Fecha de GeneraciÃƒÂ³n:', reportData.reportInfo.fechaGeneracion],
+      ['Fecha de Generacion:', reportData.reportInfo.fechaGeneracion],
       [''],
       ['RESUMEN GENERAL'],
       ['Total de Ventas:', reportData.salesMetrics.totalVentas],
       ['Total Ingresos:', `$${reportData.salesMetrics.totalIngresos.toLocaleString()}`],
       ['Total Cancelados:', reportData.cancellationMetrics.totalCancelados],
-      ['Tasa de CancelaciÃƒÂ³n:', `${reportData.cancellationMetrics.tasaCancelacion.toFixed(2)}%`],
+      ['Tasa de Cancelacion:', `${reportData.cancellationMetrics.tasaCancelacion.toFixed(2)}%`],
       ['Monto Perdido por Cancelaciones:', `$${reportData.cancellationMetrics.montoPerdido.toLocaleString()}`],
       ['Total Descuentos Aplicados:', reportData.discountMetrics.totalDescuentos],
       ['Monto Total Descuentos:', `$${reportData.discountMetrics.montoTotalDescuentos.toLocaleString()}`],
@@ -261,28 +261,28 @@ export class ReportService {
     const wsSummary = XLSX.utils.aoa_to_sheet(summaryData);
     XLSX.utils.book_append_sheet(wb, wsSummary, 'Resumen General');
 
-    // Hoja 2: AnÃƒÂ¡lisis de Tiempos
+    // Hoja 2: Analisis de Tiempos
     const timeData = [
-      ['ANÃƒÂLISIS DE TIEMPOS POR ETAPAS (Minutos)'],
+      ['ANALISIS DE TIEMPOS POR ETAPAS (Minutos)'],
       [''],
       ['Etapa', 'Tiempo Promedio (min)'],
-      ['Recibo Ã¢â€ â€™ Cocina', reportData.timeMetrics.avgReciboACocina.toFixed(2)],
-      ['Cocina Ã¢â€ â€™ Camino', reportData.timeMetrics.avgCocinaACamino.toFixed(2)],
-      ['Camino Ã¢â€ â€™ Entrega', reportData.timeMetrics.avgCaminoAEntrega.toFixed(2)],
+      ['Recibo > Cocina', reportData.timeMetrics.avgReciboACocina.toFixed(2)],
+      ['Cocina > Camino', reportData.timeMetrics.avgCocinaACamino.toFixed(2)],
+      ['Camino > Entrega', reportData.timeMetrics.avgCaminoAEntrega.toFixed(2)],
       ['Total Promedio', reportData.timeMetrics.avgTotalPromedio.toFixed(2)],
     ];
     const wsTime = XLSX.utils.aoa_to_sheet(timeData);
-    XLSX.utils.book_append_sheet(wb, wsTime, 'AnÃƒÂ¡lisis de Tiempos');
+    XLSX.utils.book_append_sheet(wb, wsTime, 'Analisis de Tiempos');
 
-    // Hoja 3: AnÃƒÂ¡lisis de Cancelaciones
+    // Hoja 3: Analisis de Cancelaciones
     const cancellationData = [
-      ['ANÃƒÂLISIS DE CANCELACIONES'],
+      ['ANALISIS DE CANCELACIONES'],
       [''],
       ['Total Cancelados:', reportData.cancellationMetrics.totalCancelados],
-      ['Tasa de CancelaciÃƒÂ³n:', `${reportData.cancellationMetrics.tasaCancelacion.toFixed(2)}%`],
+      ['Tasa de Cancelacion:', `${reportData.cancellationMetrics.tasaCancelacion.toFixed(2)}%`],
       ['Monto Perdido:', `$${reportData.cancellationMetrics.montoPerdido.toLocaleString()}`],
       [''],
-      ['CAUSALES DE CANCELACIÃƒâ€œN'],
+      ['CAUSALES DE CANCELACION'],
       ['Motivo', 'Cantidad', 'Porcentaje'],
       ...reportData.cancellationMetrics.causales.map(c => [
         c.motivo,
@@ -293,15 +293,15 @@ export class ReportService {
     const wsCancellation = XLSX.utils.aoa_to_sheet(cancellationData);
     XLSX.utils.book_append_sheet(wb, wsCancellation, 'Cancelaciones');
 
-    // Hoja 4: AnÃƒÂ¡lisis de Descuentos
+    // Hoja 4: Analisis de Descuentos
     const discountData = [
-      ['ANÃƒÂLISIS DE DESCUENTOS'],
+      ['ANALISIS DE DESCUENTOS'],
       [''],
       ['Total Descuentos:', reportData.discountMetrics.totalDescuentos],
       ['Monto Total:', `$${reportData.discountMetrics.montoTotalDescuentos.toLocaleString()}`],
       [''],
       ['CAUSALES DE DESCUENTOS'],
-      ['RazÃƒÂ³n', 'Cantidad', 'Monto Total'],
+      ['Razon', 'Cantidad', 'Monto Total'],
       ...reportData.discountMetrics.causales.map(d => [
         d.razon,
         d.cantidad,
@@ -311,9 +311,9 @@ export class ReportService {
     const wsDiscount = XLSX.utils.aoa_to_sheet(discountData);
     XLSX.utils.book_append_sheet(wb, wsDiscount, 'Descuentos');
 
-    // Hoja 5: AnÃƒÂ¡lisis de Ventas por Producto
+    // Hoja 5: Analisis de Ventas por Producto
     const salesData = [
-      ['ANÃƒÂLISIS DE VENTAS POR PRODUCTO'],
+      ['ANALISIS DE VENTAS POR PRODUCTO'],
       [''],
       ['Producto', 'Cantidad Vendida', 'Valor Total'],
       ...reportData.salesMetrics.volumenVenta.map(v => [
@@ -327,11 +327,11 @@ export class ReportService {
     const wsSales = XLSX.utils.aoa_to_sheet(salesData);
     XLSX.utils.book_append_sheet(wb, wsSales, 'Ventas por Producto');
 
-    // Hoja 6: MÃƒÂ©tricas por Sede
+    // Hoja 6: Metricas por Sede
     const sedeData = [
-      ['MÃƒâ€°TRICAS POR SEDE'],
+      ['METRICAS POR SEDE'],
       [''],
-      ['Sede', 'Total Pedidos', 'Total Ingresos', 'Cancelados', 'Tasa CancelaciÃƒÂ³n'],
+      ['Sede', 'Total Pedidos', 'Total Ingresos', 'Cancelados', 'Tasa Cancelacion'],
       ...reportData.sedesMetrics.map(s => [
         s.nombre,
         s.totalPedidos,
@@ -341,7 +341,7 @@ export class ReportService {
       ]),
     ];
     const wsSede = XLSX.utils.aoa_to_sheet(sedeData);
-    XLSX.utils.book_append_sheet(wb, wsSede, 'MÃƒÂ©tricas por Sede');
+    XLSX.utils.book_append_sheet(wb, wsSede, 'Metricas por Sede');
 
     // Generar archivo Excel
     const excelBuffer = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
@@ -349,7 +349,7 @@ export class ReportService {
   }
 
   /**
-   * Genera reporte en formato PDF con diseÃƒÂ±o profesional
+   * Genera reporte en formato PDF con diseno profesional
    */
   async generatePDFReport(filters: MetricsFilters): Promise<Blob> {
     const reportData = await this.collectReportData(filters);
@@ -368,7 +368,7 @@ export class ReportService {
     const dangerColor: [number, number, number] = [239, 68, 68]; // red-500
     const warningColor: [number, number, number] = [249, 115, 22]; // orange-500
 
-    // FunciÃƒÂ³n para agregar encabezado
+    // Funcion para agregar encabezado
     const addHeader = (title: string) => {
       doc.setFillColor(...primaryColor);
       doc.rect(0, 0, pageWidth, 40, 'F');
@@ -385,7 +385,7 @@ export class ReportService {
       yPosition = 50;
     };
 
-    // FunciÃƒÂ³n para agregar secciÃƒÂ³n
+    // Funcion para agregar seccion
     const addSection = (title: string, color: [number, number, number] = primaryColor) => {
       if (yPosition > pageHeight - 40) {
         doc.addPage();
@@ -404,7 +404,7 @@ export class ReportService {
       doc.setTextColor(0, 0, 0);
     };
 
-    // FunciÃƒÂ³n para agregar tarjeta de mÃƒÂ©trica
+    // Funcion para agregar tarjeta de metrica
     const addMetricCard = (label: string, value: string, color: [number, number, number], x: number, width: number) => {
       doc.setFillColor(248, 250, 252); // bg-slate-50
       doc.roundedRect(x, yPosition, width, 20, 3, 3, 'F');
@@ -424,10 +424,10 @@ export class ReportService {
       doc.setFont('helvetica', 'normal');
     };
 
-    // PÃƒÂGINA 1: RESUMEN EJECUTIVO
-    addHeader('REPORTE DE MÃƒâ€°TRICAS GLOBALES');
+    // PAGINA 1: RESUMEN EJECUTIVO
+    addHeader('REPORTE DE METRICAS GLOBALES');
 
-    // Tarjetas de mÃƒÂ©tricas principales
+    // Tarjetas de metricas principales
     addSection('Resumen Ejecutivo', primaryColor);
 
     const cardWidth = (pageWidth - 40) / 3;
@@ -446,7 +446,7 @@ export class ReportService {
       cardWidth
     );
     addMetricCard(
-      'Tasa CancelaciÃƒÂ³n',
+      'Tasa Cancelacion',
       `${reportData.cancellationMetrics.tasaCancelacion.toFixed(1)}%`,
       dangerColor,
       10 + (cardWidth + 5) * 2,
@@ -455,7 +455,7 @@ export class ReportService {
 
     yPosition += 25;
 
-    // Segunda fila de mÃƒÂ©tricas
+    // Segunda fila de metricas
     addMetricCard(
       'Pedidos Cancelados',
       reportData.cancellationMetrics.totalCancelados.toString(),
@@ -480,16 +480,16 @@ export class ReportService {
 
     yPosition += 30;
 
-    // AnÃƒÂ¡lisis de Tiempos
-    addSection('AnÃƒÂ¡lisis de Tiempos por Etapa', secondaryColor);
+    // Analisis de Tiempos
+    addSection('Analisis de Tiempos por Etapa', secondaryColor);
 
     autoTable(doc, {
       startY: yPosition,
       head: [['Etapa', 'Tiempo Promedio (min)']],
       body: [
-        ['Recibo Ã¢â€ â€™ Cocina', reportData.timeMetrics.avgReciboACocina.toFixed(2)],
-        ['Cocina Ã¢â€ â€™ Camino', reportData.timeMetrics.avgCocinaACamino.toFixed(2)],
-        ['Camino Ã¢â€ â€™ Entrega', reportData.timeMetrics.avgCaminoAEntrega.toFixed(2)],
+        ['Recibo > Cocina', reportData.timeMetrics.avgReciboACocina.toFixed(2)],
+        ['Cocina > Camino', reportData.timeMetrics.avgCocinaACamino.toFixed(2)],
+        ['Camino > Entrega', reportData.timeMetrics.avgCaminoAEntrega.toFixed(2)],
         ['Total Promedio', reportData.timeMetrics.avgTotalPromedio.toFixed(2)],
       ],
       theme: 'striped',
@@ -499,11 +499,11 @@ export class ReportService {
 
     yPosition = (doc as any).lastAutoTable.finalY + 10;
 
-    // PÃƒÂGINA 2: ANÃƒÂLISIS DETALLADO
+    // PAGINA 2: ANALISIS DETALLADO
     doc.addPage();
     yPosition = 20;
 
-    addSection('AnÃƒÂ¡lisis de Cancelaciones', dangerColor);
+    addSection('Analisis de Cancelaciones', dangerColor);
 
     autoTable(doc, {
       startY: yPosition,
@@ -520,11 +520,11 @@ export class ReportService {
 
     yPosition = (doc as any).lastAutoTable.finalY + 15;
 
-    addSection('AnÃƒÂ¡lisis de Descuentos', warningColor);
+    addSection('Analisis de Descuentos', warningColor);
 
     autoTable(doc, {
       startY: yPosition,
-      head: [['RazÃƒÂ³n', 'Cantidad', 'Monto Total']],
+      head: [['Razon', 'Cantidad', 'Monto Total']],
       body: reportData.discountMetrics.causales.slice(0, 10).map(d => [
         d.razon,
         d.cantidad.toString(),
@@ -535,11 +535,11 @@ export class ReportService {
       margin: { left: 10, right: 10 },
     });
 
-    // PÃƒÂGINA 3: VENTAS Y SEDES
+    // PAGINA 3: VENTAS Y SEDES
     doc.addPage();
     yPosition = 20;
 
-    addSection('Top 10 Productos MÃƒÂ¡s Vendidos', successColor);
+    addSection('Top 10 Productos Mas Vendidos', successColor);
 
     autoTable(doc, {
       startY: yPosition,
@@ -659,14 +659,14 @@ export class ReportService {
       yPosition += 12;
     }
 
-    // Pie de página con fecha de generación
+    // Pie de pagina con fecha de generacion
     const totalPages = doc.getNumberOfPages();
     for (let i = 1; i <= totalPages; i++) {
       doc.setPage(i);
       doc.setFontSize(8);
       doc.setTextColor(150, 150, 150);
       doc.text(
-        `Generado: ${reportData.reportInfo.fechaGeneracion} | PÃƒÂ¡gina ${i} de ${totalPages}`,
+        `Generado: ${reportData.reportInfo.fechaGeneracion} | Pagina ${i} de ${totalPages}`,
         pageWidth / 2,
         pageHeight - 10,
         { align: 'center' }

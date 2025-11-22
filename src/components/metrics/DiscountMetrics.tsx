@@ -135,7 +135,7 @@ export function DiscountMetrics({
 
       // Restringir visibilidad a la sede asignada cuando corresponda
       if (sedeId && orderData.sede_id !== sedeId) {
-        setSearchError('No tienes permisos para ver informaciÃ³n de esta orden.');
+        setSearchError('No tienes permisos para ver informacion de esta orden.');
         return;
       }
 
@@ -411,7 +411,7 @@ export function DiscountMetrics({
         </Card>
       )}
 
-      {/* BÃºsqueda de descuento por orden */}
+      {/* Busqueda de descuento por orden */}
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
