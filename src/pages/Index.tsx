@@ -25,7 +25,6 @@ import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { supabase } from '@/lib/supabase';
 
-// Mock data generator for User and Sedes (temporary until API is ready)
 const generateMockUser = (): UserType => {
   return {
     id: 'user-1',
