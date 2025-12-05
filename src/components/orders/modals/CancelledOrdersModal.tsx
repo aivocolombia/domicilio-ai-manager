@@ -11,7 +11,7 @@ import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { supabase } from '@/lib/supabase';
 import { formatDateForQuery } from '@/utils/dateUtils';
-import { ChevronLeft, ChevronRight, XCircle, Calendar, DollarSign, MessageCircle } from 'lucide-react';
+import { ChevronLeft, ChevronRight, XCircle, Calendar, DollarSign, MessageCircle, BarChart3 } from 'lucide-react';
 import { ExportButton } from '@/components/ui/ExportButton';
 import { TableColumn, PDFSection } from '@/utils/exportUtils';
 
@@ -298,6 +298,38 @@ export const CancelledOrdersModal: React.FC<CancelledOrdersModalProps> = ({
     }
   };
 
+  // Calcular conteo de motivos de cancelación
+  const getCancellationReasonCounts = () => {
+    // Definir los motivos válidos del dropdown
+    const motivosValidos = [
+      'Sobrepasa tiempo estimado de entrega',
+      'Agotado de productos',
+      'Cliente lo prefiere recoger',
+      'Causales de cliente',
+      'Sin motivo especificado'
+    ];
+
+    const counts: { [key: string]: number } = {};
+
+    allOrders.forEach(order => {
+      let motivo = order.motivo_cancelacion?.trim() || 'Sin motivo especificado';
+
+      // Si el motivo no está en la lista de válidos, clasificarlo como "Otros"
+      if (!motivosValidos.includes(motivo)) {
+        motivo = 'Otros';
+      }
+
+      counts[motivo] = (counts[motivo] || 0) + 1;
+    });
+
+    // Convertir a array y ordenar por cantidad (descendente)
+    return Object.entries(counts)
+      .map(([motivo, count]) => ({ motivo, count }))
+      .sort((a, b) => b.count - a.count);
+  };
+
+  const motivoCounts = getCancellationReasonCounts();
+
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent className="max-w-4xl max-h-[80vh] overflow-hidden flex flex-col">
@@ -368,6 +400,49 @@ export const CancelledOrdersModal: React.FC<CancelledOrdersModalProps> = ({
                   Página {currentPage} de {totalPages}
                 </Badge>
               </div>
+
+              {/* Contador de motivos de cancelación */}
+              {motivoCounts.length > 0 && (
+                <Card className="border-blue-200 bg-blue-50/50">
+                  <CardHeader className="pb-3">
+                    <CardTitle className="text-base flex items-center gap-2">
+                      <BarChart3 className="h-5 w-5 text-blue-600" />
+                      Resumen de Motivos de Cancelación
+                    </CardTitle>
+                    <CardDescription>
+                      Distribución de los {allOrders.length} motivos registrados
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-2">
+                      {motivoCounts.map(({ motivo, count }) => {
+                        const percentage = ((count / allOrders.length) * 100).toFixed(1);
+                        return (
+                          <div key={motivo} className="flex items-center justify-between p-3 bg-white rounded-lg border border-blue-100">
+                            <div className="flex-1">
+                              <div className="font-medium text-sm text-gray-700">{motivo}</div>
+                              <div className="flex items-center gap-3 mt-1">
+                                <div className="flex-1 bg-blue-100 rounded-full h-2 overflow-hidden">
+                                  <div
+                                    className="bg-blue-500 h-full rounded-full transition-all duration-300"
+                                    style={{ width: `${percentage}%` }}
+                                  />
+                                </div>
+                                <span className="text-xs text-muted-foreground min-w-[50px] text-right">
+                                  {percentage}%
+                                </span>
+                              </div>
+                            </div>
+                            <Badge variant="secondary" className="ml-3">
+                              {count} {count === 1 ? 'orden' : 'órdenes'}
+                            </Badge>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
 
               {/* Lista de órdenes */}
               <div className="space-y-3">

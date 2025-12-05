@@ -77,6 +77,8 @@ export interface DashboardMetrics {
     pedidos: number;
     ingresos: number;
     promedio: number;
+    ingresosSinDomicilio: number; // Nuevo: Total de ventas sin incluir costo de domicilio
+    promedioSinDomicilio: number; // Nuevo: Promedio de venta sin domicilio
   };
 }
 
@@ -198,6 +200,7 @@ export class MetricsService {
           .select(`
             id,
             created_at,
+            precio_envio,
             pagos!payment_id(total_pago)
           `)
           .gte('created_at', startQuery)
@@ -233,16 +236,25 @@ export class MetricsService {
       const pagosData = allPagosData;
       console.log('✅ Total pagos obtenidos:', pagosData.length);
 
-      // Crear mapa de pagos por orden_id
-      const pagosMap = new Map();
+      // Crear mapa de pagos por orden_id (incluye total_pago y precio_envio)
+      const pagosMap = new Map<number, { total_pago: number; precio_envio: number }>();
       let pagosConDatos = 0;
       let totalSumaPagos = 0;
+      let totalSumaPagosSinEnvio = 0;
 
       pagosData.forEach(orden => {
         if (orden.pagos && orden.pagos.total_pago) {
-          pagosMap.set(orden.id, orden.pagos.total_pago);
+          const totalPago = orden.pagos.total_pago;
+          const precioEnvio = orden.precio_envio || 0;
+          const pagoSinEnvio = totalPago - precioEnvio;
+
+          pagosMap.set(orden.id, {
+            total_pago: totalPago,
+            precio_envio: precioEnvio
+          });
           pagosConDatos++;
-          totalSumaPagos += orden.pagos.total_pago;
+          totalSumaPagos += totalPago;
+          totalSumaPagosSinEnvio += pagoSinEnvio;
         }
       });
 
@@ -250,10 +262,12 @@ export class MetricsService {
         totalRegistros: pagosData.length,
         registrosConPago: pagosConDatos,
         sumaTotal: totalSumaPagos,
+        sumaTotalSinEnvio: totalSumaPagosSinEnvio,
         ejemplo: pagosData.slice(0, 3).map(o => ({
           id: o.id,
           tiene_pagos: !!o.pagos,
-          total_pago: o.pagos?.total_pago
+          total_pago: o.pagos?.total_pago,
+          precio_envio: o.precio_envio
         }))
       });
 
@@ -285,14 +299,14 @@ export class MetricsService {
 
         // Solo contar ingresos de órdenes entregadas
         const esEntregado = orden.status === 'Entregados';
-        const pagoEncontrado = pagosMap.get(orden.id);
-        const ingresos = esEntregado ? (pagoEncontrado || 0) : 0;
+        const pagoData = pagosMap.get(orden.id);
+        const ingresos = esEntregado ? (pagoData?.total_pago || 0) : 0;
 
         if (esEntregado) {
           ordenesEntregadasCount++;
-          if (pagoEncontrado) {
+          if (pagoData) {
             ordenesConPagoEncontrado++;
-            sumaIngresosTotal += pagoEncontrado;
+            sumaIngresosTotal += pagoData.total_pago;
           }
         }
 
@@ -960,6 +974,44 @@ export class MetricsService {
       const totalIngresos = metricasPorDia.reduce((sum, dia) => sum + dia.total_ingresos, 0);
       const promedioGeneral = totalPedidos > 0 ? totalIngresos / totalPedidos : 0;
 
+      // Calcular total de costos de envío para obtener ingresos sin domicilio
+      console.log('🚚 Calculando total de costos de envío...');
+      const startDate = new Date(`${filters.fecha_inicio}T00:00:00`);
+      const endDate = new Date(`${filters.fecha_fin}T23:59:59`);
+      const startQuery = formatDateForQuery(startDate, false);
+      const endQuery = formatDateForQuery(endDate, true);
+
+      let queryEnvios = supabase
+        .from('ordenes')
+        .select('precio_envio, status')
+        .gte('created_at', startQuery)
+        .lte('created_at', endQuery)
+        .eq('status', 'Entregados'); // Solo órdenes entregadas
+
+      if (filters.sede_id && filters.sede_id !== 'all') {
+        queryEnvios = queryEnvios.eq('sede_id', filters.sede_id);
+      }
+
+      const { data: ordenesEnvio, error: envioError } = await queryEnvios;
+
+      let totalCostosEnvio = 0;
+      if (!envioError && ordenesEnvio) {
+        totalCostosEnvio = ordenesEnvio.reduce((sum, orden) => {
+          return sum + (orden.precio_envio || 0);
+        }, 0);
+      }
+
+      const totalIngresosSinDomicilio = totalIngresos - totalCostosEnvio;
+      const promedioSinDomicilio = totalPedidos > 0 ? totalIngresosSinDomicilio / totalPedidos : 0;
+
+      console.log('💰 Totales calculados:', {
+        totalIngresos,
+        totalCostosEnvio,
+        totalIngresosSinDomicilio,
+        promedioGeneral,
+        promedioSinDomicilio
+      });
+
       const resultado: DashboardMetrics = {
         metricasPorDia,
         productosMasVendidos,
@@ -969,7 +1021,9 @@ export class MetricsService {
         totalGeneral: {
           pedidos: totalPedidos,
           ingresos: totalIngresos,
-          promedio: promedioGeneral
+          promedio: promedioGeneral,
+          ingresosSinDomicilio: totalIngresosSinDomicilio,
+          promedioSinDomicilio: promedioSinDomicilio
         }
       };
 

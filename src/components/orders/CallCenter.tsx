@@ -12,7 +12,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Phone, Search, Plus, User, MapPin, Clock, CreditCard, Store, AlertTriangle, Pause, Loader2 } from 'lucide-react';
+import { Phone, Search, Plus, User, MapPin, Clock, CreditCard, Store, AlertTriangle, Pause, Loader2, RefreshCw } from 'lucide-react';
 import { Order, PaymentMethod, DeliveryType, Sede, DeliverySettings } from '@/types/delivery';
 import { useMenu } from '@/hooks/useMenu';
 import { addressService } from '@/services/addressService';
@@ -46,6 +46,7 @@ const CallCenter: React.FC<CallCenterProps> = ({
   const [showNewOrderDialog, setShowNewOrderDialog] = useState(false);
   const [newCustomerName, setNewCustomerName] = useState('');
   const [loadingDeliveryPrice, setLoadingDeliveryPrice] = useState(false);
+  const [isCreatingOrder, setIsCreatingOrder] = useState(false); // Estado para prevenir clics duplicados
   const [newOrder, setNewOrder] = useState({
     address: '',
     deliveryInstructions: '',
@@ -186,6 +187,12 @@ const CallCenter: React.FC<CallCenterProps> = ({
   };
 
   const handleCreateOrder = () => {
+    // Prevenir clics duplicados mientras se está creando el pedido
+    if (isCreatingOrder) {
+      console.log('⚠️ Ya se está creando un pedido, ignorando clic duplicado');
+      return;
+    }
+
     if (newOrder.deliveryType === 'delivery' && !newOrder.address) return;
     if (newOrder.deliveryType === 'pickup' && !newOrder.pickupSede) return;
     if (newOrder.items.length === 0) return;
@@ -193,9 +200,12 @@ const CallCenter: React.FC<CallCenterProps> = ({
     const customerName = customer?.name || newCustomerName;
     if (!customerName) return;
 
+    setIsCreatingOrder(true);
+
     // Validar múltiples pagos si están habilitados
     if (newOrder.hasMultiplePayments && !validatePaymentAmounts()) {
       alert('Los montos de pago no suman el total de la orden');
+      setIsCreatingOrder(false);
       return;
     }
 
@@ -250,7 +260,10 @@ const CallCenter: React.FC<CallCenterProps> = ({
     });
     setNewCustomerName('');
     setShowNewOrderDialog(false);
-    
+
+    // Liberar el botón después de crear el pedido
+    setIsCreatingOrder(false);
+
     // Refresh customer data
     setTimeout(() => searchCustomer(), 100);
   };
@@ -641,15 +654,23 @@ const CallCenter: React.FC<CallCenterProps> = ({
                     <Button
                       onClick={handleCreateOrder}
                       disabled={
+                        isCreatingOrder ||
                         !settings.acceptingOrders ||
                         (newOrder.deliveryType === 'delivery' && !newOrder.address) ||
                         (newOrder.deliveryType === 'pickup' && !newOrder.pickupSede) ||
-                        newOrder.items.length === 0 || 
+                        newOrder.items.length === 0 ||
                         (!customer && !newCustomerName)
                       }
                       className="w-full bg-brand-primary hover:bg-brand-primary/90"
                     >
-                      Crear Pedido
+                      {isCreatingOrder ? (
+                        <>
+                          <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                          Creando...
+                        </>
+                      ) : (
+                        'Crear Pedido'
+                      )}
                     </Button>
                   </div>
                 </DialogContent>

@@ -1,5 +1,5 @@
 ﻿import { useState, useEffect, useCallback } from 'react'
-import { Plus, Search, Edit, Trash2, Users, Building2, UserCheck, UserX, TrendingUp, DollarSign, Package, Clock, LayoutDashboard, Phone, MapPin, Settings, RefreshCw, Cog, ChartLine, Timer, BarChart3, Truck, Eye, AlertTriangle, ChevronLeft, ChevronRight, XCircle, Star, BarChart, Activity, Download, FileText, FileSpreadsheet } from 'lucide-react'
+import { Plus, Search, Edit, Trash2, Users, Building2, UserCheck, UserX, TrendingUp, DollarSign, Package, Clock, LayoutDashboard, Phone, MapPin, Settings, RefreshCw, Cog, ChartLine, Timer, BarChart3, Truck, Eye, AlertTriangle, ChevronLeft, ChevronRight, XCircle, Star, BarChart, Activity, Download, FileText, FileSpreadsheet, KeyRound, EyeOff, Copy, CheckCircle2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -95,6 +95,16 @@ export function AdminPanel({ onBack, onNavigateToTimeMetrics }: AdminPanelProps)
   const [selectedSede, setSelectedSede] = useState<Sede | null>(null)
   const [userSedeFormData, setUserSedeFormData] = useState({ sede_id: '' })
   const [showMainApp, setShowMainApp] = useState(false)
+  const [visiblePasswords, setVisiblePasswords] = useState<Record<string, boolean>>({}) // Estado para controlar visibilidad de contraseñas
+
+  // Password reset modal states
+  const [isPasswordModalOpen, setIsPasswordModalOpen] = useState(false)
+  const [selectedUserForPassword, setSelectedUserForPassword] = useState<Profile | null>(null)
+  const [newPassword, setNewPassword] = useState('')
+  const [showPasswordInModal, setShowPasswordInModal] = useState(false)
+  const [isResettingPassword, setIsResettingPassword] = useState(false)
+  const [resetPasswordSuccess, setResetPasswordSuccess] = useState(false)
+
   const { activeTab, setActiveTab, resetToUsers } = useAdminTab()
   const { activeSection, setActiveSection } = useAdminSection()
 
@@ -157,6 +167,19 @@ export function AdminPanel({ onBack, onNavigateToTimeMetrics }: AdminPanelProps)
   useEffect(() => {
     setUsersCurrentPage(1);
   }, [searchTerm])
+
+  // Limpiar searchTerm cuando se cambia de sección
+  useEffect(() => {
+    setSearchTerm('');
+  }, [activeSection])
+
+  // Limpiar el campo de contraseña cuando se abre el modal (y no está en modo éxito)
+  useEffect(() => {
+    if (isPasswordModalOpen && !resetPasswordSuccess) {
+      setNewPassword('');
+      setShowPasswordInModal(false);
+    }
+  }, [isPasswordModalOpen, resetPasswordSuccess])
 
   // Optimized data loading functions with timeout and retry
   const loadInitialData = useCallback(async () => {
@@ -837,6 +860,92 @@ export function AdminPanel({ onBack, onNavigateToTimeMetrics }: AdminPanelProps)
         variant: "destructive",
       })
     }
+  }
+
+  const togglePasswordVisibility = (userId: string) => {
+    setVisiblePasswords(prev => ({
+      ...prev,
+      [userId]: !prev[userId]
+    }))
+  }
+
+  // Abrir modal de reseteo de contraseña
+  const handleShowPassword = (userId: string, userNickname: string) => {
+    const userToReset = users.find(u => u.id === userId)
+    if (userToReset) {
+      setSelectedUserForPassword(userToReset)
+      setNewPassword('')
+      setShowPasswordInModal(false)
+      setResetPasswordSuccess(false)
+      setIsPasswordModalOpen(true)
+    }
+  }
+
+  // Ejecutar el reseteo de contraseña
+  const handleResetPassword = async () => {
+    if (!selectedUserForPassword) return
+
+    if (newPassword.length < 6) {
+      toast({
+        title: "Contraseña muy corta",
+        description: "La contraseña debe tener al menos 6 caracteres",
+        variant: "destructive",
+      })
+      return
+    }
+
+    setIsResettingPassword(true)
+
+    try {
+      const { data, error } = await supabase.rpc('reset_user_password', {
+        p_user_id: selectedUserForPassword.id,
+        p_new_password: newPassword
+      })
+
+      if (error) {
+        console.error('Error reseteando contraseña:', error)
+        toast({
+          title: "Error",
+          description: "No se pudo resetear la contraseña. Asegúrate de que la función reset_user_password existe en la BD.",
+          variant: "destructive",
+        })
+        setIsResettingPassword(false)
+        return
+      }
+
+      setResetPasswordSuccess(true)
+      toast({
+        title: "Contraseña actualizada",
+        description: `La contraseña de @${selectedUserForPassword.nickname} ha sido actualizada exitosamente`,
+      })
+    } catch (error: any) {
+      console.error('Error inesperado:', error)
+      toast({
+        title: "Error",
+        description: error.message || "No se pudo resetear la contraseña",
+        variant: "destructive",
+      })
+    } finally {
+      setIsResettingPassword(false)
+    }
+  }
+
+  // Cerrar modal de contraseña
+  const handleClosePasswordModal = () => {
+    setIsPasswordModalOpen(false)
+    setSelectedUserForPassword(null)
+    setNewPassword('')
+    setShowPasswordInModal(false)
+    setResetPasswordSuccess(false)
+  }
+
+  // Copiar contraseña al portapapeles
+  const handleCopyPassword = () => {
+    navigator.clipboard.writeText(newPassword)
+    toast({
+      title: "Copiado",
+      description: "Contraseña copiada al portapapeles",
+    })
   }
 
   const handleDeleteUser = async (userId: string, userDisplayName: string, userNickname: string) => {
@@ -1607,6 +1716,10 @@ export function AdminPanel({ onBack, onNavigateToTimeMetrics }: AdminPanelProps)
                       value={searchTerm}
                       onChange={(e) => setSearchTerm(e.target.value)}
                       className="max-w-sm"
+                      autoComplete="new-password"
+                      data-form-type="other"
+                      data-lpignore="true"
+                      name={`search-users-${Date.now()}`}
                     />
                   </div>
                   
@@ -1666,6 +1779,17 @@ export function AdminPanel({ onBack, onNavigateToTimeMetrics }: AdminPanelProps)
                                 >
                                   {tableUser.is_active ? <UserX className="h-4 w-4" /> : <UserCheck className="h-4 w-4" />}
                                 </Button>
+                                {/* Botón para resetear contraseña */}
+                                {(user?.role === 'admin_global' || (user?.role === 'admin_punto' && tableUser.sede_id === user?.sede_id)) && (
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => handleShowPassword(tableUser.id, tableUser.nickname)}
+                                    title="Resetear contraseña"
+                                  >
+                                    <KeyRound className="h-4 w-4" />
+                                  </Button>
+                                )}
                                 {/* Solo admin_global puede cambiar sede de usuarios */}
                                 {user?.role === 'admin_global' && (
                                   <Button
@@ -1867,6 +1991,10 @@ export function AdminPanel({ onBack, onNavigateToTimeMetrics }: AdminPanelProps)
                       value={searchTerm}
                       onChange={(e) => setSearchTerm(e.target.value)}
                       className="max-w-sm"
+                      autoComplete="new-password"
+                      data-form-type="other"
+                      data-lpignore="true"
+                      name={`search-sedes-${Date.now()}`}
                     />
                   </div>
 
@@ -2043,6 +2171,10 @@ export function AdminPanel({ onBack, onNavigateToTimeMetrics }: AdminPanelProps)
                       value={searchTerm}
                       onChange={(e) => setSearchTerm(e.target.value)}
                       className="max-w-sm"
+                      autoComplete="new-password"
+                      data-form-type="other"
+                      data-lpignore="true"
+                      name={`search-repartidores-${Date.now()}`}
                     />
                   </div>
                   <div className="text-sm text-muted-foreground">
@@ -2375,10 +2507,16 @@ export function AdminPanel({ onBack, onNavigateToTimeMetrics }: AdminPanelProps)
                         )}
                       </div>
                       {metricsData && (
-                        <div className="mt-2 text-sm font-medium">
-                          📈 Total: {metricsData.totalGeneral.pedidos} pedidos • 
-                          💰 ${metricsData.totalGeneral.ingresos.toLocaleString()} • 
-                          📊 Promedio: ${Math.round(metricsData.totalGeneral.promedio).toLocaleString()}/pedido
+                        <div className="mt-2 space-y-1">
+                          <div className="text-sm font-medium">
+                            📈 Total: {metricsData.totalGeneral.pedidos} pedidos •
+                            💰 ${metricsData.totalGeneral.ingresos.toLocaleString()} •
+                            📊 Promedio: ${Math.round(metricsData.totalGeneral.promedio).toLocaleString()}/pedido
+                          </div>
+                          <div className="text-sm font-medium text-green-700 bg-green-50 px-3 py-1.5 rounded-md inline-block">
+                            🍽️ Productos sin domicilio: ${metricsData.totalGeneral.ingresosSinDomicilio.toLocaleString()} •
+                            📊 Promedio: ${Math.round(metricsData.totalGeneral.promedioSinDomicilio).toLocaleString()}/pedido
+                          </div>
                         </div>
                       )}
                     </div>
@@ -2939,6 +3077,155 @@ export function AdminPanel({ onBack, onNavigateToTimeMetrics }: AdminPanelProps)
           }}
         />
       )}
+
+      {/* Password Reset Modal */}
+      <Dialog open={isPasswordModalOpen} onOpenChange={(open) => !isResettingPassword && !open && handleClosePasswordModal()}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <KeyRound className="h-5 w-5" />
+              Resetear Contraseña
+            </DialogTitle>
+            <DialogDescription>
+              {!resetPasswordSuccess ? (
+                <>
+                  Configura una nueva contraseña para el usuario <strong>@{selectedUserForPassword?.nickname}</strong> ({selectedUserForPassword?.display_name})
+                </>
+              ) : (
+                <>
+                  La contraseña ha sido actualizada exitosamente
+                </>
+              )}
+            </DialogDescription>
+          </DialogHeader>
+
+          {!resetPasswordSuccess ? (
+            <>
+              {/* Nota de seguridad sobre contraseña anterior */}
+              <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 mb-4">
+                <div className="flex gap-2">
+                  <AlertTriangle className="h-5 w-5 text-amber-600 flex-shrink-0 mt-0.5" />
+                  <div className="text-sm text-amber-800">
+                    <p className="font-medium mb-1">Nota de seguridad:</p>
+                    <p>Las contraseñas están encriptadas con bcrypt (hash irreversible). No es posible ver la contraseña anterior por razones de seguridad.</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Input de nueva contraseña */}
+              <div className="space-y-2">
+                <Label htmlFor="new-password">Nueva Contraseña</Label>
+                <div className="relative">
+                  <Input
+                    id="new-password"
+                    type={showPasswordInModal ? "text" : "password"}
+                    value={newPassword}
+                    onChange={(e) => setNewPassword(e.target.value)}
+                    placeholder="Mínimo 6 caracteres"
+                    className={newPassword ? "pr-10" : ""}
+                    disabled={isResettingPassword}
+                    autoFocus
+                    autoComplete="new-password"
+                    data-form-type="other"
+                    data-lpignore="true"
+                    name={`reset-password-${Date.now()}`}
+                  />
+                  {/* Solo mostrar botón de toggle si hay texto en el campo */}
+                  {newPassword && (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
+                      onClick={() => setShowPasswordInModal(!showPasswordInModal)}
+                      disabled={isResettingPassword}
+                    >
+                      {showPasswordInModal ? (
+                        <EyeOff className="h-4 w-4 text-muted-foreground" />
+                      ) : (
+                        <Eye className="h-4 w-4 text-muted-foreground" />
+                      )}
+                    </Button>
+                  )}
+                </div>
+                {newPassword && newPassword.length < 6 && (
+                  <p className="text-sm text-red-500">La contraseña debe tener al menos 6 caracteres</p>
+                )}
+              </div>
+
+              {/* Botones de acción */}
+              <div className="flex justify-end gap-2 mt-4">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={handleClosePasswordModal}
+                  disabled={isResettingPassword}
+                >
+                  Cancelar
+                </Button>
+                <Button
+                  onClick={handleResetPassword}
+                  disabled={isResettingPassword || newPassword.length < 6}
+                >
+                  {isResettingPassword ? (
+                    <>
+                      <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
+                      Actualizando...
+                    </>
+                  ) : (
+                    <>
+                      <KeyRound className="mr-2 h-4 w-4" />
+                      Actualizar Contraseña
+                    </>
+                  )}
+                </Button>
+              </div>
+            </>
+          ) : (
+            <>
+              {/* Pantalla de éxito */}
+              <div className="space-y-4">
+                <div className="flex items-center justify-center py-4">
+                  <CheckCircle2 className="h-16 w-16 text-green-500" />
+                </div>
+
+                <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+                  <p className="text-sm text-green-800 mb-3">
+                    <strong>Nueva contraseña:</strong>
+                  </p>
+                  <div className="flex items-center gap-2 bg-white rounded border border-green-300 p-3">
+                    <code className="flex-1 text-lg font-mono">{newPassword}</code>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={handleCopyPassword}
+                    >
+                      <Copy className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+
+                <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
+                  <div className="flex gap-2">
+                    <AlertTriangle className="h-5 w-5 text-amber-600 flex-shrink-0 mt-0.5" />
+                    <p className="text-sm text-amber-800">
+                      <strong>Importante:</strong> Guarda esta contraseña. No se volverá a mostrar.
+                    </p>
+                  </div>
+                </div>
+
+                <Button
+                  className="w-full"
+                  onClick={handleClosePasswordModal}
+                >
+                  Cerrar
+                </Button>
+              </div>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

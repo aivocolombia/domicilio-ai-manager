@@ -126,6 +126,8 @@ export const Dashboard: React.FC<DashboardProps> = ({
   // Estados para cancelar pedido
   const [cancelOrderId, setCancelOrderId] = useState<string | null>(null);
   const [cancelReason, setCancelReason] = useState('');
+  const [cancelReasonType, setCancelReasonType] = useState<string>(''); // Tipo de motivo seleccionado
+  const [cancelReasonOther, setCancelReasonOther] = useState(''); // Texto para "Otros"
   const [isCancelModalOpen, setIsCancelModalOpen] = useState(false);
   const [isCancelling, setIsCancelling] = useState(false);
 
@@ -454,6 +456,8 @@ export const Dashboard: React.FC<DashboardProps> = ({
   const handleCancelOrder = (orderId: string) => {
     setCancelOrderId(orderId);
     setCancelReason('');
+    setCancelReasonType('');
+    setCancelReasonOther('');
     setIsCancelModalOpen(true);
   };
 
@@ -546,14 +550,30 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
   // Función para confirmar cancelación de pedido
   const handleConfirmCancel = async () => {
-    if (!cancelOrderId || !cancelReason.trim()) {
+    // Validar que se haya seleccionado un tipo de motivo
+    if (!cancelOrderId || !cancelReasonType) {
       toast({
         title: "Error",
-        description: "Debe ingresar un motivo de cancelación",
+        description: "Debe seleccionar un motivo de cancelación",
         variant: "destructive"
       });
       return;
     }
+
+    // Si seleccionó "Otros", validar que ingresó texto
+    if (cancelReasonType === 'otros' && !cancelReasonOther.trim()) {
+      toast({
+        title: "Error",
+        description: "Debe especificar el motivo cuando selecciona 'Otros'",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    // Construir el motivo final basado en la selección
+    const finalReason = cancelReasonType === 'otros'
+      ? cancelReasonOther.trim()
+      : cancelReasonType;
 
     try {
       setIsCancelling(true);
@@ -561,7 +581,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
       logDebug('Dashboard', 'Cancelando pedido', {
         orderId: cancelOrderId,
         orderIdType: typeof cancelOrderId,
-        reason: cancelReason.trim()
+        reason: finalReason
       });
 
       // Convertir orderId a número si es necesario
@@ -647,7 +667,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
       try {
         const { error: motivoError } = await supabase
           .from('ordenes')
-          .update({ motivo_cancelacion: cancelReason.trim() })
+          .update({ motivo_cancelacion: finalReason })
           .eq('id', orderIdNumber);
         
         if (motivoError) {
@@ -686,6 +706,8 @@ export const Dashboard: React.FC<DashboardProps> = ({
       // Limpiar formulario y cerrar modal
       setCancelOrderId(null);
       setCancelReason('');
+      setCancelReasonType('');
+      setCancelReasonOther('');
       setIsCancelModalOpen(false);
 
       // Recargar datos del dashboard
@@ -2579,31 +2601,67 @@ export const Dashboard: React.FC<DashboardProps> = ({
           </DialogHeader>
           <div className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="cancel-reason">Motivo de Cancelación *</Label>
-              <textarea
-                id="cancel-reason"
-                className="w-full min-h-[100px] p-3 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent"
-                placeholder="Ingrese el motivo de la cancelación (obligatorio)"
-                value={cancelReason}
-                onChange={(e) => setCancelReason(e.target.value)}
-                required
-              />
+              <Label htmlFor="cancel-reason-type">Motivo de Cancelación *</Label>
+              <Select value={cancelReasonType} onValueChange={setCancelReasonType}>
+                <SelectTrigger id="cancel-reason-type">
+                  <SelectValue placeholder="Seleccione un motivo..." />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="Sobrepasa tiempo estimado de entrega">
+                    Sobrepasa tiempo estimado de entrega
+                  </SelectItem>
+                  <SelectItem value="Agotado de productos">
+                    Agotado de productos
+                  </SelectItem>
+                  <SelectItem value="Cliente lo prefiere recoger">
+                    Cliente lo prefiere recoger
+                  </SelectItem>
+                  <SelectItem value="Causales de cliente">
+                    Causales de cliente
+                  </SelectItem>
+                  <SelectItem value="otros">
+                    Otros
+                  </SelectItem>
+                </SelectContent>
+              </Select>
             </div>
+
+            {/* Mostrar campo de texto solo cuando se selecciona "Otros" */}
+            {cancelReasonType === 'otros' && (
+              <div className="space-y-2">
+                <Label htmlFor="cancel-reason-other">Especifique el motivo *</Label>
+                <textarea
+                  id="cancel-reason-other"
+                  className="w-full min-h-[100px] p-3 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent"
+                  placeholder="Ingrese el motivo específico de la cancelación"
+                  value={cancelReasonOther}
+                  onChange={(e) => setCancelReasonOther(e.target.value)}
+                  required
+                />
+              </div>
+            )}
+
             <div className="flex justify-end space-x-2">
-              <Button 
-                variant="outline" 
+              <Button
+                variant="outline"
                 onClick={() => {
                   setIsCancelModalOpen(false);
                   setCancelReason('');
+                  setCancelReasonType('');
+                  setCancelReasonOther('');
                   setCancelOrderId(null);
                 }}
               >
                 Cancelar
               </Button>
-              <Button 
+              <Button
                 variant="destructive"
                 onClick={handleConfirmCancel}
-                disabled={!cancelReason.trim() || isCancelling}
+                disabled={
+                  !cancelReasonType ||
+                  (cancelReasonType === 'otros' && !cancelReasonOther.trim()) ||
+                  isCancelling
+                }
                 className="flex items-center gap-2"
               >
                 {isCancelling ? (

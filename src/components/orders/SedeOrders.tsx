@@ -164,6 +164,8 @@ export const SedeOrders: React.FC<SedeOrdersProps> = ({
   const [searchingPrice, setSearchingPrice] = useState(false);
   const [priceSearchTimeout, setPriceSearchTimeout] = useState<NodeJS.Timeout | null>(null);
   const [customerSearchTimeout, setCustomerSearchTimeout] = useState<NodeJS.Timeout | null>(null);
+  const [isCreatingOrder, setIsCreatingOrder] = useState(false); // Estado para prevenir clics duplicados
+  const [searchPhone, setSearchPhone] = useState('');
 
 
   // Usar SOLO pedidos reales - NUNCA legacy/dummy
@@ -605,6 +607,13 @@ export const SedeOrders: React.FC<SedeOrdersProps> = ({
   };
 
   const executeCreateOrder = async () => {
+    // Prevenir clics duplicados mientras se está creando el pedido
+    if (isCreatingOrder) {
+      console.log('⚠️ Ya se está creando un pedido, ignorando clic duplicado');
+      return;
+    }
+
+    setIsCreatingOrder(true);
     try {
       // Validar que todos los productos existan antes de crear el pedido
       console.log('🔍 Validando existencia de productos antes de crear pedido...');
@@ -777,6 +786,9 @@ export const SedeOrders: React.FC<SedeOrdersProps> = ({
         description: errorMessage,
         variant: "destructive"
       });
+    } finally {
+      // Siempre liberar el botón, incluso si hay error
+      setIsCreatingOrder(false);
     }
   };
 
