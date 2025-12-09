@@ -378,42 +378,71 @@ export class MetricsService {
     try {
       console.log('🍽️ Obteniendo métricas de productos:', filters);
 
-      let query = supabase
-        .from('ordenes')
-        .select(`
-          id,
-          status,
-          created_at,
-          sede_id,
-          ordenes_platos(
-            plato_id,
-            platos(id, name)
-          ),
-          ordenes_bebidas(
-            bebidas_id,
-            bebidas(id, name)
-          ),
-          ordenes_toppings(
-            topping_id,
-            toppings(id, name, pricing)
-          )
-        `)
-        .gte('created_at', formatDateForQuery(new Date(`${filters.fecha_inicio}T00:00:00`), false))
-        .lte('created_at', formatDateForQuery(new Date(`${filters.fecha_fin}T23:59:59`), true));
+      // CORREGIDO: Agregar paginación para obtener TODAS las órdenes sin límite de 1000
+      const pageSize = 1000;
+      let allOrdenesData: any[] = [];
+      let currentPage = 0;
+      let hasMoreData = true;
 
-      // Solo considerar pedidos entregados para métricas de ventas
-      query = query.eq('status', 'Entregados');
+      const startQuery = formatDateForQuery(new Date(`${filters.fecha_inicio}T00:00:00`), false);
+      const endQuery = formatDateForQuery(new Date(`${filters.fecha_fin}T23:59:59`), true);
 
-      if (filters.sede_id) {
-        query = query.eq('sede_id', filters.sede_id);
+      console.log('🔄 Paginando métricas de productos...');
+
+      while (hasMoreData) {
+        let query = supabase
+          .from('ordenes')
+          .select(`
+            id,
+            status,
+            created_at,
+            sede_id,
+            ordenes_platos(
+              plato_id,
+              platos(id, name)
+            ),
+            ordenes_bebidas(
+              bebidas_id,
+              bebidas(id, name)
+            ),
+            ordenes_toppings(
+              topping_id,
+              toppings(id, name, pricing)
+            )
+          `)
+          .gte('created_at', startQuery)
+          .lte('created_at', endQuery)
+          .eq('status', 'Entregados') // Solo considerar pedidos entregados para métricas de ventas
+          .order('created_at', { ascending: true })
+          .range(currentPage * pageSize, (currentPage + 1) * pageSize - 1);
+
+        if (filters.sede_id) {
+          query = query.eq('sede_id', filters.sede_id);
+        }
+
+        const { data: pageData, error } = await query;
+
+        if (error) {
+          console.error('❌ Error obteniendo métricas de productos (página ' + currentPage + '):', error);
+          throw new Error(`Error obteniendo productos: ${error.message}`);
+        }
+
+        if (pageData && pageData.length > 0) {
+          allOrdenesData = allOrdenesData.concat(pageData);
+          console.log(`📄 Productos - Página ${currentPage + 1}: ${pageData.length} órdenes entregadas (total: ${allOrdenesData.length})`);
+
+          if (pageData.length < pageSize) {
+            hasMoreData = false;
+          } else {
+            currentPage++;
+          }
+        } else {
+          hasMoreData = false;
+        }
       }
 
-      const { data, error } = await query;
-
-      if (error) {
-        console.error('❌ Error obteniendo métricas de productos:', error);
-        throw new Error(`Error obteniendo productos: ${error.message}`);
-      }
+      const data = allOrdenesData;
+      console.log('✅ Total órdenes entregadas obtenidas para productos:', data.length);
 
       console.log('💰 Obteniendo precios de sede para métricas de productos...');
 
@@ -751,25 +780,56 @@ export class MetricsService {
     try {
       console.log('⏰ Obteniendo métricas por hora:', filters);
 
-      let query = supabase
-        .from('ordenes_duraciones_con_sede')
-        .select(`
-          created_at,
-          sede_id
-        `)
-        .gte('created_at', formatDateForQuery(new Date(`${filters.fecha_inicio}T00:00:00`), false))
-        .lte('created_at', formatDateForQuery(new Date(`${filters.fecha_fin}T23:59:59`), true));
+      // CORREGIDO: Agregar paginación para obtener TODAS las órdenes sin límite de 1000
+      const pageSize = 1000;
+      let allOrdenesData: any[] = [];
+      let currentPage = 0;
+      let hasMoreData = true;
 
-      if (filters.sede_id) {
-        query = query.eq('sede_id', filters.sede_id);
+      const startQuery = formatDateForQuery(new Date(`${filters.fecha_inicio}T00:00:00`), false);
+      const endQuery = formatDateForQuery(new Date(`${filters.fecha_fin}T23:59:59`), true);
+
+      console.log('🔄 Paginando métricas por hora...');
+
+      while (hasMoreData) {
+        let query = supabase
+          .from('ordenes_duraciones_con_sede')
+          .select(`
+            created_at,
+            sede_id
+          `)
+          .gte('created_at', startQuery)
+          .lte('created_at', endQuery)
+          .order('created_at', { ascending: true })
+          .range(currentPage * pageSize, (currentPage + 1) * pageSize - 1);
+
+        if (filters.sede_id) {
+          query = query.eq('sede_id', filters.sede_id);
+        }
+
+        const { data: pageData, error } = await query;
+
+        if (error) {
+          console.error('❌ Error obteniendo métricas por hora (página ' + currentPage + '):', error);
+          throw new Error(`Error obteniendo métricas por hora: ${error.message}`);
+        }
+
+        if (pageData && pageData.length > 0) {
+          allOrdenesData = allOrdenesData.concat(pageData);
+          console.log(`📄 Hourly Metrics - Página ${currentPage + 1}: ${pageData.length} órdenes (total: ${allOrdenesData.length})`);
+
+          if (pageData.length < pageSize) {
+            hasMoreData = false;
+          } else {
+            currentPage++;
+          }
+        } else {
+          hasMoreData = false;
+        }
       }
 
-      const { data, error } = await query;
-
-      if (error) {
-        console.error('❌ Error obteniendo métricas por hora:', error);
-        throw new Error(`Error obteniendo métricas por hora: ${error.message}`);
-      }
+      const data = allOrdenesData;
+      console.log('✅ Total órdenes obtenidas para métricas por hora:', data.length);
 
       // Procesar datos por hora
       const horasMap = new Map<string, number>();
@@ -808,73 +868,122 @@ export class MetricsService {
     try {
       console.log('❌ Obteniendo métricas de pedidos cancelados:', filters);
 
-      // Query base para obtener pedidos cancelados
-      let query = supabase
-        .from('ordenes')
-        .select(`
-          id,
-          status,
-          sede_id,
-          motivo_cancelacion,
-          created_at,
-          sedes!left(name),
-          pagos!payment_id(total_pago)
-        `)
-        .eq('status', 'Cancelado')
-        .order('created_at', { ascending: false });
+      // CORREGIDO: Agregar paginación para obtener TODAS las órdenes canceladas sin límite de 1000
+      const pageSize = 1000;
+      let allCanceladosData: any[] = [];
+      let currentPage = 0;
+      let hasMoreData = true;
 
-      // Aplicar filtros de fecha con formato correcto de zona horaria
+      let startQuery: string | undefined;
+      let endQuery: string | undefined;
+
       if (filters.fecha_inicio && filters.fecha_fin) {
         const startDate = new Date(`${filters.fecha_inicio}T00:00:00`);
         const endDate = new Date(`${filters.fecha_fin}T23:59:59`);
-        const startQuery = formatDateForQuery(startDate, false);
-        const endQuery = formatDateForQuery(endDate, true);
-
-        query = query
-          .gte('created_at', startQuery)
-          .lte('created_at', endQuery);
+        startQuery = formatDateForQuery(startDate, false);
+        endQuery = formatDateForQuery(endDate, true);
       }
 
-      // Aplicar filtro de sede si se especifica
-      if (filters.sede_id && filters.sede_id !== 'all') {
-        query = query.eq('sede_id', filters.sede_id);
+      console.log('🔄 Paginando pedidos cancelados...');
+
+      while (hasMoreData) {
+        let query = supabase
+          .from('ordenes')
+          .select(`
+            id,
+            status,
+            sede_id,
+            motivo_cancelacion,
+            created_at,
+            sedes!left(name),
+            pagos!payment_id(total_pago)
+          `)
+          .eq('status', 'Cancelado')
+          .order('created_at', { ascending: false })
+          .range(currentPage * pageSize, (currentPage + 1) * pageSize - 1);
+
+        if (startQuery && endQuery) {
+          query = query
+            .gte('created_at', startQuery)
+            .lte('created_at', endQuery);
+        }
+
+        if (filters.sede_id && filters.sede_id !== 'all') {
+          query = query.eq('sede_id', filters.sede_id);
+        }
+
+        const { data: pageData, error } = await query;
+
+        if (error) {
+          console.error('❌ Error obteniendo pedidos cancelados (página ' + currentPage + '):', error);
+          throw new Error(`Error obteniendo pedidos cancelados: ${error.message}`);
+        }
+
+        if (pageData && pageData.length > 0) {
+          allCanceladosData = allCanceladosData.concat(pageData);
+          console.log(`📄 Cancelled Orders - Página ${currentPage + 1}: ${pageData.length} órdenes (total: ${allCanceladosData.length})`);
+
+          if (pageData.length < pageSize) {
+            hasMoreData = false;
+          } else {
+            currentPage++;
+          }
+        } else {
+          hasMoreData = false;
+        }
       }
 
-      const { data: cancelados, error } = await query;
+      const cancelados = allCanceladosData;
+      console.log('✅ Total pedidos cancelados obtenidos:', cancelados.length);
 
-      if (error) {
-        console.error('❌ Error obteniendo pedidos cancelados:', error);
-        throw new Error(`Error obteniendo pedidos cancelados: ${error.message}`);
+      // También obtener el total de pedidos para calcular porcentaje (CON PAGINACIÓN)
+      let allTotalPedidos: any[] = [];
+      let currentTotalPage = 0;
+      let hasMoreTotal = true;
+
+      console.log('🔄 Paginando total de pedidos...');
+
+      while (hasMoreTotal) {
+        let totalQuery = supabase
+          .from('ordenes')
+          .select('id, sede_id')
+          .neq('status', null)
+          .order('created_at', { ascending: true })
+          .range(currentTotalPage * pageSize, (currentTotalPage + 1) * pageSize - 1);
+
+        if (startQuery && endQuery) {
+          totalQuery = totalQuery
+            .gte('created_at', startQuery)
+            .lte('created_at', endQuery);
+        }
+
+        if (filters.sede_id && filters.sede_id !== 'all') {
+          totalQuery = totalQuery.eq('sede_id', filters.sede_id);
+        }
+
+        const { data: totalPageData, error: totalError } = await totalQuery;
+
+        if (totalError) {
+          console.error('❌ Error obteniendo total de pedidos (página ' + currentTotalPage + '):', totalError);
+          throw new Error(`Error obteniendo total de pedidos: ${totalError.message}`);
+        }
+
+        if (totalPageData && totalPageData.length > 0) {
+          allTotalPedidos = allTotalPedidos.concat(totalPageData);
+          console.log(`📄 Total Orders - Página ${currentTotalPage + 1}: ${totalPageData.length} órdenes (total: ${allTotalPedidos.length})`);
+
+          if (totalPageData.length < pageSize) {
+            hasMoreTotal = false;
+          } else {
+            currentTotalPage++;
+          }
+        } else {
+          hasMoreTotal = false;
+        }
       }
 
-      // También obtener el total de pedidos para calcular porcentaje
-      let totalQuery = supabase
-        .from('ordenes')
-        .select('id, sede_id')
-        .neq('status', null);
-
-      // Aplicar filtros de fecha y sede consistentes
-      if (filters.fecha_inicio && filters.fecha_fin) {
-        const startDate = new Date(`${filters.fecha_inicio}T00:00:00`);
-        const endDate = new Date(`${filters.fecha_fin}T23:59:59`);
-        const startQuery = formatDateForQuery(startDate, false);
-        const endQuery = formatDateForQuery(endDate, true);
-
-        totalQuery = totalQuery
-          .gte('created_at', startQuery)
-          .lte('created_at', endQuery);
-      }
-
-      if (filters.sede_id && filters.sede_id !== 'all') {
-        totalQuery = totalQuery.eq('sede_id', filters.sede_id);
-      }
-
-      const { data: totalPedidos, error: totalError } = await totalQuery;
-
-      if (totalError) {
-        console.error('❌ Error obteniendo total de pedidos:', totalError);
-        throw new Error(`Error obteniendo total de pedidos: ${totalError.message}`);
-      }
+      const totalPedidos = allTotalPedidos;
+      console.log('✅ Total general de pedidos obtenidos:', totalPedidos.length);
 
       // Procesar datos
       const totalCancelados = cancelados?.length || 0;
@@ -891,6 +1000,37 @@ export class MetricsService {
         const monto = orden.pagos?.total_pago || 0;
         return sum + monto;
       }, 0) || 0;
+
+      // IMPORTANTE: Para calcular participación correcta, necesitamos el total GLOBAL de cancelados
+      // Si hay filtro de sede, tenemos que obtener el total global de cancelados SIN FILTRO
+      let totalCanceladosGlobal = totalCancelados; // Por defecto, asumir que ya es global
+
+      // Si hay filtro de sede (no es 'all'), obtener el total global de cancelados
+      if (filters.sede_id && filters.sede_id !== 'all') {
+        console.log('🔍 Filtro de sede detectado, obteniendo total GLOBAL de cancelados para calcular participación correcta...');
+
+        let globalQuery = supabase
+          .from('ordenes')
+          .select('id', { count: 'exact', head: true })
+          .eq('status', 'Cancelado');
+
+        // Aplicar solo filtros de fecha (NO sede_id)
+        if (startQuery && endQuery) {
+          globalQuery = globalQuery
+            .gte('created_at', startQuery)
+            .lte('created_at', endQuery);
+        }
+
+        const { count, error } = await globalQuery;
+
+        if (error) {
+          console.warn('⚠️ Error obteniendo total global de cancelados:', error);
+          // Continuar con totalCancelados como fallback
+        } else {
+          totalCanceladosGlobal = count || 0;
+          console.log('✅ Total global de cancelados (sin filtro de sede):', totalCanceladosGlobal);
+        }
+      }
 
       // Agrupar por sede
       const sedeMap = new Map<string, { nombre: string; cancelados: number; monto: number }>();
@@ -917,7 +1057,11 @@ export class MetricsService {
       const porSede = Array.from(sedeMap.entries()).map(([sede_id, data]) => {
         const totalPedidosSede = totalPedidosPorSede.get(sede_id) || 0;
         const tasaCancelacion = totalPedidosSede > 0 ? (data.cancelados / totalPedidosSede) * 100 : 0;
-        const participacion = totalCancelados > 0 ? (data.cancelados / totalCancelados) * 100 : 0;
+        // CORRECCIÓN: Usar totalCanceladosGlobal en lugar de totalCancelados
+        const participacion = totalCanceladosGlobal > 0 ? (data.cancelados / totalCanceladosGlobal) * 100 : 0;
+
+        console.log(`📊 Sede ${data.nombre}: ${data.cancelados} cancelados / ${totalCanceladosGlobal} global = ${participacion.toFixed(1)}% participación`);
+
         return {
           sede_id,
           nombre: data.nombre,
@@ -1049,56 +1193,73 @@ export class MetricsService {
       console.log('⏱️ MetricsService: Consultando métricas de tiempo de órdenes...');
       console.log('🔍 MetricsService: Filtros aplicados:', filters);
 
-      // Construir query base - usar la tabla correcta de métricas de tiempo
-      let query = supabase
-        .from('ordenes_duraciones_con_sede')
-        .select('*')
-        .order('created_at', { ascending: false });
+      // CORREGIDO: Agregar paginación para obtener TODAS las órdenes sin límite de 500
+      const pageSize = 1000;
+      let allOrdenesData: any[] = [];
+      let currentPage = 0;
+      let hasMoreData = true;
 
-      // Aplicar filtros
-      if (filters.sede_id) {
-        console.log('🏢 MetricsService: Filtrando por sede_id:', filters.sede_id);
-        query = query.eq('sede_id', filters.sede_id);
+      const startQuery = filters.fecha_inicio
+        ? formatDateForQuery(new Date(`${filters.fecha_inicio}T00:00:00`), false)
+        : undefined;
+      const endQuery = filters.fecha_fin
+        ? formatDateForQuery(new Date(`${filters.fecha_fin}T23:59:59`), true)
+        : undefined;
+
+      console.log('🔄 Paginando métricas de tiempo...');
+
+      while (hasMoreData) {
+        // Construir query base
+        let query = supabase
+          .from('ordenes_duraciones_con_sede')
+          .select('*')
+          .order('created_at', { ascending: false })
+          .range(currentPage * pageSize, (currentPage + 1) * pageSize - 1);
+
+        // Aplicar filtros
+        if (filters.sede_id) {
+          query = query.eq('sede_id', filters.sede_id);
+        }
+
+        if (startQuery) {
+          query = query.gte('created_at', startQuery);
+        }
+
+        if (endQuery) {
+          query = query.lte('created_at', endQuery);
+        }
+
+        const { data: pageData, error } = await query;
+
+        if (error) {
+          console.error('❌ MetricsService: Error al obtener métricas de tiempo (página ' + currentPage + '):', error);
+          throw new Error(`Error al obtener métricas: ${error.message}`);
+        }
+
+        if (pageData && pageData.length > 0) {
+          allOrdenesData = allOrdenesData.concat(pageData);
+          console.log(`📄 Time Metrics - Página ${currentPage + 1}: ${pageData.length} órdenes (total: ${allOrdenesData.length})`);
+
+          if (pageData.length < pageSize) {
+            hasMoreData = false;
+          } else {
+            currentPage++;
+          }
+        } else {
+          hasMoreData = false;
+        }
       }
 
-      if (filters.fecha_inicio) {
-        console.log('📅 MetricsService: Filtrando desde fecha:', filters.fecha_inicio);
-        query = query.gte('created_at', formatDateForQuery(new Date(`${filters.fecha_inicio}T00:00:00`), false));
-      }
+      const data = allOrdenesData;
+      console.log('✅ MetricsService: Métricas de tiempo obtenidas:', data.length);
 
-      if (filters.fecha_fin) {
-        console.log('📅 MetricsService: Filtrando hasta fecha:', filters.fecha_fin);
-        query = query.lte('created_at', formatDateForQuery(new Date(`${filters.fecha_fin}T23:59:59`), true));
-      }
-
-      const { data, error } = await query.limit(500); // Incrementar límite para más datos
-
-      if (error) {
-        console.error('❌ MetricsService: Error al obtener métricas de tiempo:', error);
-        throw new Error(`Error al obtener métricas: ${error.message}`);
-      }
-
-      console.log('✅ MetricsService: Métricas de tiempo obtenidas:', data?.length || 0);
-      
       // Debug: Mostrar algunos registros si existen
       if (data && data.length > 0) {
         console.log('🔍 MetricsService: Primeros 3 registros:', data.slice(0, 3));
       } else {
         console.log('⚠️ MetricsService: No se encontraron datos en ordenes_duraciones_con_sede');
-        
-        // Verificar si la tabla/vista existe
-        const { data: tableCheck, error: tableError } = await supabase
-          .from('ordenes_duraciones_con_sede')
-          .select('id')
-          .limit(1);
-        
-        if (tableError) {
-          console.error('❌ MetricsService: Error verificando tabla ordenes_duraciones_con_sede:', tableError);
-        } else {
-          console.log('✅ MetricsService: Tabla ordenes_duraciones_con_sede existe, pero no hay datos en el rango especificado');
-        }
       }
-      
+
       return data || [];
     } catch (error) {
       console.error('❌ Error en getOrderTimeMetrics:', error);

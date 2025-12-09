@@ -2716,6 +2716,35 @@ export function AdminPanel({ onBack, onNavigateToTimeMetrics }: AdminPanelProps)
                           </div>
                         </div>
 
+                        {/* Mensaje explicativo de métricas */}
+                        {user?.role === 'admin_global' && (
+                          <div className="p-4 bg-blue-50 rounded-lg border border-blue-200">
+                            <div className="flex items-start gap-3">
+                              <div className="flex-shrink-0 mt-0.5">
+                                <svg className="h-5 w-5 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                </svg>
+                              </div>
+                              <div className="flex-1">
+                                <h4 className="font-semibold text-blue-900 mb-2">💡 Cómo interpretar las métricas:</h4>
+                                <div className="space-y-2 text-sm text-blue-800">
+                                  <div className="flex items-start gap-2">
+                                    <span className="font-semibold min-w-[140px]">📊 Tasa de Cancelación:</span>
+                                    <span>Mide la eficiencia operativa de cada sede. <span className="font-semibold">Fórmula: (Cancelados de la sede / Total pedidos de la sede) × 100</span>. Ejemplo: 3.6% = 1 de cada 28 pedidos se cancela en esa sede.</span>
+                                  </div>
+                                  <div className="flex items-start gap-2">
+                                    <span className="font-semibold min-w-[140px]">📈 Participación:</span>
+                                    <span>Mide el impacto en el negocio. <span className="font-semibold">Fórmula: (Cancelados de la sede / Total GLOBAL de cancelados) × 100</span>. Ejemplo: 41.5% = de TODOS los pedidos cancelados en el sistema, el 41.5% provienen de esa sede. <span className="font-bold text-blue-900">Nota: Siempre se calcula respecto al total global, incluso si filtras por sede.</span></span>
+                                  </div>
+                                  <div className="mt-3 p-2 bg-blue-100/50 rounded border-l-4 border-blue-400">
+                                    <span className="font-semibold">🎯 Tip:</span> Una sede puede tener <span className="font-bold">baja tasa</span> (opera eficientemente) pero <span className="font-bold">alta participación</span> (alto volumen de ventas). Prioriza resolver problemas en sedes con <span className="underline">alta participación</span> para reducir más cancelaciones globalmente.
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        )}
+
                         {/* Cancelaciones por sede */}
                         {metricsData.pedidosCancelados?.porSede && metricsData.pedidosCancelados.porSede.length > 0 ? (
                           <div className="space-y-3 max-h-[300px] overflow-y-auto pr-2">
