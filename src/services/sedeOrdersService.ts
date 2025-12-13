@@ -17,6 +17,24 @@ export interface SedeOrder {
   updated_at: string;
   sede_id: string;
   items: OrderItem[];
+  // Campos de timestamps
+  recibidos_at?: string | null;
+  cocina_at?: string | null;
+  camino_at?: string | null;
+  entregado_at?: string | null;
+  cancelado_at?: string | null;
+  cliente_id?: number | null;
+  repartidor_id?: number | null;
+  hora_entrega?: string | null;
+  address?: string | null;
+  cubiertos?: string | null;
+  precio_envio?: number | null;
+  source?: string | null;
+  descuento_valor?: number | null;
+  descuento_comentario?: string | null;
+  delivery_instructions?: string | null;
+  factura_electronica?: string | null;
+  id_facturacion_cliente?: number | null;
 }
 
 export interface OrderItem {
@@ -67,6 +85,8 @@ export interface CreateOrderData {
     telefono: string;
     direccion?: string;
   };
+  // ID del registro de facturación del cliente (opcional)
+  id_facturacion_cliente?: number;
 }
 
 class SedeOrdersService {
@@ -252,6 +272,24 @@ class SedeOrdersService {
           status,
           created_at,
           observaciones,
+          recibidos_at,
+          cocina_at,
+          camino_at,
+          entregado_at,
+          cancelado_at,
+          cliente_id,
+          repartidor_id,
+          hora_entrega,
+          address,
+          cubiertos,
+          precio_envio,
+          type_order,
+          source,
+          descuento_valor,
+          descuento_comentario,
+          delivery_instructions,
+          factura_electronica,
+          id_facturacion_cliente,
           clientes!cliente_id(nombre, telefono, direccion),
           pagos!payment_id(type, status, total_pago),
           ordenes_platos!left(
@@ -297,6 +335,24 @@ class SedeOrdersService {
           status,
           created_at,
           observaciones,
+          recibidos_at,
+          cocina_at,
+          camino_at,
+          entregado_at,
+          cancelado_at,
+          cliente_id,
+          repartidor_id,
+          hora_entrega,
+          address,
+          cubiertos,
+          precio_envio,
+          type_order,
+          source,
+          descuento_valor,
+          descuento_comentario,
+          delivery_instructions,
+          factura_electronica,
+          id_facturacion_cliente,
           clientes!cliente_id(nombre, telefono, direccion),
           pagos!payment_id(type, status, total_pago),
           ordenes_platos!left(
@@ -412,17 +468,35 @@ class SedeOrdersService {
           id: order.id,
           cliente_nombre: order.clientes?.nombre || 'Cliente',
           cliente_telefono: order.clientes?.telefono || '',
-          direccion: order.clientes?.direccion || '',
+          direccion: order.clientes?.direccion || order.address || '',
           total: order.pagos?.total_pago || 0,
           estado: order.status || 'Recibidos',
           pago_tipo: order.pagos?.type || 'efectivo',
           pago_estado: order.pagos?.status || 'pending',
-          tipo_entrega: 'delivery', // Por defecto
+          tipo_entrega: (order.type_order as 'delivery' | 'pickup') || 'delivery',
           instrucciones: order.observaciones,
           created_at: order.created_at,
           updated_at: order.created_at, // Usar created_at ya que updated_at no existe
           sede_id: sedeId,
-          items
+          items,
+          // Campos de timestamps y adicionales
+          recibidos_at: order.recibidos_at || null,
+          cocina_at: order.cocina_at || null,
+          camino_at: order.camino_at || null,
+          entregado_at: order.entregado_at || null,
+          cancelado_at: order.cancelado_at || null,
+          cliente_id: order.cliente_id || null,
+          repartidor_id: order.repartidor_id || null,
+          hora_entrega: order.hora_entrega || null,
+          address: order.address || null,
+          cubiertos: order.cubiertos || null,
+          precio_envio: order.precio_envio || null,
+          source: order.source || null,
+          descuento_valor: order.descuento_valor || null,
+          descuento_comentario: order.descuento_comentario || null,
+          delivery_instructions: order.delivery_instructions || null,
+          factura_electronica: order.factura_electronica || null,
+          id_facturacion_cliente: order.id_facturacion_cliente || null
         };
       });
 
@@ -621,15 +695,18 @@ class SedeOrdersService {
           delivery_instructions: orderData.delivery_instructions, // Indicaciones de entrega
           hora_entrega: horaEntrega.toISOString(),
           cubiertos: orderData.cubiertos,
+          recibidos_at: new Date().toISOString(), // ⭐ Establecer recibidos_at al crear la orden
           // Para pedidos de pickup, repartidor_id debe ser null (no necesitan repartidor)
           repartidor_id: orderData.tipo_entrega === 'pickup' ? null : undefined, // undefined permite auto-asignación para delivery
           // CRÍTICO: Guardar el precio de envío para el auto-complete
           precio_envio: orderData.tipo_entrega === 'delivery' && orderData.delivery_cost ? orderData.delivery_cost : null,
           // Campos nuevos para clasificación
           source: 'sede', // Siempre 'sede' cuando se crea desde la UI
-          type_order: orderData.tipo_entrega // 'delivery' o 'pickup'
+          type_order: orderData.tipo_entrega, // 'delivery' o 'pickup'
+          // ⭐ ID del registro de facturación del cliente (si está disponible)
+          id_facturacion_cliente: orderData.id_facturacion_cliente || null
         })
-        .select('id')
+        .select('id, cliente_id')
         .single();
 
       if (ordenError) {

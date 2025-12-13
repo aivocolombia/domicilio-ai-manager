@@ -30,17 +30,36 @@ export class OrderStatusService {
 
       // Actualizar estado en la tabla ordenes
       if (update.newStatus) {
+        // Preparar datos de actualización con timestamps según el estado
+        const updateData: any = { 
+          status: update.newStatus
+        };
+
+        // Actualizar timestamps según el nuevo estado
+        const now = new Date().toISOString();
+        const statusLower = update.newStatus.toLowerCase();
+
+        if (statusLower === 'cocina' || statusLower === 'kitchen') {
+          updateData.cocina_at = now;
+        } else if (statusLower === 'camino' || statusLower === 'delivery' || statusLower === 'en camino') {
+          updateData.camino_at = now;
+        } else if (statusLower === 'entregados' || statusLower === 'delivered' || statusLower === 'entregado') {
+          updateData.entregado_at = now;
+        } else if (statusLower === 'cancelado' || statusLower === 'cancelled' || statusLower === 'cancelado') {
+          updateData.cancelado_at = now;
+        }
+
         const { error: statusError } = await supabase
           .from('ordenes')
-          .update({ 
-            status: update.newStatus
-          })
+          .update(updateData)
           .eq('id', orderId);
 
         if (statusError) {
           console.error('❌ Error actualizando estado:', statusError);
           throw new Error(`Error actualizando estado: ${statusError.message}`);
         }
+
+        console.log(`✅ Estado actualizado a "${update.newStatus}" con timestamps correspondientes`);
 
         // 🔄 AUTO-PAGO: Si el estado cambia a "Entregados", marcar pago como "Pagado" automáticamente
         if (update.newStatus === 'Entregados' || update.newStatus === 'delivered') {

@@ -12,10 +12,12 @@ import { Textarea } from '@/components/ui/textarea';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Phone, Search, Plus, User, MapPin, Clock, CreditCard, Store, AlertTriangle, Pause, Loader2, RefreshCw } from 'lucide-react';
+import { Phone, Search, Plus, User, MapPin, Clock, CreditCard, Store, AlertTriangle, Pause, Loader2, RefreshCw, FileText } from 'lucide-react';
 import { Order, PaymentMethod, DeliveryType, Sede, DeliverySettings } from '@/types/delivery';
 import { useMenu } from '@/hooks/useMenu';
 import { addressService } from '@/services/addressService';
+import { FacturacionElectronica } from '@/components/facturacion/FacturacionElectronica';
+import { toast } from '@/hooks/use-toast';
 
 interface CallCenterProps {
   orders: Order[];
@@ -47,6 +49,7 @@ const CallCenter: React.FC<CallCenterProps> = ({
   const [newCustomerName, setNewCustomerName] = useState('');
   const [loadingDeliveryPrice, setLoadingDeliveryPrice] = useState(false);
   const [isCreatingOrder, setIsCreatingOrder] = useState(false); // Estado para prevenir clics duplicados
+  const [isFacturacionModalOpen, setIsFacturacionModalOpen] = useState(false);
   const [newOrder, setNewOrder] = useState({
     address: '',
     deliveryInstructions: '',
@@ -651,6 +654,23 @@ const CallCenter: React.FC<CallCenterProps> = ({
                       />
                     </div>
 
+                    {/* Botón de Facturación Electrónica */}
+                    <div className="space-y-2">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="w-full border-blue-300 text-blue-700 hover:bg-blue-50 hover:border-blue-400"
+                        onClick={() => setIsFacturacionModalOpen(true)}
+                        disabled={newOrder.items.length === 0 || !effectiveSedeId}
+                      >
+                        <FileText className="h-4 w-4 mr-2" />
+                        Generar Factura Electrónica
+                      </Button>
+                      <p className="text-xs text-gray-500">
+                        Selecciona un cliente y su registro de facturación para generar la factura electrónica automáticamente
+                      </p>
+                    </div>
+
                     <Button
                       onClick={handleCreateOrder}
                       disabled={
@@ -777,6 +797,45 @@ const CallCenter: React.FC<CallCenterProps> = ({
         </Card>
       )}
     </div>
+
+    {/* Modal de Facturación Electrónica */}
+    <FacturacionElectronica
+      isOpen={isFacturacionModalOpen}
+      onClose={() => setIsFacturacionModalOpen(false)}
+      ordenItems={newOrder.items.map(item => {
+        const [type, id] = item.productId.split('_');
+        return {
+          type: type as 'plato' | 'bebida' | 'topping',
+          id: parseInt(id, 10),
+          quantity: item.quantity
+        };
+      })}
+      sedeId={effectiveSedeId}
+      observaciones={newOrder.specialInstructions}
+      onSuccess={(response) => {
+        toast({
+          title: "Factura generada",
+          description: `Orden #${response.order_id} creada con factura #${response.invoice.number}`,
+        });
+        // Cerrar el modal de creación de orden y resetear
+        setShowNewOrderDialog(false);
+        setNewOrder({
+          address: '',
+          deliveryInstructions: '',
+          items: [],
+          paymentMethod: 'cash',
+          hasMultiplePayments: false,
+          paymentMethod2: 'cash',
+          paymentAmount1: 0,
+          paymentAmount2: 0,
+          specialInstructions: '',
+          deliveryType: 'delivery',
+          pickupSede: '',
+          deliveryPrice: 0
+        });
+        setNewCustomerName('');
+      }}
+    />
   );
 };
 

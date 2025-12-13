@@ -11,6 +11,7 @@ import {
   Package,
   Truck,
   CheckCircle,
+  CheckCircle2,
   Phone,
   Bot,
   Settings,
@@ -58,6 +59,8 @@ import { MinutaModal } from './modals/MinutaModal';
 import { DiscountDialog } from '@/components/discounts/DiscountDialog';
 import { ChangeOrderTypeDialog } from './modals/ChangeOrderTypeDialog';
 import { PaymentDetailsModal } from './payment/PaymentDetailsModal';
+import { FacturacionElectronica } from '@/components/facturacion/FacturacionElectronica';
+import { clienteService, facturacionCache, CreateOrderRequest } from '@/services/clienteService';
 import { cn } from '@/lib/utils';
 import { useDashboard } from '@/hooks/useDashboard';
 import { logDebug, logError, logWarn } from '@/utils/logger';
@@ -72,7 +75,7 @@ import { addressService } from '@/services/addressService';
 import { sedeServiceSimple } from '@/services/sedeServiceSimple';
 import { Textarea } from '@/components/ui/textarea';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { AlertTriangle, Pause, Store, Navigation, ShoppingCart } from 'lucide-react';
+import { AlertTriangle, Pause, Store, Navigation, ShoppingCart, FileText } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { useDebouncedCallback } from '@/hooks/useDebounce';
 import { useAgentDebug } from '@/hooks/useAgentDebug';
@@ -196,6 +199,14 @@ export const Dashboard: React.FC<DashboardProps> = ({
     toppings: [] as any[]
   });
   const [loadingSedeProducts, setLoadingSedeProducts] = useState(false);
+  
+  // Estado para el modal de factura creada
+  const [showInvoiceModal, setShowInvoiceModal] = useState(false);
+  const [createdInvoice, setCreatedInvoice] = useState<{
+    orderId: number;
+    invoiceNumber: number | string;
+    pdfUrl?: string;
+  } | null>(null);
 
   // Helpers para manejar cantidades por producto dentro de la UI de selección
   const getItemCount = (productType: 'plato' | 'bebida' | 'topping', productId: string | number) => {
@@ -281,6 +292,9 @@ export const Dashboard: React.FC<DashboardProps> = ({
   // Estados para modal de descuento
   const [isDiscountDialogOpen, setIsDiscountDialogOpen] = useState(false);
   const [selectedOrderForDiscount, setSelectedOrderForDiscount] = useState<DashboardOrder | null>(null);
+
+  // Estados para modal de facturación electrónica
+  const [isFacturacionModalOpen, setIsFacturacionModalOpen] = useState(false);
 
   // Estados para modal de cambiar tipo de orden (delivery/pickup)
   const [isChangeOrderTypeDialogOpen, setIsChangeOrderTypeDialogOpen] = useState(false);
@@ -635,12 +649,15 @@ export const Dashboard: React.FC<DashboardProps> = ({
       
       let statusUpdated = false;
       
-      // Intentar actualizar el status a 'Cancelado'
+      // Intentar actualizar el status a 'Cancelado' con timestamp
       logDebug('Dashboard', 'Intentando actualizar status a Cancelado');
       
       const { error: statusError } = await supabase
         .from('ordenes')
-        .update({ status: 'Cancelado' })
+        .update({ 
+          status: 'Cancelado',
+          cancelado_at: new Date().toISOString()
+        })
         .eq('id', orderIdNumber);
       
       if (statusError) {
@@ -1672,6 +1689,9 @@ export const Dashboard: React.FC<DashboardProps> = ({
         ? `Recogida en ${currentSedeName} - Cliente: ${customerData.name} (${customerData.phone})`
         : customerData.address;
 
+      // ⭐ Obtener facturación pendiente de caché ANTES de crear orderData
+      const pendingFacturacion = facturacionCache.get();
+
       const orderData: CreateOrderData = {
         cliente_nombre: customerData.name,
         cliente_telefono: customerData.phone,
@@ -1734,10 +1754,141 @@ export const Dashboard: React.FC<DashboardProps> = ({
           newOrder.paymentMethod2 === 'nequi' ? 'nequi' : 'transferencia'
         ) : undefined,
         pago_monto1: newOrder.hasMultiplePayments ? newOrder.paymentAmount1 : undefined,
-        pago_monto2: newOrder.hasMultiplePayments ? newOrder.paymentAmount2 : undefined
+        pago_monto2: newOrder.hasMultiplePayments ? newOrder.paymentAmount2 : undefined,
+        // ⭐ Incluir id_facturacion_cliente si hay facturación pendiente en caché
+        id_facturacion_cliente: pendingFacturacion?.facturacion_id || undefined
       };
 
-      await createOrder(orderData);
+      const createdOrder = await createOrder(orderData);
+      const orderId = createdOrder?.id || createdOrder?.order_id;
+
+      // Verificar si hay facturación pendiente en caché (ya obtenida arriba)
+      if (pendingFacturacion && orderId) {
+        try {
+          // ⭐ Obtener id_facturacion_cliente directamente de la orden creada
+          // Esto es más confiable porque ya está guardado en la BD
+          const { data: ordenData, error: ordenError } = await supabase
+            .from('ordenes')
+            .select('cliente_id, id_facturacion_cliente')
+            .eq('id', orderId)
+            .single();
+
+          if (ordenError || !ordenData) {
+            throw new Error(`No se pudo obtener los datos de la orden ${orderId}`);
+          }
+
+          const orderClienteId = ordenData.cliente_id;
+          const orderFacturacionId = ordenData.id_facturacion_cliente;
+
+          // ⭐ Usar el id_facturacion_cliente de la orden si está disponible
+          // Si no está disponible, usar el de la caché (fallback)
+          let facturacionIdToUse = orderFacturacionId || pendingFacturacion.facturacion_id;
+
+          if (!facturacionIdToUse) {
+            // Si no hay facturacion_id disponible, buscar registros del cliente
+            console.log(`⚠️ No se encontró id_facturacion_cliente en la orden. Buscando registros del cliente ${orderClienteId}...`);
+            
+            const facturacionesCliente = await clienteService.getFacturacionesByClienteId(orderClienteId);
+            
+            if (facturacionesCliente.length === 0) {
+              // Limpiar caché ya que no es válida para este cliente
+              facturacionCache.clear();
+              
+              // Mostrar toast informativo
+              toast({
+                title: "Facturación no disponible",
+                description: `El cliente de la orden no tiene registros de facturación activos. La orden #${orderId} se creó correctamente, pero no se pudo generar la factura electrónica. Puedes crear un registro de facturación para este cliente y luego generar la factura manualmente.`,
+                variant: "default",
+                duration: 10000
+              });
+              
+              // No lanzar error, solo retornar - la orden ya se creó exitosamente
+              return;
+            }
+            
+            // Usar el registro por defecto o el primero disponible
+            const defaultFact = facturacionesCliente.find(f => f.es_default);
+            facturacionIdToUse = defaultFact ? defaultFact.id : facturacionesCliente[0].id;
+            
+            console.log(`✅ Usando registro de facturación válido (id=${facturacionIdToUse}) para el cliente ${orderClienteId}`);
+          } else {
+            console.log(`✅ Usando id_facturacion_cliente de la orden: ${facturacionIdToUse}`);
+          }
+
+          // Crear factura electrónica para la orden recién creada
+          const facturacionRequest: CreateOrderRequest = {
+            cliente_id: orderClienteId.toString(), // Usar cliente de la orden
+            sede_id: pendingFacturacion.sede_id,
+            facturacion_id: facturacionIdToUse, // ⭐ Usar el id_facturacion_cliente de la orden
+            order_id: orderId, // ⭐ Enviar ID de la orden creada
+            platos: pendingFacturacion.platos,
+            bebidas: pendingFacturacion.bebidas,
+            toppings: pendingFacturacion.toppings,
+            observaciones: pendingFacturacion.observaciones,
+            descuento_valor: pendingFacturacion.descuento_valor,
+            descuento_comentario: pendingFacturacion.descuento_comentario
+          };
+
+          const facturaResponse = await clienteService.createInvoiceForOrder(orderId, facturacionRequest);
+          
+          // Limpiar caché después de crear la factura exitosamente
+          facturacionCache.clear();
+
+          // ⭐ Refrescar las órdenes para mostrar la factura_electronica actualizada
+          await refreshSedeOrders();
+
+          // Construir URL del PDF: si viene en la respuesta, usarla; si no, construirla con el endpoint
+          const invoiceId = facturaResponse.invoice?.id;
+          const invoicePdf = facturaResponse.invoice?.pdf;
+          
+          console.log('📄 Información de factura recibida:', {
+            invoiceId,
+            invoicePdf,
+            invoiceNumber: facturaResponse.invoice?.number,
+            fullResponse: facturaResponse
+          });
+
+          const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8081/api/v1';
+          const pdfUrl = invoicePdf 
+            ? invoicePdf 
+            : invoiceId 
+              ? `${apiBaseUrl}/invoices/${invoiceId}/files/pdf`
+              : undefined;
+
+          console.log('📄 URL del PDF construida:', pdfUrl);
+
+          // Guardar información de la factura y mostrar modal
+          setCreatedInvoice({
+            orderId: orderId,
+            invoiceNumber: facturaResponse.invoice?.number || 'N/A',
+            pdfUrl: pdfUrl
+          });
+          setShowInvoiceModal(true);
+        } catch (facturaError) {
+          console.error('Error al crear factura electrónica:', facturaError);
+          // La orden ya se creó, pero la factura falló
+          let errorMessage = facturaError instanceof Error ? facturaError.message : "Error al crear factura electrónica. La orden se creó correctamente.";
+          
+          // Mensaje más amigable si el cliente no tiene registros de facturación
+          if (errorMessage.includes("no tiene registros de facturación")) {
+            errorMessage = `El cliente de la orden no tiene registros de facturación activos. Por favor, crea un registro de facturación para este cliente antes de generar la factura electrónica. La orden #${orderId} se creó correctamente.`;
+          }
+          
+          toast({
+            title: "Pedido creado, pero error en factura",
+            description: errorMessage,
+            variant: "destructive",
+            duration: 10000 // Mostrar por más tiempo para que el usuario pueda leer el mensaje
+          });
+          // NO limpiar caché para permitir reintentar
+        }
+      } else {
+        // Si no hay facturación pendiente, mostrar mensaje normal
+        toast({
+          title: "Pedido creado exitosamente",
+          description: `Orden #${orderId || 'creada'} registrada correctamente`,
+        });
+      }
 
       // Reset form
       setNewOrder({
@@ -3543,6 +3694,71 @@ export const Dashboard: React.FC<DashboardProps> = ({
               />
             </div>
 
+            {/* Botón de Facturación Electrónica */}
+            <div className="space-y-2">
+              <Button
+                type="button"
+                variant="outline"
+                className="w-full border-blue-300 text-blue-700 hover:bg-blue-50 hover:border-blue-400"
+                onClick={() => setIsFacturacionModalOpen(true)}
+                disabled={newOrder.items.length === 0 || !effectiveSedeId}
+              >
+                <FileText className="h-4 w-4 mr-2" />
+                Generar Factura Electrónica
+              </Button>
+              <p className="text-xs text-gray-500">
+                Selecciona un cliente y su registro de facturación para generar la factura electrónica automáticamente
+              </p>
+            </div>
+
+            {/* Resumen de Facturación Guardada */}
+            {(() => {
+              const pendingFacturacion = facturacionCache.get();
+              if (pendingFacturacion && pendingFacturacion.sede_id === (effectiveSedeId || '')) {
+                return (
+                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <h3 className="font-semibold text-blue-900 flex items-center gap-2 text-sm">
+                        <FileText className="h-4 w-4" />
+                        Facturación Guardada
+                      </h3>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => {
+                          facturacionCache.clear();
+                          toast({
+                            title: "Facturación eliminada",
+                            description: "Se eliminó la información de facturación guardada.",
+                          });
+                        }}
+                        className="h-6 w-6 p-0 text-red-600 hover:text-red-700 hover:bg-red-50"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
+                    <div className="space-y-2 text-sm">
+                      <div>
+                        <p className="text-gray-600 font-medium">Cliente:</p>
+                        <p className="text-gray-900">{pendingFacturacion.cliente_nombre || 'N/A'}</p>
+                      </div>
+                      <div>
+                        <p className="text-gray-600 font-medium">Facturación:</p>
+                        <p className="text-gray-900">{pendingFacturacion.facturacion_nombre || 'N/A'}</p>
+                      </div>
+                      <Alert className="border-green-200 bg-green-50">
+                        <CheckCircle2 className="h-4 w-4 text-green-600" />
+                        <AlertDescription className="text-green-800 text-xs">
+                          La factura se creará automáticamente al crear el pedido.
+                        </AlertDescription>
+                      </Alert>
+                    </div>
+                  </div>
+                );
+              }
+              return null;
+            })()}
+
             <Button
               onClick={handleCreateOrder}
               disabled={
@@ -3587,6 +3803,128 @@ export const Dashboard: React.FC<DashboardProps> = ({
               </Button>
             </div>
           </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Modal de Facturación Electrónica */}
+      <FacturacionElectronica
+        isOpen={isFacturacionModalOpen}
+        onClose={() => setIsFacturacionModalOpen(false)}
+        ordenItems={newOrder.items.map(item => {
+          const [type, id] = item.productId.split('_');
+          return {
+            type: type as 'plato' | 'bebida' | 'topping',
+            id: parseInt(id, 10),
+            quantity: item.quantity
+          };
+        })}
+        sedeId={effectiveSedeId || ''}
+        observaciones={newOrder.specialInstructions}
+        onSuccess={() => {
+          // Solo notificar que se guardó, NO cerrar modal ni crear orden
+          // La factura se creará automáticamente al crear el pedido
+        }}
+      />
+
+      {/* Modal de factura creada exitosamente */}
+      <Dialog open={showInvoiceModal} onOpenChange={setShowInvoiceModal}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <CheckCircle2 className="h-5 w-5 text-green-600" />
+              Factura Electrónica Creada
+            </DialogTitle>
+            <DialogDescription>
+              La factura electrónica se ha creado exitosamente para tu pedido.
+            </DialogDescription>
+          </DialogHeader>
+          
+          {createdInvoice && (
+            <div className="space-y-4 py-4">
+              <div className="space-y-2">
+                <div className="flex justify-between items-center">
+                  <span className="text-sm font-medium text-gray-600">Número de Orden:</span>
+                  <span className="text-sm font-semibold">#{createdInvoice.orderId}</span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-sm font-medium text-gray-600">Número de Factura:</span>
+                  <span className="text-sm font-semibold">#{createdInvoice.invoiceNumber}</span>
+                </div>
+              </div>
+              
+              <div className="pt-4 border-t space-y-3">
+                {createdInvoice.pdfUrl ? (
+                  <Button
+                    onClick={async () => {
+                      try {
+                        const response = await fetch(createdInvoice.pdfUrl!);
+                        if (!response.ok) {
+                          // Si el error es que el archivo no está disponible, mostrar mensaje específico
+                          const errorText = await response.text();
+                          if (errorText.includes('no está disponible') || errorText.includes('file not found') || response.status === 500) {
+                            toast({
+                              title: "PDF aún no disponible",
+                              description: "El PDF de la factura aún se está generando. Por favor, espera unos segundos y vuelve a intentar.",
+                              variant: "default"
+                            });
+                            return;
+                          }
+                          throw new Error('Error al descargar el PDF');
+                        }
+                        const blob = await response.blob();
+                        
+                        // Verificar que el blob no sea un error JSON
+                        if (blob.type === 'application/json' || blob.size < 100) {
+                          const text = await blob.text();
+                          if (text.includes('error') || text.includes('no está disponible')) {
+                            toast({
+                              title: "PDF aún no disponible",
+                              description: "El PDF de la factura aún se está generando. Por favor, espera unos segundos y vuelve a intentar.",
+                              variant: "default"
+                            });
+                            return;
+                          }
+                        }
+                        
+                        const url = window.URL.createObjectURL(blob);
+                        const a = document.createElement('a');
+                        a.href = url;
+                        a.download = `factura-${createdInvoice.invoiceNumber}.pdf`;
+                        document.body.appendChild(a);
+                        a.click();
+                        window.URL.revokeObjectURL(url);
+                        document.body.removeChild(a);
+                      } catch (error) {
+                        console.error('Error al descargar PDF:', error);
+                        toast({
+                          title: "Error al descargar",
+                          description: "No se pudo descargar el PDF. El archivo puede estar aún generándose. Por favor, espera unos segundos y vuelve a intentar.",
+                          variant: "default"
+                        });
+                      }
+                    }}
+                    className="w-full bg-green-600 hover:bg-green-700 text-white"
+                    size="lg"
+                  >
+                    <Download className="h-4 w-4 mr-2" />
+                    Descargar PDF de la Factura
+                  </Button>
+                ) : (
+                  <div className="text-sm text-gray-500 text-center py-2">
+                    El PDF de la factura estará disponible próximamente.
+                  </div>
+                )}
+                
+                <Button
+                  onClick={() => setShowInvoiceModal(false)}
+                  variant="outline"
+                  className="w-full"
+                >
+                  Cerrar
+                </Button>
+              </div>
+            </div>
+          )}
         </DialogContent>
       </Dialog>
     </div>
