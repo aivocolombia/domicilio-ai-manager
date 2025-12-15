@@ -664,6 +664,7 @@ export const DeliveryPersonnel: React.FC<DeliveryPersonnelProps> = ({
         deliveryPerson={selectedPerson}
         orders={[]}
         sedeId={effectiveSedeId}
+        filterDate={selectedDate}
       />
     </div>
   );

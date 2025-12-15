@@ -37,9 +37,9 @@ export class AdminDataLoader {
     this.debouncedMetricsLoader = new DebouncedLoader(
       (filters: MetricsFilters) => metricsService.getDashboardMetrics(filters),
       500, // 500ms debounce
-      { 
-        timeoutMs: 15000, 
-        retries: 1,
+      {
+        timeoutMs: 30000, // ✅ FIX: Aumentado de 15s a 30s para métricas complejas
+        retries: 2, // ✅ FIX: Aumentado de 1 a 2 reintentos
         retryDelayMs: 2000,
         onTimeout: (timeoutMs) => logger.warn(`Metrics loading timed out after ${timeoutMs}ms`),
         onRetry: (attempt, error) => logger.warn(`Retrying metrics load attempt ${attempt}`, { error: error.message })

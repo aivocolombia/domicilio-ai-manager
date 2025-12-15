@@ -1,24 +1,83 @@
 import { createClient } from '@supabase/supabase-js';
 import { SUPABASE_CONFIG } from '@/config/api';
 
-// Verificar configuraci�n antes de crear el cliente
+// Verificar configuración antes de crear el cliente
 if (!SUPABASE_CONFIG.URL || !SUPABASE_CONFIG.ANON_KEY) {
   console.error('ERROR: Variables de entorno de Supabase no configuradas');
   throw new Error('Variables de entorno de Supabase no configuradas');
 }
+
+// ✅ FIX: Custom fetch con retry logic y manejo de rate limiting
+const customFetch = async (url: RequestInfo | URL, options: RequestInit = {}): Promise<Response> => {
+  const maxRetries = 3;
+  let lastError: Error | null = null;
+
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    try {
+      const response = await fetch(url, options);
+
+      // ✅ FIX: Manejo de rate limiting (429)
+      if (response.status === 429) {
+        const retryAfter = parseInt(response.headers.get('Retry-After') || '5');
+        console.warn(`⏳ Rate limit alcanzado. Reintentando en ${retryAfter}s (intento ${attempt + 1}/${maxRetries})`);
+        await new Promise(resolve => setTimeout(resolve, retryAfter * 1000));
+        continue;
+      }
+
+      // ✅ FIX: En errores de servidor (5xx), reintentar con backoff exponencial
+      if (response.status >= 500 && response.status < 600) {
+        const delay = Math.min(1000 * Math.pow(2, attempt), 10000); // Max 10s
+        console.warn(`⚠️ Error de servidor (${response.status}). Reintentando en ${delay}ms (intento ${attempt + 1}/${maxRetries})`);
+        await new Promise(resolve => setTimeout(resolve, delay));
+        continue;
+      }
+
+      // ✅ FIX: Request exitoso o error de cliente (4xx) - devolver sin reintentar
+      return response;
+    } catch (error) {
+      lastError = error as Error;
+
+      // ✅ FIX: Solo reintentar en errores de red, no en otros errores
+      if (error instanceof TypeError && error.message.includes('network')) {
+        const delay = Math.min(1000 * Math.pow(2, attempt), 10000);
+        console.warn(`🌐 Error de red. Reintentando en ${delay}ms (intento ${attempt + 1}/${maxRetries})`, error);
+        await new Promise(resolve => setTimeout(resolve, delay));
+        continue;
+      }
+
+      // ✅ FIX: Otros errores - lanzar inmediatamente
+      throw error;
+    }
+  }
+
+  // ✅ FIX: Todos los intentos fallaron
+  console.error('❌ Máximo de reintentos alcanzado para request a Supabase');
+  throw lastError || new Error('Request failed after max retries');
+};
 
 // Crear cliente de Supabase con configuración personalizada
 export const supabase = createClient(
   SUPABASE_CONFIG.URL,
   SUPABASE_CONFIG.ANON_KEY,
   {
+    auth: {
+      persistSession: false, // ✅ FIX: Deshabilitado porque usamos custom auth
+      autoRefreshToken: false,
+      detectSessionInUrl: false,
+    },
     db: {
       schema: 'public',
     },
     global: {
       headers: {
-        // Preferencia para obtener más de 1000 registros
         'Prefer': 'return=representation',
+        'X-Client-Info': 'domicilio-ai-manager/0.0.0', // ✅ FIX: Identificador del cliente
+      },
+      fetch: customFetch, // ✅ FIX: Usar custom fetch con retry logic
+    },
+    realtime: {
+      params: {
+        eventsPerSecond: 10, // ✅ FIX: Limitar eventos para evitar sobrecarga
       },
     },
   }

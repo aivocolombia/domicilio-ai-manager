@@ -115,3 +115,41 @@ export const formatDateTimeForDisplay = (date: Date): string => {
   });
 };
 
+/**
+ * Obtiene el inicio del día en timezone de Colombia (UTC-5)
+ * Convierte correctamente teniendo en cuenta el offset de Colombia
+ */
+export const getStartOfDayInColombia = (date: Date = new Date()): Date => {
+  // Offset de Colombia: -5 horas = -300 minutos
+  const colombiaOffset = -5 * 60;
+
+  // Convertir la fecha a zona horaria de Colombia
+  const colombiaDate = new Date(date.getTime() + (colombiaOffset - date.getTimezoneOffset()) * 60000);
+
+  // Resetear a inicio del día
+  colombiaDate.setHours(0, 0, 0, 0);
+
+  return colombiaDate;
+};
+
+/**
+ * Obtiene el inicio del día SIGUIENTE en timezone de Colombia (UTC-5)
+ * Usado para comparaciones de rangos: date >= start && date < nextDay
+ */
+export const getEndOfDayInColombia = (date: Date = new Date()): Date => {
+  // Offset de Colombia: -5 horas = -300 minutos
+  const colombiaOffset = -5 * 60;
+
+  // Convertir la fecha a zona horaria de Colombia
+  const colombiaDate = new Date(date.getTime() + (colombiaOffset - date.getTimezoneOffset()) * 60000);
+
+  // Resetear a inicio del día
+  colombiaDate.setHours(0, 0, 0, 0);
+
+  // Avanzar al DÍA SIGUIENTE (para usar con < en vez de <=)
+  const nextDay = new Date(colombiaDate);
+  nextDay.setDate(nextDay.getDate() + 1);
+
+  return nextDay;
+};
+

@@ -1,4 +1,4 @@
-﻿import { useState, useEffect, useCallback } from 'react'
+﻿import { useState, useEffect, useCallback, useMemo } from 'react'
 import { Plus, Search, Edit, Trash2, Users, Building2, UserCheck, UserX, TrendingUp, DollarSign, Package, Clock, LayoutDashboard, Phone, MapPin, Settings, RefreshCw, Cog, ChartLine, Timer, BarChart3, Truck, Eye, AlertTriangle, ChevronLeft, ChevronRight, XCircle, Star, BarChart, Activity, Download, FileText, FileSpreadsheet, KeyRound, EyeOff, Copy, CheckCircle2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -130,6 +130,20 @@ export function AdminPanel({ onBack, onNavigateToTimeMetrics }: AdminPanelProps)
 
   // Estados para métricas
   const [metricsData, setMetricsData] = useState<DashboardMetrics | null>(null)
+  const [metricsLoadingState, setMetricsLoadingState] = useState({
+    byDay: false,
+    products: false,
+    sede: false,
+    hourly: false,
+    cancel: false,
+  })
+  const [metricsErrorState, setMetricsErrorState] = useState<{
+    byDay?: string | null
+    products?: string | null
+    sede?: string | null
+    hourly?: string | null
+    cancel?: string | null
+  }>({})
   const [selectedDate, setSelectedDate] = useState<Date>(new Date())
   const [selectedSedeFilter, setSelectedSedeFilter] = useState<string>('all') // 'all' o un ID de sede
   const [dateRange, setDateRange] = useState<{ from: Date; to: Date }>({
@@ -277,43 +291,96 @@ export function AdminPanel({ onBack, onNavigateToTimeMetrics }: AdminPanelProps)
     }
   }, [startLoading, finishLoading, incrementRetry])
 
-  // Optimized metrics loading with debouncing and caching
+  const emptyMetrics: DashboardMetrics = useMemo(() => ({
+    metricasPorDia: [],
+    productosMasVendidos: [],
+    metricasPorSede: [],
+    metricasPorHora: [],
+    pedidosCancelados: { total: 0, porcentaje: 0, montoTotal: 0, porSede: [] },
+    totalGeneral: { pedidos: 0, ingresos: 0, promedio: 0, ingresosSinDomicilio: 0, promedioSinDomicilio: 0 }
+  }), [])
+
+  // Load metrics in parallel and update state per section
   const loadMetricsOptimized = useCallback(async () => {
     startLoading('metrics')
-    
-    try {
-      const filters: MetricsFilters = {
-        fecha_inicio: format(dateRange.from, 'yyyy-MM-dd'),
-        fecha_fin: format(dateRange.to, 'yyyy-MM-dd'),
-        sede_id: selectedSedeFilter === 'all' ? undefined : selectedSedeFilter
-      }
-      
-      logger.info('Loading metrics with optimized loader', { filters })
-      
-      const result = await adminDataLoader.loadMetrics(filters, { useCache: true })
-      
-      if (result.success && result.data) {
-        setMetricsData(result.data)
-        finishLoading('metrics')
-        logger.info('Metrics loaded successfully', {
-          metricasPorDia: result.data.metricasPorDia?.length || 0,
-          totalPedidos: result.data.totalGeneral?.pedidos || 0
+
+    const filters: MetricsFilters = {
+      fecha_inicio: format(dateRange.from, 'yyyy-MM-dd'),
+      fecha_fin: format(dateRange.to, 'yyyy-MM-dd'),
+      sede_id: selectedSedeFilter === 'all' ? undefined : selectedSedeFilter
+    }
+
+    // Reset loading/error state for sections
+    setMetricsLoadingState({
+      byDay: true,
+      products: true,
+      sede: true,
+      hourly: true,
+      cancel: true,
+    })
+    setMetricsErrorState({})
+
+    // Asegurar base de datos en state
+    setMetricsData(prev => prev || emptyMetrics)
+
+    // Cargar cada métrica en paralelo, actualizando al resolver
+    const loadByDay = metricsService.getMetricsByDay(filters)
+      .then(data => {
+        setMetricsData(prev => {
+          const base = prev || emptyMetrics
+          const totalPedidos = data.reduce((sum, dia) => sum + dia.total_pedidos, 0)
+          const totalIngresos = data.reduce((sum, dia) => sum + dia.total_ingresos, 0)
+          const promedio = totalPedidos > 0 ? totalIngresos / totalPedidos : 0
+          return {
+            ...base,
+            metricasPorDia: data,
+            totalGeneral: {
+              ...base.totalGeneral,
+              pedidos: totalPedidos,
+              ingresos: totalIngresos,
+              promedio
+            }
+          }
+        })
+      })
+      .catch(err => setMetricsErrorState(prev => ({ ...prev, byDay: err.message || 'Error métricas por día' })))
+      .finally(() => setMetricsLoadingState(prev => ({ ...prev, byDay: false })))
+
+    const loadProducts = metricsService.getProductMetrics(filters)
+      .then(data => setMetricsData(prev => ({ ...(prev || emptyMetrics), productosMasVendidos: data })))
+      .catch(err => setMetricsErrorState(prev => ({ ...prev, products: err.message || 'Error productos' })))
+      .finally(() => setMetricsLoadingState(prev => ({ ...prev, products: false })))
+
+    const loadSede = metricsService.getSedeMetrics(filters)
+      .then(data => setMetricsData(prev => ({ ...(prev || emptyMetrics), metricasPorSede: data })))
+      .catch(err => setMetricsErrorState(prev => ({ ...prev, sede: err.message || 'Error métricas por sede' })))
+      .finally(() => setMetricsLoadingState(prev => ({ ...prev, sede: false })))
+
+    const loadHourly = metricsService.getHourlyMetrics(filters)
+      .then(data => setMetricsData(prev => ({ ...(prev || emptyMetrics), metricasPorHora: data })))
+      .catch(err => setMetricsErrorState(prev => ({ ...prev, hourly: err.message || 'Error métricas por hora' })))
+      .finally(() => setMetricsLoadingState(prev => ({ ...prev, hourly: false })))
+
+    const loadCancel = metricsService.getCancelledOrderMetrics(filters)
+      .then(data => setMetricsData(prev => ({ ...(prev || emptyMetrics), pedidosCancelados: data })))
+      .catch(err => setMetricsErrorState(prev => ({ ...prev, cancel: err.message || 'Error cancelados' })))
+      .finally(() => setMetricsLoadingState(prev => ({ ...prev, cancel: false })))
+
+    Promise.allSettled([loadByDay, loadProducts, loadSede, loadHourly, loadCancel]).then(results => {
+      const rejected = results.filter(r => r.status === 'rejected') as PromiseRejectedResult[]
+      if (rejected.length > 0) {
+        const message = rejected[0].reason?.message || 'Error cargando una o más métricas'
+        finishLoading('metrics', message)
+        toast({
+          title: 'Error',
+          description: message,
+          variant: "destructive",
         })
       } else {
-        finishLoading('metrics', result.error)
-        if (!result.timedOut) {
-          toast({
-            title: 'Error',
-            description: result.error || 'No se pudieron cargar las métricas',
-            variant: "destructive",
-          })
-        }
+        finishLoading('metrics')
       }
-    } catch (error) {
-      logger.error('Metrics loading failed', { error });
-      finishLoading('metrics', 'Error de conexión')
-    }
-  }, [dateRange, selectedSedeFilter, startLoading, finishLoading, toast])
+    })
+  }, [dateRange, selectedSedeFilter, startLoading, finishLoading, toast, emptyMetrics])
 
   // Cancelled orders modal handler
   const handleShowCancelledOrders = (sedeId: string, sedeNombre: string) => {

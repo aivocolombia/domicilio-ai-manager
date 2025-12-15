@@ -1,4 +1,5 @@
 import { supabase } from '@/lib/supabase';
+import { getStartOfDayInColombia, getEndOfDayInColombia } from '@/utils/dateUtils';
 
 export interface Repartidor {
   id: number;
@@ -124,14 +125,18 @@ class DeliveryService {
           }
           try {
             console.log(`📊 Obteniendo estadísticas para repartidor ${repartidor.id}...`);
-          
+
             const targetDate = filterDate || new Date();
-            const year = targetDate.getFullYear();
-            const month = targetDate.getMonth();
-            const day = targetDate.getDate();
-            
-            const startOfDay = new Date(year, month, day, 0, 0, 0, 0);
-            const endOfDay = new Date(year, month, day, 23, 59, 59, 999);
+
+            // Usar timezone de Colombia (UTC-5) para cálculos consistentes
+            const startOfDay = getStartOfDayInColombia(targetDate);
+            const endOfDay = getEndOfDayInColombia(targetDate);
+
+            console.log(`🕐 [DEBUG] Rango de fechas para repartidor ${repartidor.id}:`, {
+              targetDate: targetDate.toISOString(),
+              startOfDay: startOfDay.toISOString(),
+              endOfDay: endOfDay.toISOString()
+            });
 
             // Query SQL directo para obtener estadísticas del repartidor
             console.log(`🔍 [DEBUG] Obteniendo órdenes para repartidor ${repartidor.id}${sedeId && repartidor.id === 1 ? ` filtradas por sede ${sedeId}` : ''}`);
@@ -146,7 +151,9 @@ class DeliveryService {
                 created_at,
                 sede_id
               `)
-              .eq('repartidor_id', repartidor.id);
+              .eq('repartidor_id', repartidor.id)
+              // Ordenar para traer primero los pedidos más recientes y evitar que el límite por defecto (1000) omita los del día
+              .order('created_at', { ascending: false });
 
             // Para el repartidor especial (id=1, Pickap), filtrar también por sede si se especifica
             if (repartidor.id === 1 && sedeId) {
@@ -175,19 +182,23 @@ class DeliveryService {
             }
 
             // Filtrar órdenes del día de hoy
+            // IMPORTANTE: endOfDay es el INICIO del día siguiente, por eso usamos < (no <=)
             const ordersToday = stats?.filter(order => {
               const orderDate = new Date(order.created_at);
-              return orderDate >= startOfDay && orderDate <= endOfDay;
+              return orderDate >= startOfDay && orderDate < endOfDay;
             }) || [];
 
             // Calcular estadísticas manualmente (activos de cualquier día)
+            const activeStatuses = ['Recibidos', 'Cocina', 'Camino', 'received', 'kitchen', 'delivery', 'ready_pickup'];
+            const deliveredStatuses = ['Entregados', 'delivered'];
+
             const pedidosActivos = stats?.filter(order =>
-              ['Recibidos', 'Cocina', 'Camino'].includes(order.status)
+              activeStatuses.includes(order.status)
             ).length || 0;
 
-            // Entregados solo del día de hoy
+            // Entregados solo del día de hoy (acepta estados en ES e ING)
             const entregadosHoy = ordersToday.filter(order =>
-              order.status === 'Entregados'
+              deliveredStatuses.includes(order.status)
             );
 
             // Total asignados solo del día de hoy
@@ -267,7 +278,20 @@ class DeliveryService {
               entregado_otros: entregadosOtros
             };
 
-            console.log(`📊 Estadísticas calculadas para repartidor ${repartidor.id}:`, estadisticas);
+            console.log(`📊 ✅ ESTADÍSTICAS CALCULADAS para ${repartidor.nombre || 'Repartidor ' + repartidor.id}:`, {
+              nombre: repartidor.nombre,
+              pedidos_activos: estadisticas.pedidos_activos,
+              entregados_hoy: estadisticas.entregados,
+              total_asignados_hoy: estadisticas.total_asignados,
+              total_entregado_hoy: `$${estadisticas.total_entregado.toLocaleString()}`,
+              efectivo: `$${estadisticas.entregado_efectivo.toLocaleString()}`,
+              tarjeta: `$${estadisticas.entregado_tarjeta.toLocaleString()}`,
+              nequi: `$${estadisticas.entregado_nequi.toLocaleString()}`,
+              transferencia: `$${estadisticas.entregado_transferencia.toLocaleString()}`,
+              otros: `$${estadisticas.entregado_otros.toLocaleString()}`,
+              ordenes_del_dia: ordersToday.length,
+              ordenes_entregadas_hoy: entregadosHoy.length
+            });
 
             return {
               ...repartidor,
@@ -416,7 +440,8 @@ class DeliveryService {
         .from('ordenes')
         .select('*', { count: 'exact', head: true })
         .not('repartidor_id', 'is', null)
-        .neq('status', 'Entregados');
+        .neq('status', 'Entregados')
+        .neq('status', 'delivered');
 
       // Filtrar por sede si se proporciona
       if (sedeId) {

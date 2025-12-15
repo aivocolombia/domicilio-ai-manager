@@ -7,6 +7,7 @@ import { AuthProvider } from "@/hooks/useAuth";
 import { CacheProvider } from "@/hooks/useCache";
 import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
 import { ErrorBoundary } from "@/components/layout/ErrorBoundary";
+import { useSharedRealtimeCleanup } from "@/hooks/useSharedRealtime"; // ✅ FIX: Importar cleanup hook
 import Index from "./pages/Index";
 import NotFound from "./pages/NotFound";
 
@@ -27,6 +28,29 @@ const queryClient = new QueryClient({
   },
 });
 
+// ✅ FIX: Componente wrapper para aplicar cleanup de Realtime
+const AppContent = () => {
+  // ✅ FIX: Hook que limpia el manager de Realtime cuando se desmonta la app
+  useSharedRealtimeCleanup();
+
+  return (
+    <BrowserRouter>
+      <Routes>
+        <Route
+          path="/"
+          element={
+            <ProtectedRoute>
+              <Index />
+            </ProtectedRoute>
+          }
+        />
+        {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
+        <Route path="*" element={<NotFound />} />
+      </Routes>
+    </BrowserRouter>
+  );
+};
+
 const App = () => (
   <ErrorBoundary>
     <QueryClientProvider client={queryClient}>
@@ -35,22 +59,9 @@ const App = () => (
           <TooltipProvider>
             <Toaster />
             <Sonner />
-            <BrowserRouter>
-            <Routes>
-              <Route 
-                path="/" 
-                element={
-                  <ProtectedRoute>
-                    <Index />
-                  </ProtectedRoute>
-                } 
-              />
-              {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
-              <Route path="*" element={<NotFound />} />
-            </Routes>
-          </BrowserRouter>
-        </TooltipProvider>
-      </AuthProvider>
+            <AppContent />
+          </TooltipProvider>
+        </AuthProvider>
       </CacheProvider>
     </QueryClientProvider>
   </ErrorBoundary>

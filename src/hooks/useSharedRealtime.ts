@@ -146,11 +146,14 @@ class RealtimeManager {
   private scheduleReconnect() {
     if (this.reconnectTimeout) {
       clearTimeout(this.reconnectTimeout);
+      this.reconnectTimeout = null;
     }
 
     if (this.reconnectAttempts >= this.maxReconnectAttempts) {
-      console.error('❌ [SHARED_REALTIME] Máximo de intentos de reconexión alcanzado');
-      return;
+      console.error('❌ [SHARED_REALTIME] Máximo de intentos de reconexión alcanzado. Deteniendo reconexiones.');
+      this.isConnected = false;
+      this.connectionStatus = 'FAILED';
+      return; // ✅ FIX: Detener reconexiones completamente
     }
 
     this.reconnectAttempts++;
@@ -162,6 +165,7 @@ class RealtimeManager {
       if (this.sedeId) {
         await this.createChannel(this.sedeId);
       }
+      this.reconnectTimeout = null; // ✅ FIX: Limpiar referencia después de usar
     }, delay);
   }
 
@@ -184,19 +188,30 @@ class RealtimeManager {
   async cleanup() {
     console.log('🧹 [SHARED_REALTIME] Limpiando recursos...');
 
+    // ✅ FIX: Limpiar timeout de reconexión
     if (this.reconnectTimeout) {
       clearTimeout(this.reconnectTimeout);
       this.reconnectTimeout = null;
     }
 
+    // ✅ FIX: Desuscribir y remover canal correctamente
     if (this.channel) {
-      await this.channel.unsubscribe();
+      try {
+        await this.channel.unsubscribe();
+        // Remover el canal de Supabase para liberar recursos
+        supabase.removeChannel(this.channel);
+      } catch (error) {
+        console.error('❌ [SHARED_REALTIME] Error al limpiar canal:', error);
+      }
       this.channel = null;
     }
 
+    // ✅ FIX: Limpiar todos los suscriptores
     this.subscribers.clear();
     this.isConnected = false;
     this.connectionStatus = 'DISCONNECTED';
+    this.sedeId = null;
+    this.reconnectAttempts = 0; // ✅ FIX: Resetear intentos de reconexión
   }
 
   getStatus() {

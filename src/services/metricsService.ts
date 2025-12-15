@@ -373,84 +373,94 @@ export class MetricsService {
     }
   }
 
-  // Obtener productos más vendidos
+  // Obtener productos m?s vendidos
+  
+  // Obtener productos m?s vendidos
   async getProductMetrics(filters: MetricsFilters): Promise<ProductMetrics[]> {
     try {
-      console.log('🍽️ Obteniendo métricas de productos:', filters);
+      console.log('?? Obteniendo m?tricas de productos:', filters);
 
-      // CORREGIDO: Agregar paginación para obtener TODAS las órdenes sin límite de 1000
-      const pageSize = 1000;
+      // Paginaci?n con cursor por fecha para evitar l?mites/500
+      let pageSize = 150; // Se reduce en caso de error
       let allOrdenesData: any[] = [];
-      let currentPage = 0;
       let hasMoreData = true;
+      let lastCreatedAt: string | null = null;
+      let lastId: number | null = null; // Para desempate cuando hay timestamps iguales
+      const startTime = Date.now();
 
-      const startQuery = formatDateForQuery(new Date(`${filters.fecha_inicio}T00:00:00`), false);
-      const endQuery = formatDateForQuery(new Date(`${filters.fecha_fin}T23:59:59`), true);
+      const startQuery = formatDateForQuery(new Date(filters.fecha_inicio + 'T00:00:00'), false);
+      const endQuery = formatDateForQuery(new Date(filters.fecha_fin + 'T23:59:59'), true);
 
-      console.log('🔄 Paginando métricas de productos...');
+      console.log('?? Paginando m?tricas de productos...');
 
       while (hasMoreData) {
-        let query = supabase
-          .from('ordenes')
-          .select(`
-            id,
-            status,
-            created_at,
-            sede_id,
-            ordenes_platos(
-              plato_id,
-              platos(id, name)
-            ),
-            ordenes_bebidas(
-              bebidas_id,
-              bebidas(id, name)
-            ),
-            ordenes_toppings(
-              topping_id,
-              toppings(id, name, pricing)
-            )
-          `)
-          .gte('created_at', startQuery)
-          .lte('created_at', endQuery)
-          .eq('status', 'Entregados') // Solo considerar pedidos entregados para métricas de ventas
-          .order('created_at', { ascending: true })
-          .range(currentPage * pageSize, (currentPage + 1) * pageSize - 1);
+        let attempt = 0;
+        const maxAttemptsPerPage = 2;
+        let pageData: any[] | null = null;
 
-        if (filters.sede_id) {
-          query = query.eq('sede_id', filters.sede_id);
-        }
+        while (attempt < maxAttemptsPerPage && pageData === null) {
+          let query = supabase
+            .from('ordenes')
+            .select("id,status,created_at,sede_id,ordenes_platos(plato_id,platos(id,name)),ordenes_bebidas(bebidas_id,bebidas(id,name)),ordenes_toppings(topping_id,toppings(id,name,pricing))")
+            .gte('created_at', startQuery)
+            .lte('created_at', endQuery)
+            .eq('status', 'Entregados')
+            .order('created_at', { ascending: true })
+            .order('id', { ascending: true })
+            .limit(pageSize);
 
-        const { data: pageData, error } = await query;
-
-        if (error) {
-          console.error('❌ Error obteniendo métricas de productos (página ' + currentPage + '):', error);
-          throw new Error(`Error obteniendo productos: ${error.message}`);
-        }
-
-        if (pageData && pageData.length > 0) {
-          allOrdenesData = allOrdenesData.concat(pageData);
-          console.log(`📄 Productos - Página ${currentPage + 1}: ${pageData.length} órdenes entregadas (total: ${allOrdenesData.length})`);
-
-          if (pageData.length < pageSize) {
-            hasMoreData = false;
-          } else {
-            currentPage++;
+          if (lastCreatedAt) {
+            const createdAtFilter = 'created_at.gt.' + lastCreatedAt;
+            const tieBreakerFilter = lastId !== null
+              ? 'and(created_at.eq.' + lastCreatedAt + ',id.gt.' + lastId + ')'
+              : '';
+            const orFilter = tieBreakerFilter ? createdAtFilter + ',' + tieBreakerFilter : createdAtFilter;
+            query = query.or(orFilter);
           }
+
+          if (filters.sede_id) {
+            query = query.eq('sede_id', filters.sede_id);
+          }
+
+          const { data, error } = await query;
+
+          if (error) {
+            console.warn('?? Error obteniendo m?tricas de productos (intento ' + (attempt + 1) + ') con pageSize=' + pageSize + ':', error);
+            pageSize = Math.max(50, Math.floor(pageSize / 2));
+            attempt++;
+            continue;
+          }
+
+          pageData = data || [];
+        }
+
+        if (pageData === null) {
+          throw new Error('Error obteniendo productos tras reintentos');
+        }
+
+        if (pageData.length > 0) {
+          allOrdenesData = allOrdenesData.concat(pageData);
+          const last = pageData[pageData.length - 1];
+          lastCreatedAt = last.created_at;
+          lastId = last.id;
+          console.log('?? Chunk productos: ' + pageData.length + ' (total: ' + allOrdenesData.length + ', pageSize=' + pageSize + ')');
+
+          hasMoreData = pageData.length === pageSize;
         } else {
           hasMoreData = false;
         }
+
       }
 
       const data = allOrdenesData;
-      console.log('✅ Total órdenes entregadas obtenidas para productos:', data.length);
+      console.log('? Total ?rdenes entregadas obtenidas para productos:', data.length);
 
-      console.log('💰 Obteniendo precios de sede para métricas de productos...');
-
-      // Obtener todos los IDs únicos de productos y sedes
-      const sedeIds = [...new Set(data?.map(o => o.sede_id).filter(id => id))];
-      const platoIds = [...new Set(data?.flatMap(o => o.ordenes_platos?.map((item: any) => item.plato_id)).filter(id => id))];
-      const bebidaIds = [...new Set(data?.flatMap(o => o.ordenes_bebidas?.map((item: any) => item.bebidas_id)).filter(id => id))];
-      const toppingIds = [...new Set(data?.flatMap(o => o.ordenes_toppings?.map((item: any) => item.topping_id)).filter(id => id))];
+      console.log('??? Obteniendo precios de sede para m?tricas de productos...');
+      // Obtener IDs ?nicos para consultas posteriores
+      const sedeIds = [...new Set((data || []).map(o => o.sede_id).filter((id): id is string => !!id))];
+      const platoIds = [...new Set((data || []).flatMap(o => o.ordenes_platos?.map((item: any) => item.plato_id) || []).filter((id): id is number => !!id))];
+      const bebidaIds = [...new Set((data || []).flatMap(o => o.ordenes_bebidas?.map((item: any) => item.bebidas_id) || []).filter((id): id is number => !!id))];
+      const toppingIds = [...new Set((data || []).flatMap(o => o.ordenes_toppings?.map((item: any) => item.topping_id) || []).filter((id): id is number => !!id))];
 
       // Obtener precios de sede para platos
       const sedePlatosMap = new Map<string, number>(); // key: "sedeId-platoId", value: precio
@@ -463,10 +473,10 @@ export class MetricsService {
 
         sedePlatos?.forEach(sp => {
           if (sp.price_override !== null && sp.price_override !== undefined) {
-            sedePlatosMap.set(`${sp.sede_id}-${sp.plato_id}`, sp.price_override);
+            sedePlatosMap.set(sp.sede_id + '-' + sp.plato_id, sp.price_override);
           }
         });
-        console.log(`✅ Precios de sede cargados para ${sedePlatosMap.size} platos`);
+        console.log('? Precios de sede cargados para ' + sedePlatosMap.size + ' platos');
       }
 
       // Obtener precios de sede para bebidas
@@ -480,10 +490,10 @@ export class MetricsService {
 
         sedeBebidas?.forEach(sb => {
           if (sb.price_override !== null && sb.price_override !== undefined) {
-            sedeBebidasMap.set(`${sb.sede_id}-${sb.bebida_id}`, sb.price_override);
+            sedeBebidasMap.set(sb.sede_id + '-' + sb.bebida_id, sb.price_override);
           }
         });
-        console.log(`✅ Precios de sede cargados para ${sedeBebidasMap.size} bebidas`);
+        console.log('? Precios de sede cargados para ' + sedeBebidasMap.size + ' bebidas');
       }
 
       // Obtener precios de sede para toppings
@@ -497,23 +507,21 @@ export class MetricsService {
 
         sedeToppings?.forEach(st => {
           if (st.price_override !== null && st.price_override !== undefined) {
-            sedeToppingsMap.set(`${st.sede_id}-${st.topping_id}`, st.price_override);
+            sedeToppingsMap.set(st.sede_id + '-' + st.topping_id, st.price_override);
           }
         });
-        console.log(`✅ Precios de sede cargados para ${sedeToppingsMap.size} toppings`);
+        console.log('? Precios de sede cargados para ' + sedeToppingsMap.size + ' toppings');
       }
 
       // Procesar datos para contar productos vendidos usando precios de sede
       const productosMap = new Map<string, { cantidad: number; ingresos: number }>();
 
-      // Función para normalizar nombres de productos (agrupa por nombre en vista global)
       const normalizeProductName = (name: string): string => {
-        return name.toLowerCase().trim().replace(/\s+/g, ' ');
+        return name.toLowerCase().trim().replace(/s+/g, ' ');
       };
 
-      // Determinar si agrupamos por ID o por nombre normalizado
       const isGlobalView = !filters.sede_id;
-      console.log(`🔍 Vista de productos: ${isGlobalView ? 'GLOBAL (agrupa por nombre)' : 'POR SEDE (agrupa por ID)'}`);
+      console.log('?? Vista de productos: ' + (isGlobalView ? 'GLOBAL (agrupa por nombre)' : 'POR SEDE (agrupa por ID)'));
 
       data?.forEach(orden => {
         const sedeId = orden.sede_id;
@@ -522,8 +530,8 @@ export class MetricsService {
         (orden.ordenes_platos || []).forEach((item: any) => {
           const producto = item.platos;
           if (producto) {
-            const key = `plato-${producto.id}`;
-            const precioSede = sedePlatosMap.get(`${sedeId}-${item.plato_id}`);
+            const key = isGlobalView ? 'plato-' + normalizeProductName(producto.name || '') : 'plato-' + producto.id;
+            const precioSede = sedePlatosMap.get(sedeId + '-' + item.plato_id);
             const basePrice = producto.pricing || 0;
             const precio = precioSede !== undefined ? precioSede : basePrice;
 
@@ -532,23 +540,18 @@ export class MetricsService {
               existing.cantidad += 1;
               existing.ingresos += precio;
             } else {
-              productosMap.set(key, {
-                cantidad: 1,
-                ingresos: precio
-              });
-              // Guardar también el nombre del producto
-              productosMap.set(`${key}-name`, producto.name);
+              productosMap.set(key, { cantidad: 1, ingresos: precio });
             }
           }
         });
 
         // Procesar bebidas con precios de sede
         (orden.ordenes_bebidas || []).forEach((item: any) => {
-          const producto = item.bebidas;
-          if (producto) {
-            const key = `bebida-${producto.id}`;
-            const precioSede = sedeBebidasMap.get(`${sedeId}-${item.bebidas_id}`);
-            const basePrice = producto.pricing || 0;
+          const bebida = item.bebidas;
+          if (bebida) {
+            const key = isGlobalView ? 'bebida-' + normalizeProductName(bebida.name || '') : 'bebida-' + bebida.id;
+            const precioSede = sedeBebidasMap.get(sedeId + '-' + item.bebidas_id);
+            const basePrice = bebida.pricing || 0;
             const precio = precioSede !== undefined ? precioSede : basePrice;
 
             if (productosMap.has(key)) {
@@ -556,22 +559,17 @@ export class MetricsService {
               existing.cantidad += 1;
               existing.ingresos += precio;
             } else {
-              productosMap.set(key, {
-                cantidad: 1,
-                ingresos: precio
-              });
-              // Guardar también el nombre del producto
-              productosMap.set(`${key}-name`, producto.name);
+              productosMap.set(key, { cantidad: 1, ingresos: precio });
             }
           }
         });
 
-        // Procesar toppings extra
+        // Procesar toppings con precios de sede
         (orden.ordenes_toppings || []).forEach((item: any) => {
           const topping = item.toppings;
           if (topping) {
-            const key = `topping-${topping.id}`;
-            const precioSede = sedeToppingsMap.get(`${sedeId}-${item.topping_id}`);
+            const key = isGlobalView ? 'topping-' + normalizeProductName(topping.name || '') : 'topping-' + topping.id;
+            const precioSede = sedeToppingsMap.get(sedeId + '-' + item.topping_id);
             const basePrice = topping.pricing || 0;
             const precio = precioSede !== undefined ? precioSede : basePrice;
 
@@ -580,42 +578,25 @@ export class MetricsService {
               existing.cantidad += 1;
               existing.ingresos += precio;
             } else {
-              productosMap.set(key, {
-                cantidad: 1,
-                ingresos: precio
-              });
-              productosMap.set(`${key}-name`, `Extra: ${topping.name}`);
+              productosMap.set(key, { cantidad: 1, ingresos: precio });
             }
           }
         });
       });
 
-      // Convertir a array y calcular porcentajes
-      const totalVentas = Array.from(productosMap.entries())
-        .filter(([key]) => !key.includes('-name'))
-        .reduce((total, [, datos]) => total + datos.cantidad, 0);
+      const totalVentas = Array.from(productosMap.values()).reduce((sum, item) => sum + item.ingresos, 0);
 
-      const resultado: ProductMetrics[] = Array.from(productosMap.entries())
-        .filter(([key]) => !key.includes('-name'))
-        .map(([key, datos]) => ({
-          producto_nombre: productosMap.get(`${key}-name`) || 'Producto desconocido',
-          total_vendido: datos.cantidad,
-          total_ingresos: datos.ingresos,
-          porcentaje_ventas: totalVentas > 0 ? (datos.cantidad / totalVentas) * 100 : 0
-        }))
-        .sort((a, b) => b.total_vendido - a.total_vendido);
-        // ELIMINADO: .slice(0, 10) - Ahora muestra TODOS los productos
+      const productosOrdenados = Array.from(productosMap.entries())
+        .map(([key, value]) => ({ producto_nombre: key.replace(/^(plato|bebida|topping)-/, ''), total_vendido: value.cantidad, total_ingresos: value.ingresos, porcentaje_ventas: totalVentas > 0 ? (value.ingresos / totalVentas) * 100 : 0 }))
+        .sort((a, b) => b.total_ingresos - a.total_ingresos);
 
-      console.log('✅ Métricas de productos obtenidas:', resultado.length, 'productos');
-      return resultado;
+      return productosOrdenados;
     } catch (error) {
-      console.error('❌ Error en getProductMetrics:', error);
+      console.error('? Error en getProductMetrics:', error);
       throw error;
     }
   }
-
-  // Obtener métricas por sede
-  async getSedeMetrics(filters: MetricsFilters): Promise<SedeMetrics[]> {
+async getSedeMetrics(filters: MetricsFilters): Promise<SedeMetrics[]> {
     try {
       console.log('🏢 Obteniendo métricas por sede:', filters);
 

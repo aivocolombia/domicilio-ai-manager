@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { deliveryService } from '@/services/deliveryService';
 import { MapPin, Clock, DollarSign, Calendar, CalendarDays, Loader2 } from 'lucide-react';
+import { getStartOfDayInColombia, getEndOfDayInColombia } from '@/utils/dateUtils';
 
 interface DeliveryPersonHistoryProps {
   isOpen: boolean;
@@ -13,6 +14,7 @@ interface DeliveryPersonHistoryProps {
   deliveryPerson: any;
   orders: any[];
   sedeId?: string;
+  filterDate?: Date; // Fecha para filtrar (por defecto hoy)
 }
 
 export const DeliveryPersonHistory: React.FC<DeliveryPersonHistoryProps> = ({
@@ -20,7 +22,8 @@ export const DeliveryPersonHistory: React.FC<DeliveryPersonHistoryProps> = ({
   onClose,
   deliveryPerson,
   orders,
-  sedeId
+  sedeId,
+  filterDate
 }) => {
   const [showTodayOnly, setShowTodayOnly] = useState(true);
   const [historialPedidos, setHistorialPedidos] = useState<any[]>([]);
@@ -65,16 +68,32 @@ export const DeliveryPersonHistory: React.FC<DeliveryPersonHistoryProps> = ({
   };
   
   // Filter by today if toggle is active (Colombia timezone)
-  const today = new Date();
-  // Convertir a zona horaria de Colombia (UTC-5)
-  const colombiaOffset = -5 * 60; // -5 horas en minutos
-  const colombiaToday = new Date(today.getTime() + (colombiaOffset - today.getTimezoneOffset()) * 60000);
-  colombiaToday.setHours(0, 0, 0, 0);
-  const colombiaTomorrow = new Date(colombiaToday);
-  colombiaTomorrow.setDate(colombiaTomorrow.getDate() + 1);
+  // Usar la fecha del filtro o "hoy" por defecto
+  const targetDate = filterDate || new Date();
+  const formatForDisplay = (date: Date, variant: 'short' | 'long' = 'short') =>
+    date.toLocaleDateString('es-CO', {
+      day: '2-digit',
+      month: '2-digit',
+      year: variant === 'long' ? 'numeric' : undefined
+    });
+
+  // Verificar si la fecha filtrada es "hoy"
+  const isFilteredToday = () => {
+    const now = new Date();
+    return targetDate.toDateString() === now.toDateString();
+  };
+
+  // Usar funciones utilitarias para timezone de Colombia (UTC-5)
+  const colombiaToday = getStartOfDayInColombia(targetDate);
+  const colombiaTomorrow = getEndOfDayInColombia(targetDate);
+
+  const deliveredStatuses = ['Entregados', 'delivered'];
+  const activeStatuses = ['Recibidos', 'Cocina', 'Camino', 'received', 'kitchen', 'delivery', 'ready_pickup'];
 
   console.log('🕐 [DEBUG] Fecha filters para historial:', {
-    original: today.toISOString(),
+    filterDateProp: filterDate?.toISOString() || 'No especificada (usando hoy)',
+    targetDate: targetDate.toISOString(),
+    isToday: isFilteredToday(),
     colombiaToday: colombiaToday.toISOString(),
     colombiaTomorrow: colombiaTomorrow.toISOString()
   });
@@ -82,19 +101,20 @@ export const DeliveryPersonHistory: React.FC<DeliveryPersonHistoryProps> = ({
   const filteredOrders = showTodayOnly
     ? historialPedidos.filter(order => {
         const orderDate = new Date(order.created_at);
+        const isInRange = orderDate >= colombiaToday && orderDate < colombiaTomorrow;
         console.log(`🔍 [DEBUG] Comparando orden ${order.id}:`, {
           orderDate: orderDate.toISOString(),
           colombiaToday: colombiaToday.toISOString(),
           colombiaTomorrow: colombiaTomorrow.toISOString(),
-          isInRange: orderDate >= colombiaToday && orderDate < colombiaTomorrow
+          isInRange
         });
-        return orderDate >= colombiaToday && orderDate < colombiaTomorrow;
+        return isInRange;
       })
     : historialPedidos;
 
   // Calcular métricas según la lógica de negocio
-  const activeOrders = filteredOrders.filter(order => order.status !== 'Entregados'); // Todos los que no están entregados
-  const completedOrders = filteredOrders.filter(order => order.status === 'Entregados');
+  const activeOrders = filteredOrders.filter(order => activeStatuses.includes(order.status)); // Solo estados activos
+  const completedOrders = filteredOrders.filter(order => deliveredStatuses.includes(order.status));
   const totalAssigned = filteredOrders.length; // Todos los pedidos asignados
   const totalDelivered = completedOrders.reduce((sum, order) => sum + (order.pagos?.total_pago || 0), 0);
 
@@ -103,7 +123,7 @@ export const DeliveryPersonHistory: React.FC<DeliveryPersonHistoryProps> = ({
     const orderDate = new Date(order.created_at);
     return orderDate >= colombiaToday && orderDate < colombiaTomorrow;
   });
-  const todayCompleted = todayOrders.filter(order => order.status === 'Entregados');
+  const todayCompleted = todayOrders.filter(order => deliveredStatuses.includes(order.status));
   
   // Debug: Log payment methods para verificar valores reales
   if (process.env.NODE_ENV === 'development' && todayCompleted.length > 0) {
@@ -209,10 +229,10 @@ export const DeliveryPersonHistory: React.FC<DeliveryPersonHistoryProps> = ({
               className="flex items-center gap-2"
             >
               {showTodayOnly ? <Calendar className="h-4 w-4" /> : <CalendarDays className="h-4 w-4" />}
-              {showTodayOnly ? 'Pedidos de Hoy' : 'Historial Completo'}
+              {showTodayOnly ? `Pedidos del ${isFilteredToday() ? 'Día' : formatForDisplay(targetDate, 'long')}` : 'Historial Completo'}
             </Button>
             <div className="text-sm text-muted-foreground">
-              Mostrando {showTodayOnly ? 'pedidos de hoy' : 'todos los pedidos'}
+              Mostrando {showTodayOnly ? `pedidos del ${formatForDisplay(targetDate, 'long')}` : 'todos los pedidos'}
             </div>
           </div>
           )}
@@ -227,13 +247,13 @@ export const DeliveryPersonHistory: React.FC<DeliveryPersonHistoryProps> = ({
             <div className="bg-green-50 p-4 rounded-lg">
               <p className="text-2xl font-bold text-green-600">{completedOrders.length}</p>
               <p className="text-sm text-green-700">
-                {showTodayOnly ? 'Entregados Hoy' : 'Entregados'}
+                {showTodayOnly ? `Entregados ${isFilteredToday() ? 'Hoy' : formatForDisplay(targetDate)}` : 'Entregados'}
               </p>
             </div>
             <div className="bg-purple-50 p-4 rounded-lg">
               <p className="text-2xl font-bold text-purple-600">{totalAssigned}</p>
               <p className="text-sm text-purple-700">
-                {showTodayOnly ? 'Total Hoy' : 'Total Asignados'}
+                {showTodayOnly ? `Total ${isFilteredToday() ? 'Hoy' : formatForDisplay(targetDate)}` : 'Total Asignados'}
               </p>
             </div>
             <div className="bg-orange-50 p-4 rounded-lg">
@@ -241,7 +261,7 @@ export const DeliveryPersonHistory: React.FC<DeliveryPersonHistoryProps> = ({
                 {formatCurrency(totalDelivered)}
               </p>
               <p className="text-sm text-orange-700">
-                {showTodayOnly ? 'Total Entregado Hoy' : 'Total Entregado'}
+                {showTodayOnly ? `Total Entregado ${isFilteredToday() ? 'Hoy' : formatForDisplay(targetDate)}` : 'Total Entregado'}
               </p>
             </div>
           </div>

@@ -50,6 +50,10 @@ export const useRealtimeMetrics = ({
       return;
     }
 
+    // ✅ FIX: Crear AbortController para cancelar operaciones asíncronas
+    const abortController = new AbortController();
+    let isSubscribed = true;
+
     console.log('🔔 Configurando suscripción realtime para métricas. Sede:', sedeId || 'todas');
 
     // Crear canal único para métricas
@@ -64,30 +68,37 @@ export const useRealtimeMetrics = ({
 
     metricsChannel.on(
       'postgres_changes',
-      { 
-        event: '*', 
-        schema: 'public', 
+      {
+        event: '*',
+        schema: 'public',
         table: 'ordenes',
         ...(filter && { filter })
       },
-      handleOrderChange
+      (payload) => {
+        // ✅ FIX: Verificar que el componente sigue montado
+        if (!isSubscribed || abortController.signal.aborted) return;
+        handleOrderChange(payload);
+      }
     );
 
     // Suscripción a cambios en pagos (afecta métricas de ingresos)
     metricsChannel.on(
       'postgres_changes',
-      { 
-        event: '*', 
-        schema: 'public', 
+      {
+        event: '*',
+        schema: 'public',
         table: 'pagos'
       },
       (payload) => {
+        // ✅ FIX: Verificar que el componente sigue montado
+        if (!isSubscribed || abortController.signal.aborted) return;
         console.log('💰 Métricas: Cambio en pagos detectado:', payload.eventType);
         onMetricsUpdated?.();
       }
     );
 
     metricsChannel.subscribe((status) => {
+      if (!isSubscribed) return; // ✅ FIX: No actualizar estado si ya se desmontó
       console.log('📡 Estado suscripción métricas:', status, 'Canal:', channelName);
       if (status === 'SUBSCRIBED') {
         console.log('✅ Métricas realtime activadas correctamente');
@@ -99,8 +110,14 @@ export const useRealtimeMetrics = ({
     channelRef.current = metricsChannel;
 
     return () => {
+      // ✅ FIX: Marcar como no suscrito y abortar operaciones pendientes
+      isSubscribed = false;
+      abortController.abort();
+
       console.log('🔌 Cerrando suscripción métricas realtime');
       if (channelRef.current) {
+        // ✅ FIX: Desuscribir antes de remover
+        channelRef.current.unsubscribe();
         supabase.removeChannel(channelRef.current);
         channelRef.current = null;
       }
