@@ -1,5 +1,4 @@
 import { supabase } from '@/lib/supabase';
-import { getStartOfDayInColombia, getEndOfDayInColombia } from '@/utils/dateUtils';
 
 export interface Repartidor {
   id: number;
@@ -129,8 +128,9 @@ class DeliveryService {
             const targetDate = filterDate || new Date();
 
             // Usar timezone de Colombia (UTC-5) para cálculos consistentes
-            const startOfDay = getStartOfDayInColombia(targetDate);
-            const endOfDay = getEndOfDayInColombia(targetDate);
+            const colombiaDateString = targetDate.toLocaleDateString('en-CA', { timeZone: 'America/Bogota' }); // YYYY-MM-DD
+            const startOfDay = new Date(`${colombiaDateString}T00:00:00.000-05:00`);
+            const endOfDay = new Date(`${colombiaDateString}T23:59:59.999-05:00`);
 
             console.log(`🕐 [DEBUG] Rango de fechas para repartidor ${repartidor.id}:`, {
               targetDate: targetDate.toISOString(),
@@ -183,14 +183,8 @@ class DeliveryService {
 
             // Filtrar órdenes del día de hoy
             // IMPORTANTE: endOfDay es el INICIO del día siguiente, por eso usamos < (no <=)
-            const toColombiaDate = (d: Date) => {
-              const colombiaOffsetMinutes = -5 * 60; // UTC-5
-              const currentOffset = d.getTimezoneOffset();
-              return new Date(d.getTime() + (colombiaOffsetMinutes - currentOffset) * 60000);
-            };
-
             const ordersToday = stats?.filter(order => {
-              const orderDate = toColombiaDate(new Date(order.created_at));
+              const orderDate = new Date(order.created_at);
               return orderDate >= startOfDay && orderDate < endOfDay;
             }) || [];
 
