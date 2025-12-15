@@ -183,8 +183,14 @@ class DeliveryService {
 
             // Filtrar órdenes del día de hoy
             // IMPORTANTE: endOfDay es el INICIO del día siguiente, por eso usamos < (no <=)
+            const toColombiaDate = (d: Date) => {
+              const colombiaOffsetMinutes = -5 * 60; // UTC-5
+              const currentOffset = d.getTimezoneOffset();
+              return new Date(d.getTime() + (colombiaOffsetMinutes - currentOffset) * 60000);
+            };
+
             const ordersToday = stats?.filter(order => {
-              const orderDate = new Date(order.created_at);
+              const orderDate = toColombiaDate(new Date(order.created_at));
               return orderDate >= startOfDay && orderDate < endOfDay;
             }) || [];
 
