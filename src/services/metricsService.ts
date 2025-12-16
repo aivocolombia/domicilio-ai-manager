@@ -514,7 +514,7 @@ export class MetricsService {
       }
 
       // Procesar datos para contar productos vendidos usando precios de sede
-      const productosMap = new Map<string, { cantidad: number; ingresos: number }>();
+      const productosMap = new Map<string, { cantidad: number; ingresos: number; nombre: string }>();
 
       const normalizeProductName = (name: string): string => {
         return name.toLowerCase().trim().replace(/s+/g, ' ');
@@ -535,12 +535,13 @@ export class MetricsService {
             const basePrice = producto.pricing || 0;
             const precio = precioSede !== undefined ? precioSede : basePrice;
 
-            if (productosMap.has(key)) {
-              const existing = productosMap.get(key)!;
+            const displayName = producto.name || 'Producto';
+            const existing = productosMap.get(key);
+            if (existing) {
               existing.cantidad += 1;
               existing.ingresos += precio;
             } else {
-              productosMap.set(key, { cantidad: 1, ingresos: precio });
+              productosMap.set(key, { cantidad: 1, ingresos: precio, nombre: displayName });
             }
           }
         });
@@ -554,12 +555,13 @@ export class MetricsService {
             const basePrice = bebida.pricing || 0;
             const precio = precioSede !== undefined ? precioSede : basePrice;
 
-            if (productosMap.has(key)) {
-              const existing = productosMap.get(key)!;
+            const displayName = bebida.name || 'Bebida';
+            const existing = productosMap.get(key);
+            if (existing) {
               existing.cantidad += 1;
               existing.ingresos += precio;
             } else {
-              productosMap.set(key, { cantidad: 1, ingresos: precio });
+              productosMap.set(key, { cantidad: 1, ingresos: precio, nombre: displayName });
             }
           }
         });
@@ -573,12 +575,13 @@ export class MetricsService {
             const basePrice = topping.pricing || 0;
             const precio = precioSede !== undefined ? precioSede : basePrice;
 
-            if (productosMap.has(key)) {
-              const existing = productosMap.get(key)!;
+            const displayName = topping.name || 'Topping';
+            const existing = productosMap.get(key);
+            if (existing) {
               existing.cantidad += 1;
               existing.ingresos += precio;
             } else {
-              productosMap.set(key, { cantidad: 1, ingresos: precio });
+              productosMap.set(key, { cantidad: 1, ingresos: precio, nombre: displayName });
             }
           }
         });
@@ -587,7 +590,12 @@ export class MetricsService {
       const totalVentas = Array.from(productosMap.values()).reduce((sum, item) => sum + item.ingresos, 0);
 
       const productosOrdenados = Array.from(productosMap.entries())
-        .map(([key, value]) => ({ producto_nombre: key.replace(/^(plato|bebida|topping)-/, ''), total_vendido: value.cantidad, total_ingresos: value.ingresos, porcentaje_ventas: totalVentas > 0 ? (value.ingresos / totalVentas) * 100 : 0 }))
+        .map(([key, value]) => ({
+          producto_nombre: value.nombre || key.replace(/^(plato|bebida|topping)-/, ''),
+          total_vendido: value.cantidad,
+          total_ingresos: value.ingresos,
+          porcentaje_ventas: totalVentas > 0 ? (value.ingresos / totalVentas) * 100 : 0
+        }))
         .sort((a, b) => b.total_ingresos - a.total_ingresos);
 
       return productosOrdenados;

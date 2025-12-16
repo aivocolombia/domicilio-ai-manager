@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+﻿import React, { useState, useEffect } from 'react';
 import {
   Dialog,
   DialogContent,
@@ -43,7 +43,7 @@ interface CancelledOrdersModalProps {
 
 const ITEMS_PER_PAGE = 10;
 
-// Definir columnas para exportación
+// Definir columnas para exportaci├│n
 const cancelledOrdersColumns: TableColumn[] = [
   { key: 'id_display', header: 'Orden' },
   { key: 'created_at', header: 'Fecha', format: (value) => new Date(value).toLocaleString('es-CO', {
@@ -54,7 +54,7 @@ const cancelledOrdersColumns: TableColumn[] = [
     minute: '2-digit'
   }) },
   { key: 'cliente_nombre', header: 'Cliente' },
-  { key: 'cliente_telefono', header: 'Teléfono' },
+  { key: 'cliente_telefono', header: 'Tel├®fono' },
   { key: 'total_pago', header: 'Monto', format: (value) => {
     return new Intl.NumberFormat('es-CO', {
       style: 'currency',
@@ -62,15 +62,15 @@ const cancelledOrdersColumns: TableColumn[] = [
       minimumFractionDigits: 0
     }).format(value || 0);
   }},
-  { key: 'motivo_cancelacion', header: 'Motivo de Cancelación', format: (value) => value?.trim() || 'Sin motivo especificado' }
+  { key: 'motivo_cancelacion', header: 'Motivo de Cancelaci├│n', format: (value) => value?.trim() || 'Sin motivo especificado' }
 ];
 
-// Función para aplanar los datos para exportación
+// Funci├│n para aplanar los datos para exportaci├│n
 const flattenOrderData = (order: CancelledOrder) => ({
   id_display: order.id_display || `ORD-${order.id.toString().padStart(4, '0')}`,
   created_at: order.created_at,
   cliente_nombre: order.clientes?.nombre || 'Sin nombre',
-  cliente_telefono: order.clientes?.telefono || 'Sin teléfono',
+  cliente_telefono: order.clientes?.telefono || 'Sin tel├®fono',
   total_pago: order.pagos?.total_pago || 0,
   motivo_cancelacion: order.motivo_cancelacion
 });
@@ -82,7 +82,7 @@ export const CancelledOrdersModal: React.FC<CancelledOrdersModalProps> = ({
   sedeNombre,
   dateFilters
 }) => {
-  // Calcular secciones PDF dinámicamente basadas en los datos
+  // Calcular secciones PDF din├ímicamente basadas en los datos
   const getPDFSections = (): PDFSection[] => {
     const totalMonto = allOrders.reduce((sum, order) => sum + (order.pagos?.total_pago || 0), 0);
 
@@ -92,13 +92,13 @@ export const CancelledOrdersModal: React.FC<CancelledOrdersModalProps> = ({
         type: 'summary',
         calculate: (data: any[]) => ({
           'Sede': sedeNombre,
-          'Total Órdenes Canceladas': data.length,
+          'Total ├ôrdenes Canceladas': data.length,
           'Monto Total Cancelado': new Intl.NumberFormat('es-CO', {
             style: 'currency',
             currency: 'COP',
             minimumFractionDigits: 0
           }).format(totalMonto),
-          'Período': dateFilters.fecha_inicio && dateFilters.fecha_fin
+          'Per├¡odo': dateFilters.fecha_inicio && dateFilters.fecha_fin
             ? `${dateFilters.fecha_inicio} a ${dateFilters.fecha_fin}`
             : 'Todos los registros'
         })
@@ -115,8 +115,11 @@ export const CancelledOrdersModal: React.FC<CancelledOrdersModalProps> = ({
   const [allOrders, setAllOrders] = useState<CancelledOrder[]>([]); // Para exportar todos los datos
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [exportLoading, setExportLoading] = useState(false);
+  const [exportError, setExportError] = useState<string | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [totalCount, setTotalCount] = useState(0);
+  const [hasLoadedAllOrders, setHasLoadedAllOrders] = useState(false);
 
   const totalPages = Math.ceil(totalCount / ITEMS_PER_PAGE);
   const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
@@ -127,7 +130,7 @@ export const CancelledOrdersModal: React.FC<CancelledOrdersModalProps> = ({
       setLoading(true);
       setError(null);
 
-      console.log('🔍 Iniciando carga de cancelaciones para sede:', sedeId);
+      console.log('­ƒöì Iniciando carga de cancelaciones para sede:', sedeId);
 
       // Construir query base - misma estructura que Dashboard
       let countQuery = supabase
@@ -136,7 +139,7 @@ export const CancelledOrdersModal: React.FC<CancelledOrdersModalProps> = ({
         .eq('status', 'Cancelado')
         .eq('sede_id', sedeId);
 
-      // Aplicar filtros de fecha si están definidos
+      // Aplicar filtros de fecha si est├ín definidos
       if (dateFilters.fecha_inicio && dateFilters.fecha_fin) {
         const startDate = new Date(`${dateFilters.fecha_inicio}T00:00:00`);
         const endDate = new Date(`${dateFilters.fecha_fin}T23:59:59`);
@@ -157,7 +160,7 @@ export const CancelledOrdersModal: React.FC<CancelledOrdersModalProps> = ({
       }
 
       setTotalCount(count || 0);
-      console.log('📊 Count total de cancelaciones:', count);
+      console.log('­ƒôè Count total de cancelaciones:', count);
 
       // Construir query para datos
       let dataQuery = supabase
@@ -192,10 +195,10 @@ export const CancelledOrdersModal: React.FC<CancelledOrdersModalProps> = ({
       const { data, error } = await dataQuery;
 
       if (error) {
-        throw new Error(`Error obteniendo órdenes canceladas: ${error.message}`);
+        throw new Error(`Error obteniendo ├│rdenes canceladas: ${error.message}`);
       }
 
-      // Generar id_display para las órdenes
+      // Generar id_display para las ├│rdenes
       const ordersWithDisplay = (data || []).map(order => ({
         ...order,
         id_display: `ORD-${order.id.toString().padStart(4, '0')}`
@@ -203,7 +206,7 @@ export const CancelledOrdersModal: React.FC<CancelledOrdersModalProps> = ({
 
       setOrders(ordersWithDisplay);
 
-      // NUEVO: Cargar TODOS los datos sin paginación para exportar
+      // NUEVO: Cargar TODOS los datos sin paginaci├│n para exportar
       let allDataQuery = supabase
         .from('ordenes')
         .select(`
@@ -239,10 +242,10 @@ export const CancelledOrdersModal: React.FC<CancelledOrdersModalProps> = ({
           id_display: `ORD-${order.id.toString().padStart(4, '0')}`
         }));
         setAllOrders(allOrdersWithDisplay);
-        console.log('✅ Todos los datos cargados para exportar:', allOrdersWithDisplay.length);
+        console.log('Ô£à Todos los datos cargados para exportar:', allOrdersWithDisplay.length);
       }
 
-      console.log('✅ Órdenes canceladas cargadas:', {
+      console.log('Ô£à ├ôrdenes canceladas cargadas:', {
         count: ordersWithDisplay.length,
         totalCountFromQuery: count,
         sampleOrder: ordersWithDisplay[0],
@@ -252,22 +255,22 @@ export const CancelledOrdersModal: React.FC<CancelledOrdersModalProps> = ({
       });
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Error desconocido';
-      console.error('❌ Error cargando órdenes canceladas:', err);
+      console.error('ÔØî Error cargando ├│rdenes canceladas:', err);
       setError(errorMessage);
     } finally {
       setLoading(false);
     }
   };
 
-  // Cargar datos cuando se abre el modal o cambia la página
+  // Cargar datos cuando se abre el modal o cambia la p├ígina
   useEffect(() => {
     if (isOpen) {
-      setCurrentPage(1); // Reset a la primera página
+      setCurrentPage(1); // Reset a la primera p├ígina
       loadCancelledOrders();
     }
   }, [isOpen, sedeId, dateFilters.fecha_inicio, dateFilters.fecha_fin]);
 
-  // Recargar cuando cambia la página
+  // Recargar cuando cambia la p├ígina
   useEffect(() => {
     if (isOpen) {
       loadCancelledOrders();
@@ -298,9 +301,9 @@ export const CancelledOrdersModal: React.FC<CancelledOrdersModalProps> = ({
     }
   };
 
-  // Calcular conteo de motivos de cancelación
+  // Calcular conteo de motivos de cancelaci├│n
   const getCancellationReasonCounts = () => {
-    // Definir los motivos válidos del dropdown
+    // Definir los motivos v├ílidos del dropdown
     const motivosValidos = [
       'Sobrepasa tiempo estimado de entrega',
       'Agotado de productos',
@@ -314,7 +317,7 @@ export const CancelledOrdersModal: React.FC<CancelledOrdersModalProps> = ({
     allOrders.forEach(order => {
       let motivo = order.motivo_cancelacion?.trim() || 'Sin motivo especificado';
 
-      // Si el motivo no está en la lista de válidos, clasificarlo como "Otros"
+      // Si el motivo no est├í en la lista de v├ílidos, clasificarlo como "Otros"
       if (!motivosValidos.includes(motivo)) {
         motivo = 'Otros';
       }
@@ -338,10 +341,10 @@ export const CancelledOrdersModal: React.FC<CancelledOrdersModalProps> = ({
             <div>
               <DialogTitle className="flex items-center gap-2">
                 <XCircle className="h-6 w-6 text-red-500" />
-                Órdenes Canceladas - {sedeNombre}
+                ├ôrdenes Canceladas - {sedeNombre}
               </DialogTitle>
               <DialogDescription>
-                Detalles de las órdenes canceladas con motivos de cancelación
+                Detalles de las ├│rdenes canceladas con motivos de cancelaci├│n
               </DialogDescription>
             </div>
             {allOrders.length > 0 && (
@@ -350,8 +353,8 @@ export const CancelledOrdersModal: React.FC<CancelledOrdersModalProps> = ({
                 columns={cancelledOrdersColumns}
                 pdfSections={getPDFSections()}
                 filename={`cancelaciones_${sedeNombre.toLowerCase().replace(/\s+/g, '_')}_${new Date().toISOString().split('T')[0]}`}
-                title={`Reporte de Órdenes Canceladas - ${sedeNombre}`}
-                subtitle={`Período: ${dateFilters.fecha_inicio && dateFilters.fecha_fin ? `${dateFilters.fecha_inicio} a ${dateFilters.fecha_fin}` : 'Todos los registros'} | Total: ${allOrders.length} órdenes`}
+                title={`Reporte de ├ôrdenes Canceladas - ${sedeNombre}`}
+                subtitle={`Per├¡odo: ${dateFilters.fecha_inicio && dateFilters.fecha_fin ? `${dateFilters.fecha_inicio} a ${dateFilters.fecha_fin}` : 'Todos los registros'} | Total: ${allOrders.length} ├│rdenes`}
               />
             )}
           </div>
@@ -362,12 +365,12 @@ export const CancelledOrdersModal: React.FC<CancelledOrdersModalProps> = ({
             <div className="flex items-center justify-center py-8">
               <div className="text-center">
                 <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mx-auto mb-2"></div>
-                <p className="text-sm text-muted-foreground">Cargando órdenes canceladas...</p>
+                <p className="text-sm text-muted-foreground">Cargando ├│rdenes canceladas...</p>
               </div>
             </div>
           ) : error ? (
             <div className="text-center py-8">
-              <div className="text-red-500 mb-2">Error al cargar las órdenes</div>
+              <div className="text-red-500 mb-2">Error al cargar las ├│rdenes</div>
               <div className="text-sm text-muted-foreground">{error}</div>
               <Button 
                 variant="outline" 
@@ -381,36 +384,36 @@ export const CancelledOrdersModal: React.FC<CancelledOrdersModalProps> = ({
           ) : orders.length === 0 ? (
             <div className="text-center py-8">
               <XCircle className="h-12 w-12 text-muted-foreground mx-auto mb-4 opacity-50" />
-              <h3 className="text-lg font-semibold mb-2">No hay órdenes canceladas</h3>
+              <h3 className="text-lg font-semibold mb-2">No hay ├│rdenes canceladas</h3>
               <p className="text-sm text-muted-foreground">
-                No se encontraron órdenes canceladas para esta sede en el período seleccionado.
+                No se encontraron ├│rdenes canceladas para esta sede en el per├¡odo seleccionado.
               </p>
             </div>
           ) : (
             <div className="space-y-4">
-              {/* Información del resumen */}
+              {/* Informaci├│n del resumen */}
               <div className="flex items-center justify-between p-4 bg-red-50 rounded-lg border border-red-200">
                 <div className="flex items-center gap-2">
                   <XCircle className="h-5 w-5 text-red-500" />
                   <span className="font-semibold text-red-700">
-                    {totalCount} órdenes canceladas encontradas
+                    {totalCount} ├│rdenes canceladas encontradas
                   </span>
                 </div>
                 <Badge variant="destructive">
-                  Página {currentPage} de {totalPages}
+                  P├ígina {currentPage} de {totalPages}
                 </Badge>
               </div>
 
-              {/* Contador de motivos de cancelación */}
+              {/* Contador de motivos de cancelaci├│n */}
               {motivoCounts.length > 0 && (
                 <Card className="border-blue-200 bg-blue-50/50">
                   <CardHeader className="pb-3">
                     <CardTitle className="text-base flex items-center gap-2">
                       <BarChart3 className="h-5 w-5 text-blue-600" />
-                      Resumen de Motivos de Cancelación
+                      Resumen de Motivos de Cancelaci├│n
                     </CardTitle>
                     <CardDescription>
-                      Distribución de los {allOrders.length} motivos registrados
+                      Distribuci├│n de los {allOrders.length} motivos registrados
                     </CardDescription>
                   </CardHeader>
                   <CardContent>
@@ -434,7 +437,7 @@ export const CancelledOrdersModal: React.FC<CancelledOrdersModalProps> = ({
                               </div>
                             </div>
                             <Badge variant="secondary" className="ml-3">
-                              {count} {count === 1 ? 'orden' : 'órdenes'}
+                              {count} {count === 1 ? 'orden' : '├│rdenes'}
                             </Badge>
                           </div>
                         );
@@ -444,7 +447,7 @@ export const CancelledOrdersModal: React.FC<CancelledOrdersModalProps> = ({
                 </Card>
               )}
 
-              {/* Lista de órdenes */}
+              {/* Lista de ├│rdenes */}
               <div className="space-y-3">
                 {orders.map((order, index) => (
                   <Card key={order.id} className="border-red-200 bg-red-50/30">
@@ -466,7 +469,7 @@ export const CancelledOrdersModal: React.FC<CancelledOrdersModalProps> = ({
                     </CardHeader>
                     <CardContent className="pt-0">
                       <div className="grid md:grid-cols-2 gap-4">
-                        {/* Información del cliente */}
+                        {/* Informaci├│n del cliente */}
                         <div>
                           <h4 className="font-semibold text-sm mb-2 flex items-center gap-1">
                             <span>Cliente:</span>
@@ -479,13 +482,13 @@ export const CancelledOrdersModal: React.FC<CancelledOrdersModalProps> = ({
                                 <div className="text-sm text-muted-foreground">Sin nombre</div>
                               )}
                               {order.clientes.telefono ? (
-                                <div><strong>Teléfono:</strong> {order.clientes.telefono}</div>
+                                <div><strong>Tel├®fono:</strong> {order.clientes.telefono}</div>
                               ) : (
-                                <div className="text-sm text-muted-foreground">Sin teléfono</div>
+                                <div className="text-sm text-muted-foreground">Sin tel├®fono</div>
                               )}
                             </div>
                           ) : (
-                            <div className="text-sm text-muted-foreground">Sin información del cliente</div>
+                            <div className="text-sm text-muted-foreground">Sin informaci├│n del cliente</div>
                           )}
                         </div>
 
@@ -498,17 +501,17 @@ export const CancelledOrdersModal: React.FC<CancelledOrdersModalProps> = ({
                           <div className="text-lg font-bold text-red-600">
                             {order.pagos?.total_pago && order.pagos.total_pago > 0 ?
                               formatCurrency(order.pagos.total_pago) :
-                              <span className="text-sm text-muted-foreground font-normal">Sin información de pago</span>
+                              <span className="text-sm text-muted-foreground font-normal">Sin informaci├│n de pago</span>
                             }
                           </div>
                         </div>
                       </div>
 
-                      {/* Motivo de cancelación */}
+                      {/* Motivo de cancelaci├│n */}
                       <div className="mt-4 p-3 bg-red-100 rounded-lg border border-red-200">
                         <h4 className="font-semibold text-sm mb-2 flex items-center gap-1 text-red-700">
                           <MessageCircle className="h-4 w-4" />
-                          Motivo de cancelación:
+                          Motivo de cancelaci├│n:
                         </h4>
                         <p className="text-sm text-red-800 leading-relaxed">
                           {order.motivo_cancelacion?.trim() ?
@@ -525,11 +528,11 @@ export const CancelledOrdersModal: React.FC<CancelledOrdersModalProps> = ({
           )}
         </div>
 
-        {/* Paginación y controles */}
+        {/* Paginaci├│n y controles */}
         {!loading && !error && totalPages > 1 && (
           <div className="flex items-center justify-between pt-4 border-t">
             <div className="text-sm text-muted-foreground">
-              Mostrando {startIndex + 1} a {Math.min(endIndex + 1, totalCount)} de {totalCount} órdenes
+              Mostrando {startIndex + 1} a {Math.min(endIndex + 1, totalCount)} de {totalCount} ├│rdenes
             </div>
             
             <div className="flex items-center gap-2">
