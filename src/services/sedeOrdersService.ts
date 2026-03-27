@@ -246,9 +246,7 @@ class SedeOrdersService {
           created_at,
           observaciones,
           clientes!cliente_id(nombre, telefono, direccion),
-          pagos!payment_id(type, status, total_pago),
-          ordenes_platos(plato_id, platos(id, name, pricing)),
-          ordenes_bebidas(bebidas_id, bebidas(id, name, pricing))
+          pagos!payment_id(type, status, total_pago)
         `)
         .eq('sede_id', sedeId)
         .gte('created_at', startOfDay.toISOString())
@@ -284,9 +282,7 @@ class SedeOrdersService {
           created_at,
           observaciones,
           clientes!cliente_id(nombre, telefono, direccion),
-          pagos!payment_id(type, status, total_pago),
-          ordenes_platos(plato_id, platos(id, name, pricing)),
-          ordenes_bebidas(bebidas_id, bebidas(id, name, pricing))
+          pagos!payment_id(type, status, total_pago)
         `)
         .eq('sede_id', sedeId)
         .order('created_at', { ascending: false })

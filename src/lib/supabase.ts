@@ -26,6 +26,8 @@ const customFetch = async (url: RequestInfo | URL, options: RequestInit = {}): P
 
       // ✅ FIX: En errores de servidor (5xx), reintentar con backoff exponencial
       if (response.status >= 500 && response.status < 600) {
+        const errorBody = await response.clone().text();
+        console.error(`🔍 PostgREST error body (${response.status}):`, errorBody);
         const delay = Math.min(1000 * Math.pow(2, attempt), 10000); // Max 10s
         console.warn(`⚠️ Error de servidor (${response.status}). Reintentando en ${delay}ms (intento ${attempt + 1}/${maxRetries})`);
         await new Promise(resolve => setTimeout(resolve, delay));
