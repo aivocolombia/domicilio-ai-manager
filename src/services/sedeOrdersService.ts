@@ -89,12 +89,8 @@ class SedeOrdersService {
           observaciones,
           clientes!cliente_id(nombre, telefono, direccion),
           pagos!payment_id(type, status, total_pago),
-          ordenes_platos!left(
-            platos!inner(id, name, pricing)
-          ),
-          ordenes_bebidas!left(
-            bebidas!inner(id, name, pricing)
-          )
+          ordenes_platos(plato_id, platos(id, name, pricing)),
+          ordenes_bebidas(bebidas_id, bebidas(id, name, pricing))
         `)
         .ilike('clientes.telefono', `%${normalizedPhone}%`)
         .order('created_at', { ascending: false })
@@ -251,12 +247,8 @@ class SedeOrdersService {
           observaciones,
           clientes!cliente_id(nombre, telefono, direccion),
           pagos!payment_id(type, status, total_pago),
-          ordenes_platos!left(
-            platos!inner(id, name, pricing)
-          ),
-          ordenes_bebidas!left(
-            bebidas!inner(id, name, pricing)
-          )
+          ordenes_platos(plato_id, platos(id, name, pricing)),
+          ordenes_bebidas(bebidas_id, bebidas(id, name, pricing))
         `)
         .eq('sede_id', sedeId)
         .gte('created_at', startOfDay.toISOString())
@@ -293,12 +285,8 @@ class SedeOrdersService {
           observaciones,
           clientes!cliente_id(nombre, telefono, direccion),
           pagos!payment_id(type, status, total_pago),
-          ordenes_platos!left(
-            platos!inner(id, name, pricing)
-          ),
-          ordenes_bebidas!left(
-            bebidas!inner(id, name, pricing)
-          )
+          ordenes_platos(plato_id, platos(id, name, pricing)),
+          ordenes_bebidas(bebidas_id, bebidas(id, name, pricing))
         `)
         .eq('sede_id', sedeId)
         .order('created_at', { ascending: false })
