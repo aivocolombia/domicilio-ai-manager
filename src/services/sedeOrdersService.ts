@@ -94,9 +94,6 @@ class SedeOrdersService {
           ),
           ordenes_bebidas!left(
             bebidas!inner(id, name, pricing)
-          ),
-          ordenes_toppings!left(
-            toppings!inner(id, name, pricing)
           )
         `)
         .ilike('clientes.telefono', `%${normalizedPhone}%`)
@@ -259,9 +256,6 @@ class SedeOrdersService {
           ),
           ordenes_bebidas!left(
             bebidas!inner(id, name, pricing)
-          ),
-          ordenes_toppings!left(
-            toppings!inner(id, name, pricing)
           )
         `)
         .eq('sede_id', sedeId)
@@ -304,9 +298,6 @@ class SedeOrdersService {
           ),
           ordenes_bebidas!left(
             bebidas!inner(id, name, pricing)
-          ),
-          ordenes_toppings!left(
-            toppings!inner(id, name, pricing)
           )
         `)
         .eq('sede_id', sedeId)
