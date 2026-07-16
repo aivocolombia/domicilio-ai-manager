@@ -401,7 +401,7 @@ export class MetricsService {
         while (attempt < maxAttemptsPerPage && pageData === null) {
           let query = supabase
             .from('ordenes')
-            .select("id,status,created_at,sede_id,ordenes_platos(plato_id,platos(id,name)),ordenes_bebidas(bebidas_id,bebidas(id,name)),ordenes_toppings(topping_id,toppings(id,name,pricing))")
+            .select("id,status,created_at,sede_id,ordenes_platos(plato_id,platos(id,name,pricing)),ordenes_bebidas(bebidas_id,bebidas(id,name,pricing)),ordenes_toppings(topping_id,toppings(id,name,pricing))")
             .gte('created_at', startQuery)
             .lte('created_at', endQuery)
             .eq('status', 'Entregados')
@@ -517,7 +517,7 @@ export class MetricsService {
       const productosMap = new Map<string, { cantidad: number; ingresos: number; nombre: string }>();
 
       const normalizeProductName = (name: string): string => {
-        return name.toLowerCase().trim().replace(/s+/g, ' ');
+        return name.toLowerCase().trim().replace(/\s+/g, ' ');
       };
 
       const isGlobalView = !filters.sede_id;

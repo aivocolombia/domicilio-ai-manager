@@ -651,7 +651,11 @@ class SedeOrdersService {
           .eq('plato_id', item.producto_id)
           .maybeSingle();
 
-        if (!sedeError && sedePlato && sedePlato.price_override !== null) {
+        if (sedeError) {
+          throw new Error(`Error obteniendo precio de sede para plato ${item.producto_id}: ${sedeError.message}`);
+        }
+
+        if (sedePlato && sedePlato.price_override !== null) {
           precio = sedePlato.price_override;
           console.log(`✅ Usando precio de sede para plato ${item.producto_id}: $${precio}`);
         } else {
@@ -677,7 +681,11 @@ class SedeOrdersService {
           .eq('bebida_id', item.producto_id)
           .maybeSingle();
 
-        if (!sedeError && sedeBebida && sedeBebida.price_override !== null) {
+        if (sedeError) {
+          throw new Error(`Error obteniendo precio de sede para bebida ${item.producto_id}: ${sedeError.message}`);
+        }
+
+        if (sedeBebida && sedeBebida.price_override !== null) {
           precio = sedeBebida.price_override;
           console.log(`✅ Usando precio de sede para bebida ${item.producto_id}: $${precio}`);
         } else {
@@ -703,7 +711,11 @@ class SedeOrdersService {
           .eq('topping_id', item.producto_id)
           .maybeSingle();
 
-        if (!sedeError && sedeTopping && sedeTopping.price_override !== null) {
+        if (sedeError) {
+          throw new Error(`Error obteniendo precio de sede para topping ${item.producto_id}: ${sedeError.message}`);
+        }
+
+        if (sedeTopping && sedeTopping.price_override !== null) {
           precio = sedeTopping.price_override;
           console.log(`✅ Usando precio de sede para topping ${item.producto_id}: $${precio}`);
         } else {

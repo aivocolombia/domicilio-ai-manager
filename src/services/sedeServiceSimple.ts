@@ -178,7 +178,7 @@ export class SedeServiceSimple {
             id: toppingItem.toppings.id,
             name: toppingItem.toppings.name,
             description: '',
-            pricing: toppingItem.sede_info?.price_override || toppingItem.toppings.pricing,
+            pricing: toppingItem.sede_info?.price_override ?? toppingItem.toppings.pricing,
             is_available: toppingItem.sede_info?.available ?? true
           }));
 
@@ -186,7 +186,7 @@ export class SedeServiceSimple {
             id: item.platos.id,
             name: item.platos.name,
             description: item.platos.description || '',
-            pricing: item.price_override || item.platos.pricing,
+            pricing: item.price_override ?? item.platos.pricing,
             is_available: item.available,
             toppings: toppings
           });
@@ -209,7 +209,7 @@ export class SedeServiceSimple {
           id: item.bebidas.id,
           name: item.bebidas.name,
           description: '', // bebidas no tienen description
-          pricing: item.price_override || item.bebidas.pricing,
+          pricing: item.price_override ?? item.bebidas.pricing,
           is_available: item.available
         }));
       } else { // toppings
@@ -228,7 +228,7 @@ export class SedeServiceSimple {
           id: item.toppings.id,
           name: item.toppings.name,
           description: '', // toppings no tienen description
-          pricing: item.price_override || item.toppings.pricing,
+          pricing: item.price_override ?? item.toppings.pricing,
           is_available: item.available
         }));
       }

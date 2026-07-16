@@ -205,7 +205,7 @@ export class SedeService {
 
       const products: SedeProduct[] = (data || []).map(item => {
         const product = item[productTable];
-        const finalPrice = item.price_override || product.pricing;
+        const finalPrice = item.price_override ?? product.pricing;
         
         return {
           id: product.id,

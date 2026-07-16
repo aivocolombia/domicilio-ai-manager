@@ -251,11 +251,11 @@ export const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({
           id: item.bebidas.id,
           orden_item_id: item.id, // ID único del item en ordenes_bebidas
           quantity: 1, // Siempre 1 para items individuales
-          unit_price: bebidaOverridesMap.get(item.bebidas_id) ?? (item.bebidas?.pricing || 0),
+          unit_price: bebidaOverridesMap.get(Number(item.bebidas_id)) ?? (item.bebidas?.pricing || 0),
           producto: {
             id: item.bebidas.id,
             name: item.bebidas.name,
-            pricing: bebidaOverridesMap.get(item.bebidas_id) ?? (item.bebidas?.pricing || 0)
+            pricing: bebidaOverridesMap.get(Number(item.bebidas_id)) ?? (item.bebidas?.pricing || 0)
           },
           tipo: 'bebida' as const
         })),
