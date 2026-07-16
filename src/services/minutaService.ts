@@ -337,10 +337,15 @@ export class MinutaService {
       const sedeId = orderData.sede_id;
       console.log('💰 MinutaService: Obteniendo precios de sede para sede_id:', sedeId);
 
+      const toNumericId = (value: unknown): number | null => {
+        const numericValue = Number(value);
+        return Number.isFinite(numericValue) ? numericValue : null;
+      };
+
       // Obtener IDs únicos de cada tipo de producto
-      const platoIds = [...new Set((platosData || []).map(item => item.plato_id).filter(id => id))];
-      const bebidaIds = [...new Set((bebidasData || []).map(item => item.bebidas_id).filter(id => id))];
-      const toppingIds = [...new Set((toppingsData || []).map(item => item.topping_id).filter(id => id))];
+      const platoIds = [...new Set((platosData || []).map(item => toNumericId(item.plato_id)).filter((id): id is number => id !== null))];
+      const bebidaIds = [...new Set((bebidasData || []).map(item => toNumericId(item.bebidas_id)).filter((id): id is number => id !== null))];
+      const toppingIds = [...new Set((toppingsData || []).map(item => toNumericId(item.topping_id)).filter((id): id is number => id !== null))];
 
       // Consultar precios de sede en paralelo
       const [sedePlatosData, sedeBebidasData, sedeToppingsData] = await Promise.all([
@@ -362,9 +367,24 @@ export class MinutaService {
       ]);
 
       // Crear maps de precios de sede
-      const sedePlatosMap = new Map((sedePlatosData.data || []).map(sp => [sp.plato_id, sp.price_override]));
-      const sedeBebidasMap = new Map((sedeBebidasData.data || []).map(sb => [sb.bebida_id, sb.price_override]));
-      const sedeToppingsMap = new Map((sedeToppingsData.data || []).map(st => [st.topping_id, st.price_override]));
+      const sedePlatosMap = new Map<number, number>(
+        (sedePlatosData.data || [])
+          .map(sp => [toNumericId(sp.plato_id), sp.price_override] as const)
+          .filter(([productId, priceOverride]) => productId !== null && priceOverride !== null && priceOverride !== undefined)
+          .map(([productId, priceOverride]) => [productId as number, priceOverride as number])
+      );
+      const sedeBebidasMap = new Map<number, number>(
+        (sedeBebidasData.data || [])
+          .map(sb => [toNumericId(sb.bebida_id), sb.price_override] as const)
+          .filter(([productId, priceOverride]) => productId !== null && priceOverride !== null && priceOverride !== undefined)
+          .map(([productId, priceOverride]) => [productId as number, priceOverride as number])
+      );
+      const sedeToppingsMap = new Map<number, number>(
+        (sedeToppingsData.data || [])
+          .map(st => [toNumericId(st.topping_id), st.price_override] as const)
+          .filter(([productId, priceOverride]) => productId !== null && priceOverride !== null && priceOverride !== undefined)
+          .map(([productId, priceOverride]) => [productId as number, priceOverride as number])
+      );
 
       console.log('💰 MinutaService: Precios de sede cargados:', {
         platos: sedePlatosMap.size,
@@ -374,7 +394,7 @@ export class MinutaService {
 
       // Mapear platos con precios de sede
       const mappedPlatos = (platosData || []).map(item => {
-        const precioSede = sedePlatosMap.get(item.plato_id);
+        const precioSede = sedePlatosMap.get(Number(item.plato_id));
         const basePrice = item.platos?.pricing ?? 0;
 
         const precio = precioSede ?? basePrice;
@@ -430,7 +450,7 @@ export class MinutaService {
 
       // Mapear bebidas con precios de sede
       const mappedBebidas = (bebidasData || []).map(item => {
-        const precioSede = sedeBebidasMap.get(item.bebidas_id);
+        const precioSede = sedeBebidasMap.get(Number(item.bebidas_id));
         const basePrice = item.bebidas?.pricing ?? 0;
 
         const precio = precioSede ?? basePrice;
@@ -452,7 +472,7 @@ export class MinutaService {
 
       // Mapear toppings con precios de sede
       const mappedToppings = (toppingsData || []).map(item => {
-        const precioSede = sedeToppingsMap.get(item.topping_id);
+        const precioSede = sedeToppingsMap.get(Number(item.topping_id));
         const basePrice = item.toppings?.pricing ?? 0;
 
         const precio = precioSede ?? basePrice;

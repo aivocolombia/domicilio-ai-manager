@@ -85,6 +85,7 @@ export const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({
         .from('ordenes')
         .select(`
           id,
+          sede_id,
           status,
           created_at,
           hora_entrega,
@@ -151,6 +152,85 @@ export const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({
         console.error('❌ Error obteniendo toppings:', toppingsError);
       }
 
+      const toNumericId = (value: unknown): number | null => {
+        const numericValue = Number(value);
+        return Number.isFinite(numericValue) ? numericValue : null;
+      };
+
+      // Obtener overrides de precio por sede para platos, bebidas y toppings
+      const platoIds = [...new Set((platosData || [])
+        .map(item => toNumericId(item.plato_id))
+        .filter((id): id is number => id !== null))];
+      const bebidaIds = [...new Set((bebidasData || [])
+        .map(item => toNumericId(item.bebidas_id))
+        .filter((id): id is number => id !== null))];
+      const toppingIds = [...new Set((toppingsData || [])
+        .map(item => toNumericId(item.topping_id))
+        .filter((id): id is number => id !== null))];
+
+      const platoOverridesMap = new Map<number, number>();
+      const bebidaOverridesMap = new Map<number, number>();
+      const toppingOverridesMap = new Map<number, number>();
+
+      if (orderData.sede_id) {
+        const [sedePlatosResult, sedeBebidasResult, sedeToppingsResult] = await Promise.all([
+          platoIds.length > 0
+            ? supabase
+                .from('sede_platos')
+                .select('plato_id, price_override')
+                .eq('sede_id', orderData.sede_id)
+                .in('plato_id', platoIds)
+            : Promise.resolve({ data: [], error: null }),
+          bebidaIds.length > 0
+            ? supabase
+                .from('sede_bebidas')
+                .select('bebida_id, price_override')
+                .eq('sede_id', orderData.sede_id)
+                .in('bebida_id', bebidaIds)
+            : Promise.resolve({ data: [], error: null }),
+          toppingIds.length > 0
+            ? supabase
+                .from('sede_toppings')
+                .select('topping_id, price_override')
+                .eq('sede_id', orderData.sede_id)
+                .in('topping_id', toppingIds)
+            : Promise.resolve({ data: [], error: null })
+        ]);
+
+        if (sedePlatosResult.error) {
+          console.error('❌ Error obteniendo overrides de platos por sede:', sedePlatosResult.error);
+        } else {
+          (sedePlatosResult.data || []).forEach(row => {
+            const productId = toNumericId(row.plato_id);
+            if (productId !== null && row.price_override !== null && row.price_override !== undefined) {
+              platoOverridesMap.set(productId, row.price_override);
+            }
+          });
+        }
+
+        if (sedeBebidasResult.error) {
+          console.error('❌ Error obteniendo overrides de bebidas por sede:', sedeBebidasResult.error);
+        } else {
+          (sedeBebidasResult.data || []).forEach(row => {
+            const productId = toNumericId(row.bebida_id);
+            if (productId !== null && row.price_override !== null && row.price_override !== undefined) {
+              bebidaOverridesMap.set(productId, row.price_override);
+            }
+          });
+        }
+
+        if (sedeToppingsResult.error) {
+          console.error('❌ Error obteniendo overrides de toppings por sede:', sedeToppingsResult.error);
+        } else {
+          (sedeToppingsResult.data || []).forEach(row => {
+            const productId = toNumericId(row.topping_id);
+            if (productId !== null && row.price_override !== null && row.price_override !== undefined) {
+              toppingOverridesMap.set(productId, row.price_override);
+            }
+          });
+        }
+      }
+
       // NUEVO: Mantener items individuales sin agrupar
       const items: OrderItem[] = [
         // Procesar platos individualmente
@@ -158,11 +238,11 @@ export const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({
           id: item.platos.id,
           orden_item_id: item.id, // ID único del item en ordenes_platos
           quantity: 1, // Siempre 1 para items individuales
-          unit_price: item.platos?.pricing || 0,
+          unit_price: platoOverridesMap.get(Number(item.plato_id)) ?? (item.platos?.pricing || 0),
           producto: {
             id: item.platos.id,
             name: item.platos.name,
-            pricing: item.platos?.pricing || 0
+            pricing: platoOverridesMap.get(Number(item.plato_id)) ?? (item.platos?.pricing || 0)
           },
           tipo: 'plato' as const
         })),
@@ -171,11 +251,11 @@ export const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({
           id: item.bebidas.id,
           orden_item_id: item.id, // ID único del item en ordenes_bebidas
           quantity: 1, // Siempre 1 para items individuales
-          unit_price: item.bebidas?.pricing || 0,
+          unit_price: bebidaOverridesMap.get(item.bebidas_id) ?? (item.bebidas?.pricing || 0),
           producto: {
             id: item.bebidas.id,
             name: item.bebidas.name,
-            pricing: item.bebidas?.pricing || 0
+            pricing: bebidaOverridesMap.get(item.bebidas_id) ?? (item.bebidas?.pricing || 0)
           },
           tipo: 'bebida' as const
         })),
@@ -184,11 +264,11 @@ export const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({
           id: item.toppings.id,
           orden_item_id: item.id, // ID único del item en ordenes_toppings
           quantity: 1, // Siempre 1 para items individuales
-          unit_price: item.toppings?.pricing || 0,
+          unit_price: toppingOverridesMap.get(Number(item.topping_id)) ?? (item.toppings?.pricing || 0),
           producto: {
             id: item.toppings.id,
             name: item.toppings.name,
-            pricing: item.toppings?.pricing || 0
+            pricing: toppingOverridesMap.get(Number(item.topping_id)) ?? (item.toppings?.pricing || 0)
           },
           tipo: 'topping' as const
         }))
