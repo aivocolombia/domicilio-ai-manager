@@ -256,14 +256,14 @@ export interface Database {
           sede_id: string; // uuid
           plato_id: number; // bigint
           available: boolean | null;
-          price_override: number | null; // integer
+          price_override: number; // integer
           updated_at: string | null;
         };
         Insert: {
           sede_id: string;
           plato_id: number;
           available?: boolean | null;
-          price_override?: number | null;
+          price_override?: number;
           updated_at?: string | null;
         };
         Update: {
@@ -279,14 +279,14 @@ export interface Database {
           sede_id: string; // uuid
           bebida_id: number; // smallint
           available: boolean | null;
-          price_override: number | null; // integer
+          price_override: number; // integer
           updated_at: string | null;
         };
         Insert: {
           sede_id: string;
           bebida_id: number;
           available?: boolean | null;
-          price_override?: number | null;
+          price_override?: number;
           updated_at?: string | null;
         };
         Update: {
@@ -302,14 +302,14 @@ export interface Database {
           sede_id: string; // uuid
           topping_id: number; // integer
           available: boolean | null;
-          price_override: number | null; // integer
+          price_override: number; // integer
           updated_at: string | null;
         };
         Insert: {
           sede_id: string;
           topping_id: number;
           available?: boolean | null;
-          price_override?: number | null;
+          price_override?: number;
           updated_at?: string | null;
         };
         Update: {
@@ -469,18 +469,24 @@ export interface Database {
           created_at: string;
           orden_id: number | null; // bigint
           plato_id: number | null; // bigint
+          precio_unitario: number | null;
+          precio_total: number | null;
         };
         Insert: {
           id?: number;
           created_at?: string;
           orden_id?: number | null;
           plato_id?: number | null;
+          precio_unitario?: number | null;
+          precio_total?: number | null;
         };
         Update: {
           id?: number;
           created_at?: string;
           orden_id?: number | null;
           plato_id?: number | null;
+          precio_unitario?: number | null;
+          precio_total?: number | null;
         };
       };
       ordenes_bebidas: {
@@ -489,18 +495,24 @@ export interface Database {
           created_at: string;
           orden_id: number | null; // bigint
           bebidas_id: number | null; // smallint
+          precio_unitario: number | null;
+          precio_total: number | null;
         };
         Insert: {
           id?: number;
           created_at?: string;
           orden_id?: number | null;
           bebidas_id?: number | null;
+          precio_unitario?: number | null;
+          precio_total?: number | null;
         };
         Update: {
           id?: number;
           created_at?: string;
           orden_id?: number | null;
           bebidas_id?: number | null;
+          precio_unitario?: number | null;
+          precio_total?: number | null;
         };
       };
       ordenes_toppings: {
@@ -509,18 +521,24 @@ export interface Database {
           created_at: string;
           orden_id: number | null; // bigint
           topping_id: number | null; // integer
+          precio_unitario: number | null;
+          precio_total: number | null;
         };
         Insert: {
           id?: number;
           created_at?: string;
           orden_id?: number | null;
           topping_id?: number | null;
+          precio_unitario?: number | null;
+          precio_total?: number | null;
         };
         Update: {
           id?: number;
           created_at?: string;
           orden_id?: number | null;
           topping_id?: number | null;
+          precio_unitario?: number | null;
+          precio_total?: number | null;
         };
       };
       minutas: {

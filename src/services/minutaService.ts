@@ -236,6 +236,7 @@ export class MinutaService {
           .select(`
             id,
             plato_id,
+            precio_unitario,
             platos!inner(name, pricing)
           `)
           .eq('orden_id', orderId),
@@ -246,6 +247,7 @@ export class MinutaService {
           .select(`
             id,
             bebidas_id,
+            precio_unitario,
             bebidas!inner(name, pricing)
           `)
           .eq('orden_id', orderId),
@@ -256,6 +258,7 @@ export class MinutaService {
           .select(`
             id,
             topping_id,
+            precio_unitario,
             toppings!inner(name, pricing)
           `)
           .eq('orden_id', orderId)
@@ -267,9 +270,9 @@ export class MinutaService {
       ]);
 
       const { data: orderData, error: orderError } = orderResult;
-      const { data: platosData, error: platosError } = platosResult;
-      const { data: bebidasData, error: bebidasError } = bebidasResult;
-      const { data: toppingsData, error: toppingsError } = toppingsResult;
+      let { data: platosData, error: platosError } = platosResult;
+      let { data: bebidasData, error: bebidasError } = bebidasResult;
+      let { data: toppingsData, error: toppingsError } = toppingsResult;
 
       if (orderError || !orderData) {
         console.error('Error obteniendo datos de la orden:', orderError);
@@ -278,14 +281,50 @@ export class MinutaService {
 
       if (platosError) {
         console.error('Error obteniendo platos:', platosError);
+        if (platosError.message?.includes('precio_unitario')) {
+          const fallbackResult = await supabase
+            .from('ordenes_platos')
+            .select(`
+              id,
+              plato_id,
+              platos!inner(name, pricing)
+            `)
+            .eq('orden_id', orderId);
+          platosData = fallbackResult.data as any[];
+          platosError = fallbackResult.error;
+        }
       }
 
       if (bebidasError) {
         console.error('Error obteniendo bebidas:', bebidasError);
+        if (bebidasError.message?.includes('precio_unitario')) {
+          const fallbackResult = await supabase
+            .from('ordenes_bebidas')
+            .select(`
+              id,
+              bebidas_id,
+              bebidas!inner(name, pricing)
+            `)
+            .eq('orden_id', orderId);
+          bebidasData = fallbackResult.data as any[];
+          bebidasError = fallbackResult.error;
+        }
       }
 
       if (toppingsError) {
         console.error('Error obteniendo toppings:', toppingsError);
+        if (toppingsError.message?.includes('precio_unitario')) {
+          const fallbackResult = await supabase
+            .from('ordenes_toppings')
+            .select(`
+              id,
+              topping_id,
+              toppings!inner(name, pricing)
+            `)
+            .eq('orden_id', orderId);
+          toppingsData = fallbackResult.data as any[];
+          toppingsError = fallbackResult.error;
+        }
       }
 
       // Determinar tipo de pedido basado en si tiene precio de envío o repartidor asignado
@@ -395,9 +434,9 @@ export class MinutaService {
       // Mapear platos con precios de sede
       const mappedPlatos = (platosData || []).map(item => {
         const precioSede = sedePlatosMap.get(Number(item.plato_id));
-        const basePrice = item.platos?.pricing ?? 0;
+        const historicalPrice = item.precio_unitario ?? null;
 
-        const precio = precioSede ?? basePrice;
+        const precio = historicalPrice ?? precioSede ?? 0;
 
         return {
           plato_nombre: item.platos?.name || 'Producto sin nombre',
@@ -451,9 +490,9 @@ export class MinutaService {
       // Mapear bebidas con precios de sede
       const mappedBebidas = (bebidasData || []).map(item => {
         const precioSede = sedeBebidasMap.get(Number(item.bebidas_id));
-        const basePrice = item.bebidas?.pricing ?? 0;
+        const historicalPrice = item.precio_unitario ?? null;
 
-        const precio = precioSede ?? basePrice;
+        const precio = historicalPrice ?? precioSede ?? 0;
 
         return {
           bebida_nombre: item.bebidas?.name || 'Bebida sin nombre',
@@ -473,9 +512,9 @@ export class MinutaService {
       // Mapear toppings con precios de sede
       const mappedToppings = (toppingsData || []).map(item => {
         const precioSede = sedeToppingsMap.get(Number(item.topping_id));
-        const basePrice = item.toppings?.pricing ?? 0;
+        const historicalPrice = item.precio_unitario ?? null;
 
-        const precio = precioSede ?? basePrice;
+        const precio = historicalPrice ?? precioSede ?? 0;
 
         return {
           topping_nombre: item.toppings?.name || 'Topping sin nombre',

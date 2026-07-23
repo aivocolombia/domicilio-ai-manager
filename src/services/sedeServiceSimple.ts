@@ -30,6 +30,13 @@ export class SedeServiceSimple {
   private static instance: SedeServiceSimple;
   private cache = new Map<string, { data: any; timestamp: number; ttl: number }>();
 
+  private requireOverridePrice(value: number | null | undefined, context: string): number {
+    if (value === null || value === undefined) {
+      throw new Error(`Falta price_override obligatorio en ${context}`);
+    }
+    return value;
+  }
+
   static getInstance(): SedeServiceSimple {
     if (!SedeServiceSimple.instance) {
       SedeServiceSimple.instance = new SedeServiceSimple();
@@ -178,7 +185,10 @@ export class SedeServiceSimple {
             id: toppingItem.toppings.id,
             name: toppingItem.toppings.name,
             description: '',
-            pricing: toppingItem.sede_info?.price_override ?? toppingItem.toppings.pricing,
+            pricing: this.requireOverridePrice(
+              toppingItem.sede_info?.price_override,
+              `sede_toppings / sede=${sedeId} / topping=${toppingItem.toppings.id}`
+            ),
             is_available: toppingItem.sede_info?.available ?? true
           }));
 
@@ -186,7 +196,10 @@ export class SedeServiceSimple {
             id: item.platos.id,
             name: item.platos.name,
             description: item.platos.description || '',
-            pricing: item.price_override ?? item.platos.pricing,
+            pricing: this.requireOverridePrice(
+              item.price_override,
+              `sede_platos / sede=${sedeId} / plato=${item.platos.id}`
+            ),
             is_available: item.available,
             toppings: toppings
           });
@@ -209,7 +222,10 @@ export class SedeServiceSimple {
           id: item.bebidas.id,
           name: item.bebidas.name,
           description: '', // bebidas no tienen description
-          pricing: item.price_override ?? item.bebidas.pricing,
+          pricing: this.requireOverridePrice(
+            item.price_override,
+            `sede_bebidas / sede=${sedeId} / bebida=${item.bebidas.id}`
+          ),
           is_available: item.available
         }));
       } else { // toppings
@@ -228,7 +244,10 @@ export class SedeServiceSimple {
           id: item.toppings.id,
           name: item.toppings.name,
           description: '', // toppings no tienen description
-          pricing: item.price_override ?? item.toppings.pricing,
+          pricing: this.requireOverridePrice(
+            item.price_override,
+            `sede_toppings / sede=${sedeId} / topping=${item.toppings.id}`
+          ),
           is_available: item.available
         }));
       }

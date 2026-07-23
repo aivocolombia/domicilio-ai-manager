@@ -1565,14 +1565,11 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
       let product = null;
       if (productType === 'plato') {
-        product = sedeProducts.platos.find(p => p.id.toString() === realProductId) ||
-                 platos.find(p => p.id.toString() === realProductId);
+        product = sedeProducts.platos.find(p => p.id.toString() === realProductId);
       } else if (productType === 'bebida') {
-        product = sedeProducts.bebidas.find(b => b.id.toString() === realProductId) ||
-                 bebidas.find(b => b.id.toString() === realProductId);
+        product = sedeProducts.bebidas.find(b => b.id.toString() === realProductId);
       } else if (productType === 'topping') {
-        product = sedeProducts.toppings.find(t => t.id.toString() === realProductId) ||
-                 toppings.find(t => t.id.toString() === realProductId);
+        product = sedeProducts.toppings.find(t => t.id.toString() === realProductId);
       }
 
       return total + (product ? product.pricing * item.quantity : 0);
@@ -1651,17 +1648,17 @@ export const Dashboard: React.FC<DashboardProps> = ({
         const [productType, realProductId] = item.productId.split('_');
 
         if (productType === 'plato') {
-          const product = platos.find(p => p.id.toString() === realProductId);
+          const product = sedeProducts.platos.find(p => p.id.toString() === realProductId);
           if (!product) {
             throw new Error(`Plato con ID ${realProductId} no encontrado`);
           }
         } else if (productType === 'bebida') {
-          const bebida = bebidas.find(b => b.id.toString() === realProductId);
+          const bebida = sedeProducts.bebidas.find(b => b.id.toString() === realProductId);
           if (!bebida) {
             throw new Error(`Bebida con ID ${realProductId} no encontrada`);
           }
         } else if (productType === 'topping') {
-          const topping = toppings.find(t => t.id.toString() === realProductId);
+          const topping = sedeProducts.toppings.find(t => t.id.toString() === realProductId);
           if (!topping) {
             throw new Error(`Topping con ID ${realProductId} no encontrado`);
           }
@@ -1690,7 +1687,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
           const [productType, realProductId] = item.productId.split('_');
 
           if (productType === 'plato') {
-            const product = platos.find(p => p.id.toString() === realProductId);
+            const product = sedeProducts.platos.find(p => p.id.toString() === realProductId);
             if (product) {
               return {
                 producto_tipo: 'plato' as const,
@@ -1699,7 +1696,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
               };
             }
           } else if (productType === 'bebida') {
-            const bebida = bebidas.find(b => b.id.toString() === realProductId);
+            const bebida = sedeProducts.bebidas.find(b => b.id.toString() === realProductId);
             if (bebida) {
               return {
                 producto_tipo: 'bebida' as const,
@@ -1708,7 +1705,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
               };
             }
           } else if (productType === 'topping') {
-            const topping = toppings.find(t => t.id.toString() === realProductId);
+            const topping = sedeProducts.toppings.find(t => t.id.toString() === realProductId);
             if (topping) {
               return {
                 producto_tipo: 'topping' as const,
@@ -3384,14 +3381,11 @@ export const Dashboard: React.FC<DashboardProps> = ({
                     let itemTextColor = 'text-gray-600';
 
                     if (productType === 'plato') {
-                      product = sedeProducts.platos.find(p => p.id.toString() === realProductId) ||
-                               platos.find(p => p.id.toString() === realProductId);
+                      product = sedeProducts.platos.find(p => p.id.toString() === realProductId);
                     } else if (productType === 'bebida') {
-                      product = sedeProducts.bebidas.find(b => b.id.toString() === realProductId) ||
-                               bebidas.find(b => b.id.toString() === realProductId);
+                      product = sedeProducts.bebidas.find(b => b.id.toString() === realProductId);
                     } else if (productType === 'topping') {
-                      product = sedeProducts.toppings.find(t => t.id.toString() === realProductId) ||
-                               toppings.find(t => t.id.toString() === realProductId);
+                      product = sedeProducts.toppings.find(t => t.id.toString() === realProductId);
                       itemBgColor = 'bg-orange-50';
                       itemTextColor = 'text-orange-600';
                     }

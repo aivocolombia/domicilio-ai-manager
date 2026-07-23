@@ -494,7 +494,7 @@ export class AdminService {
       // Obtener todos los platos disponibles
       const { data: platos, error: platosError } = await supabase
         .from('platos')
-        .select('id');
+        .select('id, pricing');
 
       if (platosError) {
         console.error('❌ Error obteniendo platos:', platosError);
@@ -504,7 +504,7 @@ export class AdminService {
       // Obtener todas las bebidas disponibles
       const { data: bebidas, error: bebidasError } = await supabase
         .from('bebidas')
-        .select('id');
+        .select('id, pricing');
 
       if (bebidasError) {
         console.error('❌ Error obteniendo bebidas:', bebidasError);
@@ -514,7 +514,7 @@ export class AdminService {
       // Obtener todos los toppings disponibles
       const { data: toppings, error: toppingsError } = await supabase
         .from('toppings')
-        .select('id');
+        .select('id, pricing');
 
       if (toppingsError) {
         console.error('❌ Error obteniendo toppings:', toppingsError);
@@ -527,7 +527,7 @@ export class AdminService {
           sede_id: sedeId,
           plato_id: plato.id,
           available: true,
-          price_override: null,
+          price_override: plato.pricing ?? 0,
           updated_at: new Date().toISOString()
         }));
 
@@ -548,7 +548,7 @@ export class AdminService {
           sede_id: sedeId,
           bebida_id: bebida.id,
           available: true,
-          price_override: null,
+          price_override: bebida.pricing ?? 0,
           updated_at: new Date().toISOString()
         }));
 
@@ -569,7 +569,7 @@ export class AdminService {
           sede_id: sedeId,
           topping_id: topping.id,
           available: true,
-          price_override: null,
+          price_override: topping.pricing ?? 0,
           updated_at: new Date().toISOString()
         }));
 

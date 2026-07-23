@@ -22,6 +22,74 @@ import { supabase } from '@/lib/supabase';
 import { TABLES } from '@/config/api';
 
 class MenuService {
+  private requireOverridePrice(
+    value: number | null | undefined,
+    context: string
+  ): number {
+    if (value === null || value === undefined) {
+      throw new Error(`Falta price_override obligatorio en ${context}`);
+    }
+    return value;
+  }
+
+  private async initializeOverridesForAllSedes(
+    productType: 'plato' | 'bebida' | 'topping',
+    productId: number,
+    basePrice: number
+  ): Promise<void> {
+    const { data: sedes, error: sedesError } = await supabase
+      .from('sedes')
+      .select('id');
+
+    if (sedesError) throw sedesError;
+
+    if (!sedes || sedes.length === 0) return;
+
+    const updatedAt = new Date().toISOString();
+
+    if (productType === 'plato') {
+      const rows = sedes.map(sede => ({
+        sede_id: sede.id,
+        plato_id: productId,
+        available: true,
+        price_override: basePrice,
+        updated_at: updatedAt
+      }));
+      const { error } = await supabase
+        .from('sede_platos')
+        .upsert(rows, { onConflict: 'sede_id,plato_id' });
+      if (error) throw error;
+      return;
+    }
+
+    if (productType === 'bebida') {
+      const rows = sedes.map(sede => ({
+        sede_id: sede.id,
+        bebida_id: productId,
+        available: true,
+        price_override: basePrice,
+        updated_at: updatedAt
+      }));
+      const { error } = await supabase
+        .from('sede_bebidas')
+        .upsert(rows, { onConflict: 'sede_id,bebida_id' });
+      if (error) throw error;
+      return;
+    }
+
+    const rows = sedes.map(sede => ({
+      sede_id: sede.id,
+      topping_id: productId,
+      available: true,
+      price_override: basePrice,
+      updated_at: updatedAt
+    }));
+    const { error } = await supabase
+      .from('sede_toppings')
+      .upsert(rows, { onConflict: 'sede_id,topping_id' });
+    if (error) throw error;
+  }
+
   // Obtener todo el menú (solo productos disponibles - para el menú público)
   async getMenu(): Promise<MenuResponse> {
     try {
@@ -167,10 +235,14 @@ class MenuService {
       // Construir toppings con información de sede
       const toppingsConSede: ToppingConSede[] = (allToppings || []).map(topping => {
         const sedeTopping = sedeToppingsMap.get(topping.id);
+        const sedePrice = this.requireOverridePrice(
+          sedeTopping?.price_override,
+          `sede_toppings: sede=${sedeId}, topping=${topping.id}`
+        );
         return {
           ...topping,
           sede_available: sedeTopping?.available ?? false,
-          sede_price: sedeTopping?.price_override ?? topping.pricing
+          sede_price: sedePrice
         };
       });
 
@@ -191,7 +263,10 @@ class MenuService {
         return {
           ...plato,
           sede_available: sedePlato?.available ?? false,
-          sede_price: sedePlato?.price_override ?? plato.pricing,
+          sede_price: this.requireOverridePrice(
+            sedePlato?.price_override,
+            `sede_platos: sede=${sedeId}, plato=${plato.id}`
+          ),
           toppings
         };
       });
@@ -227,10 +302,14 @@ class MenuService {
       // Construir bebidas con información de sede
       const bebidasConSede: BebidaConSede[] = (bebidas || []).map(bebida => {
         const sedeBebida = sedeBebidasMap.get(bebida.id);
+        const sedePrice = this.requireOverridePrice(
+          sedeBebida?.price_override,
+          `sede_bebidas: sede=${sedeId}, bebida=${bebida.id}`
+        );
         const bebidaConSede = {
           ...bebida,
           sede_available: sedeBebida?.available ?? false,
-          sede_price: sedeBebida?.price_override ?? bebida.pricing
+          sede_price: sedePrice
         };
         
         // Debug específico para Limonada
@@ -239,7 +318,7 @@ class MenuService {
             bebida_base: bebida,
             sedeBebida_raw: sedeBebida,
             sede_available_computed: sedeBebida?.available ?? false,
-            sede_price_computed: sedeBebida?.price_override ?? bebida.pricing,
+            sede_price_computed: sedePrice,
             tiene_registro_sede: !!sedeBebida,
             sedeId: sedeId,
             all_sede_bebidas_for_this_sede: sedeBebidasMap
@@ -443,6 +522,8 @@ class MenuService {
         .single();
       if (error) throw error;
 
+      await this.initializeOverridesForAllSedes('plato', newPlato.id, newPlato.pricing ?? 0);
+
       if (plato.toppingIds?.length) {
         await this.assignToppingsToPlato(newPlato.id, plato.toppingIds);
         return this.getPlato(newPlato.id);
@@ -457,12 +538,14 @@ class MenuService {
   // Actualizar un plato existente
   async updatePlato(id: number, plato: UpdatePlatoRequest): Promise<PlatoConToppings> {
     try {
+      if (plato.pricing !== undefined) {
+        throw new Error('El precio base no se actualiza. Modifica únicamente price_override por sede.');
+      }
       const { data: updatedPlato, error } = await supabase
         .from(TABLES.PLATOS)
         .update({
           name: plato.name,
-          description: plato.description,
-          pricing: plato.pricing
+          description: plato.description
         })
         .eq('id', id)
         .select('id, name, description, pricing, created_at, updated_at')
@@ -548,6 +631,8 @@ class MenuService {
         .select('id, name, pricing, created_at, updated_at')
         .single();
       if (error) throw error;
+
+      await this.initializeOverridesForAllSedes('bebida', newBebida.id, newBebida.pricing ?? 0);
       return newBebida;
     } catch (error) {
       const msg = error instanceof Error ? error.message : String(error);
@@ -558,11 +643,13 @@ class MenuService {
   // Actualizar bebida
   async updateBebida(id: number, bebida: UpdateBebidaRequest): Promise<Bebida> {
     try {
+      if (bebida.pricing !== undefined) {
+        throw new Error('El precio base no se actualiza. Modifica únicamente price_override por sede.');
+      }
       const { data: updatedBebida, error } = await supabase
         .from(TABLES.BEBIDAS)
         .update({
-          name: bebida.name,
-          pricing: bebida.pricing
+          name: bebida.name
         })
         .eq('id', id)
         .select('id, name, pricing, created_at, updated_at')
@@ -632,6 +719,8 @@ class MenuService {
         .select('id, name, pricing, created_at, updated_at')
         .single();
       if (error) throw error;
+
+      await this.initializeOverridesForAllSedes('topping', newTopping.id, newTopping.pricing ?? 0);
       return newTopping;
     } catch (error) {
       const msg = error instanceof Error ? error.message : String(error);
@@ -642,11 +731,13 @@ class MenuService {
   // Actualizar topping
   async updateTopping(id: number, topping: UpdateToppingRequest): Promise<Topping> {
     try {
+      if (topping.pricing !== undefined) {
+        throw new Error('El precio base no se actualiza. Modifica únicamente price_override por sede.');
+      }
       const { data: updatedTopping, error } = await supabase
         .from(TABLES.TOPPINGS)
         .update({
-          name: topping.name,
-          pricing: topping.pricing
+          name: topping.name
         })
         .eq('id', id)
         .select('id, name, pricing, created_at, updated_at')
@@ -875,7 +966,7 @@ class MenuService {
       // Obtener todos los platos disponibles
       const { data: platos, error: platosError } = await supabase
         .from('platos')
-        .select('id');
+        .select('id, pricing');
 
       if (platosError) {
         console.error('❌ Error obteniendo platos:', platosError);
@@ -885,7 +976,7 @@ class MenuService {
       // Obtener todas las bebidas disponibles
       const { data: bebidas, error: bebidasError } = await supabase
         .from('bebidas')
-        .select('id');
+        .select('id, pricing');
 
       if (bebidasError) {
         console.error('❌ Error obteniendo bebidas:', bebidasError);
@@ -895,7 +986,7 @@ class MenuService {
       // Obtener todos los toppings disponibles
       const { data: toppings, error: toppingsError } = await supabase
         .from('toppings')
-        .select('id');
+        .select('id, pricing');
 
       if (toppingsError) {
         console.error('❌ Error obteniendo toppings:', toppingsError);
@@ -908,7 +999,7 @@ class MenuService {
           sede_id: sedeId,
           plato_id: plato.id,
           available: true,
-          price_override: null,
+          price_override: plato.pricing ?? 0,
           updated_at: new Date().toISOString()
         }));
 
@@ -929,7 +1020,7 @@ class MenuService {
           sede_id: sedeId,
           bebida_id: bebida.id,
           available: true,
-          price_override: null,
+          price_override: bebida.pricing ?? 0,
           updated_at: new Date().toISOString()
         }));
 
@@ -950,7 +1041,7 @@ class MenuService {
           sede_id: sedeId,
           topping_id: topping.id,
           available: true,
-          price_override: null,
+          price_override: topping.pricing ?? 0,
           updated_at: new Date().toISOString()
         }));
 

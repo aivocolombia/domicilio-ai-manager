@@ -532,8 +532,7 @@ export class MetricsService {
           if (producto) {
             const key = isGlobalView ? 'plato-' + normalizeProductName(producto.name || '') : 'plato-' + producto.id;
             const precioSede = sedePlatosMap.get(sedeId + '-' + item.plato_id);
-            const basePrice = producto.pricing || 0;
-            const precio = precioSede !== undefined ? precioSede : basePrice;
+            const precio = precioSede ?? 0;
 
             const displayName = producto.name || 'Producto';
             const existing = productosMap.get(key);
@@ -552,8 +551,7 @@ export class MetricsService {
           if (bebida) {
             const key = isGlobalView ? 'bebida-' + normalizeProductName(bebida.name || '') : 'bebida-' + bebida.id;
             const precioSede = sedeBebidasMap.get(sedeId + '-' + item.bebidas_id);
-            const basePrice = bebida.pricing || 0;
-            const precio = precioSede !== undefined ? precioSede : basePrice;
+            const precio = precioSede ?? 0;
 
             const displayName = bebida.name || 'Bebida';
             const existing = productosMap.get(key);
@@ -572,8 +570,7 @@ export class MetricsService {
           if (topping) {
             const key = isGlobalView ? 'topping-' + normalizeProductName(topping.name || '') : 'topping-' + topping.id;
             const precioSede = sedeToppingsMap.get(sedeId + '-' + item.topping_id);
-            const basePrice = topping.pricing || 0;
-            const precio = precioSede !== undefined ? precioSede : basePrice;
+            const precio = precioSede ?? 0;
 
             const displayName = topping.name || 'Topping';
             const existing = productosMap.get(key);
