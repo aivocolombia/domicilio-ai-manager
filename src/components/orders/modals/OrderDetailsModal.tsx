@@ -71,6 +71,16 @@ export const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({
   const [error, setError] = useState<string | null>(null);
   const [substitutionHistory, setSubstitutionHistory] = useState<SubstitutionHistoryRecord[]>([]);
 
+  const shouldFallbackWithoutHistoricalPrice = (error: any) => {
+    const message = `${error?.message || ''} ${error?.details || ''}`.toLowerCase();
+    return (
+      message.includes('precio_unitario') ||
+      message.includes('precio_total') ||
+      error?.code === '42703' ||
+      error?.code === 'PGRST204'
+    );
+  };
+
   const fetchOrderDetails = async (id: number) => {
     if (!id) return;
 
@@ -85,6 +95,7 @@ export const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({
         .from('ordenes')
         .select(`
           id,
+          sede_id,
           status,
           created_at,
           hora_entrega,
@@ -110,88 +121,234 @@ export const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({
       }
 
       // Obtener items de platos
-      const { data: platosData, error: platosError } = await supabase
+      let { data: platosData, error: platosError } = await supabase
         .from('ordenes_platos')
         .select(`
           id,
           plato_id,
+          precio_unitario,
           platos!plato_id(id, name, pricing)
         `)
         .eq('orden_id', id);
+
+      if (shouldFallbackWithoutHistoricalPrice(platosError)) {
+        const fallbackResult = await supabase
+          .from('ordenes_platos')
+          .select(`
+            id,
+            plato_id,
+            platos!plato_id(id, name, pricing)
+          `)
+          .eq('orden_id', id);
+        platosData = fallbackResult.data as any[];
+        platosError = fallbackResult.error;
+      }
 
       if (platosError) {
         console.error('❌ Error obteniendo platos:', platosError);
       }
 
       // Obtener items de bebidas
-      const { data: bebidasData, error: bebidasError } = await supabase
+      let { data: bebidasData, error: bebidasError } = await supabase
         .from('ordenes_bebidas')
         .select(`
           id,
           bebidas_id,
+          precio_unitario,
           bebidas!bebidas_id(id, name, pricing)
         `)
         .eq('orden_id', id);
+
+      if (shouldFallbackWithoutHistoricalPrice(bebidasError)) {
+        const fallbackResult = await supabase
+          .from('ordenes_bebidas')
+          .select(`
+            id,
+            bebidas_id,
+            bebidas!bebidas_id(id, name, pricing)
+          `)
+          .eq('orden_id', id);
+        bebidasData = fallbackResult.data as any[];
+        bebidasError = fallbackResult.error;
+      }
 
       if (bebidasError) {
         console.error('❌ Error obteniendo bebidas:', bebidasError);
       }
 
       // Obtener toppings de la orden
-      const { data: toppingsData, error: toppingsError } = await supabase
+      let { data: toppingsData, error: toppingsError } = await supabase
         .from('ordenes_toppings')
         .select(`
           id,
           topping_id,
+          precio_unitario,
           toppings!topping_id(id, name, pricing)
         `)
         .eq('orden_id', id);
+
+      if (shouldFallbackWithoutHistoricalPrice(toppingsError)) {
+        const fallbackResult = await supabase
+          .from('ordenes_toppings')
+          .select(`
+            id,
+            topping_id,
+            toppings!topping_id(id, name, pricing)
+          `)
+          .eq('orden_id', id);
+        toppingsData = fallbackResult.data as any[];
+        toppingsError = fallbackResult.error;
+      }
 
       if (toppingsError) {
         console.error('❌ Error obteniendo toppings:', toppingsError);
       }
 
+      if (platosError && bebidasError && toppingsError) {
+        throw new Error('No se pudieron cargar los productos del pedido');
+      }
+
+      const toNumericId = (value: unknown): number | null => {
+        const numericValue = Number(value);
+        return Number.isFinite(numericValue) ? numericValue : null;
+      };
+
+      // Obtener overrides de precio por sede para platos, bebidas y toppings
+      const platoIds = [...new Set((platosData || [])
+        .map(item => toNumericId(item.plato_id))
+        .filter((id): id is number => id !== null))];
+      const bebidaIds = [...new Set((bebidasData || [])
+        .map(item => toNumericId(item.bebidas_id))
+        .filter((id): id is number => id !== null))];
+      const toppingIds = [...new Set((toppingsData || [])
+        .map(item => toNumericId(item.topping_id))
+        .filter((id): id is number => id !== null))];
+
+      const platoOverridesMap = new Map<number, number>();
+      const bebidaOverridesMap = new Map<number, number>();
+      const toppingOverridesMap = new Map<number, number>();
+
+      if (orderData.sede_id) {
+        const [sedePlatosResult, sedeBebidasResult, sedeToppingsResult] = await Promise.all([
+          platoIds.length > 0
+            ? supabase
+                .from('sede_platos')
+                .select('plato_id, price_override')
+                .eq('sede_id', orderData.sede_id)
+                .in('plato_id', platoIds)
+            : Promise.resolve({ data: [], error: null }),
+          bebidaIds.length > 0
+            ? supabase
+                .from('sede_bebidas')
+                .select('bebida_id, price_override')
+                .eq('sede_id', orderData.sede_id)
+                .in('bebida_id', bebidaIds)
+            : Promise.resolve({ data: [], error: null }),
+          toppingIds.length > 0
+            ? supabase
+                .from('sede_toppings')
+                .select('topping_id, price_override')
+                .eq('sede_id', orderData.sede_id)
+                .in('topping_id', toppingIds)
+            : Promise.resolve({ data: [], error: null })
+        ]);
+
+        if (sedePlatosResult.error) {
+          console.error('❌ Error obteniendo overrides de platos por sede:', sedePlatosResult.error);
+        } else {
+          (sedePlatosResult.data || []).forEach(row => {
+            const productId = toNumericId(row.plato_id);
+            if (productId !== null && row.price_override !== null && row.price_override !== undefined) {
+              platoOverridesMap.set(productId, row.price_override);
+            }
+          });
+        }
+
+        if (sedeBebidasResult.error) {
+          console.error('❌ Error obteniendo overrides de bebidas por sede:', sedeBebidasResult.error);
+        } else {
+          (sedeBebidasResult.data || []).forEach(row => {
+            const productId = toNumericId(row.bebida_id);
+            if (productId !== null && row.price_override !== null && row.price_override !== undefined) {
+              bebidaOverridesMap.set(productId, row.price_override);
+            }
+          });
+        }
+
+        if (sedeToppingsResult.error) {
+          console.error('❌ Error obteniendo overrides de toppings por sede:', sedeToppingsResult.error);
+        } else {
+          (sedeToppingsResult.data || []).forEach(row => {
+            const productId = toNumericId(row.topping_id);
+            if (productId !== null && row.price_override !== null && row.price_override !== undefined) {
+              toppingOverridesMap.set(productId, row.price_override);
+            }
+          });
+        }
+      }
+
       // NUEVO: Mantener items individuales sin agrupar
       const items: OrderItem[] = [
         // Procesar platos individualmente
-        ...(platosData || []).map(item => ({
-          id: item.platos.id,
+        ...(platosData || []).map(item => {
+          const fallbackPrice = platoOverridesMap.get(Number(item.plato_id)) ?? 0;
+          const snapshotPrice = item.precio_unitario ?? fallbackPrice;
+          const productId = item.platos?.id ?? Number(item.plato_id) ?? item.id;
+          const productName = item.platos?.name || `Producto ID ${item.plato_id}`;
+
+          return ({
+          id: productId,
           orden_item_id: item.id, // ID único del item en ordenes_platos
           quantity: 1, // Siempre 1 para items individuales
-          unit_price: item.platos?.pricing || 0,
+          unit_price: snapshotPrice,
           producto: {
-            id: item.platos.id,
-            name: item.platos.name,
-            pricing: item.platos?.pricing || 0
+            id: productId,
+            name: productName,
+            pricing: snapshotPrice
           },
           tipo: 'plato' as const
-        })),
+          });
+        }),
         // Procesar bebidas individualmente
-        ...(bebidasData || []).map(item => ({
-          id: item.bebidas.id,
+        ...(bebidasData || []).map(item => {
+          const fallbackPrice = bebidaOverridesMap.get(Number(item.bebidas_id)) ?? 0;
+          const snapshotPrice = item.precio_unitario ?? fallbackPrice;
+          const productId = item.bebidas?.id ?? Number(item.bebidas_id) ?? item.id;
+          const productName = item.bebidas?.name || `Producto ID ${item.bebidas_id}`;
+
+          return ({
+          id: productId,
           orden_item_id: item.id, // ID único del item en ordenes_bebidas
           quantity: 1, // Siempre 1 para items individuales
-          unit_price: item.bebidas?.pricing || 0,
+          unit_price: snapshotPrice,
           producto: {
-            id: item.bebidas.id,
-            name: item.bebidas.name,
-            pricing: item.bebidas?.pricing || 0
+            id: productId,
+            name: productName,
+            pricing: snapshotPrice
           },
           tipo: 'bebida' as const
-        })),
+          });
+        }),
         // Procesar toppings individualmente
-        ...(toppingsData || []).map(item => ({
-          id: item.toppings.id,
+        ...(toppingsData || []).map(item => {
+          const fallbackPrice = toppingOverridesMap.get(Number(item.topping_id)) ?? 0;
+          const snapshotPrice = item.precio_unitario ?? fallbackPrice;
+          const productId = item.toppings?.id ?? Number(item.topping_id) ?? item.id;
+          const productName = item.toppings?.name || `Producto ID ${item.topping_id}`;
+
+          return ({
+          id: productId,
           orden_item_id: item.id, // ID único del item en ordenes_toppings
           quantity: 1, // Siempre 1 para items individuales
-          unit_price: item.toppings?.pricing || 0,
+          unit_price: snapshotPrice,
           producto: {
-            id: item.toppings.id,
-            name: item.toppings.name,
-            pricing: item.toppings?.pricing || 0
+            id: productId,
+            name: productName,
+            pricing: snapshotPrice
           },
           tipo: 'topping' as const
-        }))
+          });
+        })
       ];
 
       const details: OrderDetails = {

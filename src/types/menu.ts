@@ -37,7 +37,7 @@ export interface SedePlato {
   sede_id: string; // uuid in DB
   plato_id: number; // bigint in DB
   available: boolean | null; // nullable in DB
-  price_override: number | null; // integer, nullable in DB
+  price_override: number; // integer, non-null
   updated_at: string | null; // nullable in DB
 }
 
@@ -45,7 +45,7 @@ export interface SedeBebida {
   sede_id: string; // uuid in DB
   bebida_id: number; // smallint in DB
   available: boolean | null; // nullable in DB
-  price_override: number | null; // integer, nullable in DB
+  price_override: number; // integer, non-null
   updated_at: string | null; // nullable in DB
 }
 
@@ -53,7 +53,7 @@ export interface SedeTopping {
   sede_id: string; // uuid in DB
   topping_id: number; // integer in DB
   available: boolean | null; // nullable in DB
-  price_override: number | null; // integer, nullable in DB
+  price_override: number; // integer, non-null
   updated_at: string | null; // nullable in DB
 }
 

@@ -42,7 +42,6 @@ import {
   Navigation
 } from 'lucide-react';
 import { Order, Sede, User as UserType, PaymentMethod, DeliveryType, DeliverySettings } from '@/types/delivery';
-import { useMenu } from '@/hooks/useMenu';
 import { useSedeOrders } from '@/hooks/useSedeOrders';
 import { useAuth } from '@/hooks/useAuth';
 import { CreateOrderData } from '@/services/sedeOrdersService';
@@ -74,7 +73,6 @@ export const SedeOrders: React.FC<SedeOrdersProps> = ({
   onNavigateToDashboard
 }) => {
   const { profile } = useAuth();
-  const { platos, bebidas, toppings, loading: menuLoading, loadToppings } = useMenu();
   
   // Estado para productos específicos de sede con disponibilidad
   const [sedeProducts, setSedeProducts] = useState({
@@ -377,25 +375,18 @@ export const SedeOrders: React.FC<SedeOrdersProps> = ({
     }
   }, [effectiveSedeId, loadSedeOrders]);
 
-  // Cargar toppings al montar el componente
-  useEffect(() => {
-    console.log('🔍 SedeOrders: Cargando toppings...');
-    loadToppings();
-  }, [loadToppings]);
-
   // Cargar productos específicos de sede
   useEffect(() => {
     loadSedeProducts();
   }, [loadSedeProducts]);
 
-  // Debug toppings
+  // Debug productos de sede
   useEffect(() => {
     console.log('🔍 SedeOrders: Estado de toppings:', { 
-      toppingsCount: toppings.length, 
-      toppings: toppings.map(t => ({ id: t.id, name: t.name, pricing: t.pricing })),
-      menuLoading 
+      toppingsCount: sedeProducts.toppings.length, 
+      toppings: sedeProducts.toppings.map(t => ({ id: t.id, name: t.name, pricing: t.pricing }))
     });
-  }, [toppings, menuLoading]);
+  }, [sedeProducts.toppings]);
 
 
   // Función para abrir el modal de crear pedido con datos precargados
@@ -435,20 +426,20 @@ export const SedeOrders: React.FC<SedeOrdersProps> = ({
     
     // Debug completo de los arrays
     console.log('🔍 DEBUG: Arrays completos:');
-    console.log('📋 Platos:', platos.map(p => ({ id: p.id, name: p.name })));
-    console.log('🥤 Bebidas:', bebidas.map(b => ({ id: b.id, name: b.name })));
+    console.log('📋 Platos sede:', sedeProducts.platos.map(p => ({ id: p.id, name: p.name })));
+    console.log('🥤 Bebidas sede:', sedeProducts.bebidas.map(b => ({ id: b.id, name: b.name })));
     
     // Buscar el producto en platos y bebidas para debug
-    const plato = platos.find(p => p.id.toString() === productId);
-    const bebida = bebidas.find(b => b.id.toString() === productId);
+    const plato = sedeProducts.platos.find(p => p.id.toString() === productId);
+    const bebida = sedeProducts.bebidas.find(b => b.id.toString() === productId);
     
     console.log('🔍 DEBUG: Producto encontrado:', {
       productId,
       productType,
       plato: plato ? { id: plato.id, name: plato.name, type: 'plato' } : null,
       bebida: bebida ? { id: bebida.id, name: bebida.name, type: 'bebida' } : null,
-      totalPlatos: platos.length,
-      totalBebidas: bebidas.length
+      totalPlatos: sedeProducts.platos.length,
+      totalBebidas: sedeProducts.bebidas.length
     });
     
     // Crear un ID único que incluya el tipo
@@ -530,16 +521,13 @@ export const SedeOrders: React.FC<SedeOrdersProps> = ({
       const [productType, realProductId] = item.productId.split('_');
       
       let product = null;
-      // Buscar en productos específicos de sede primero, luego en menú general
+      // Operación activa: usar únicamente productos/precios de sede (override)
       if (productType === 'plato') {
-        product = sedeProducts.platos.find(p => p.id.toString() === realProductId) ||
-                 platos.find(p => p.id.toString() === realProductId);
+        product = sedeProducts.platos.find(p => p.id.toString() === realProductId);
       } else if (productType === 'bebida') {
-        product = sedeProducts.bebidas.find(b => b.id.toString() === realProductId) ||
-                 bebidas.find(b => b.id.toString() === realProductId);
+        product = sedeProducts.bebidas.find(b => b.id.toString() === realProductId);
       } else if (productType === 'topping') {
-        product = sedeProducts.toppings.find(t => t.id.toString() === realProductId) ||
-                 toppings.find(t => t.id.toString() === realProductId);
+        product = sedeProducts.toppings.find(t => t.id.toString() === realProductId);
       }
       
       // Debug solo si no se encuentra el producto o el precio es 0
@@ -548,7 +536,7 @@ export const SedeOrders: React.FC<SedeOrdersProps> = ({
           itemId: item.productId,
           productType,
           productFound: !!product,
-          pricing: product?.pricing || 0
+          pricing: product?.pricing ?? 0
         });
       }
       
@@ -621,17 +609,17 @@ export const SedeOrders: React.FC<SedeOrdersProps> = ({
         const [productType, realProductId] = item.productId.split('_');
         
         if (productType === 'plato') {
-          const product = platos.find(p => p.id.toString() === realProductId);
+          const product = sedeProducts.platos.find(p => p.id.toString() === realProductId);
           if (!product) {
             throw new Error(`Plato con ID ${realProductId} no encontrado en el inventario`);
           }
         } else if (productType === 'bebida') {
-          const bebida = bebidas.find(b => b.id.toString() === realProductId);
+          const bebida = sedeProducts.bebidas.find(b => b.id.toString() === realProductId);
           if (!bebida) {
             throw new Error(`Bebida con ID ${realProductId} no encontrada en el inventario`);
           }
         } else if (productType === 'topping') {
-          const topping = toppings.find(t => t.id.toString() === realProductId);
+          const topping = sedeProducts.toppings.find(t => t.id.toString() === realProductId);
           if (!topping) {
             throw new Error(`Topping con ID ${realProductId} no encontrado en el inventario`);
           }
@@ -692,7 +680,7 @@ export const SedeOrders: React.FC<SedeOrdersProps> = ({
           });
           
           if (productType === 'plato') {
-            const product = platos.find(p => p.id.toString() === realProductId);
+            const product = sedeProducts.platos.find(p => p.id.toString() === realProductId);
             if (product) {
               return {
                 producto_tipo: 'plato' as const,
@@ -701,7 +689,7 @@ export const SedeOrders: React.FC<SedeOrdersProps> = ({
               };
             }
           } else if (productType === 'bebida') {
-            const bebida = bebidas.find(b => b.id.toString() === realProductId);
+            const bebida = sedeProducts.bebidas.find(b => b.id.toString() === realProductId);
             if (bebida) {
               return {
                 producto_tipo: 'bebida' as const,
@@ -710,7 +698,7 @@ export const SedeOrders: React.FC<SedeOrdersProps> = ({
               };
             }
           } else if (productType === 'topping') {
-            const topping = toppings.find(t => t.id.toString() === realProductId);
+            const topping = sedeProducts.toppings.find(t => t.id.toString() === realProductId);
             if (topping) {
               return {
                 producto_tipo: 'topping' as const,

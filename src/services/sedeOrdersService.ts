@@ -70,6 +70,15 @@ export interface CreateOrderData {
 }
 
 class SedeOrdersService {
+  private getRelationOne<T>(value: T | T[] | null | undefined): T | undefined {
+    if (Array.isArray(value)) return value[0];
+    return value ?? undefined;
+  }
+
+  private getItemUnitPrice(item: any): number {
+    return item?.precio_unitario ?? 0;
+  }
+
   // Buscar cliente por teléfono
   async searchCustomerByPhone(telefono: string): Promise<CustomerData | null> {
     try {
@@ -89,8 +98,9 @@ class SedeOrdersService {
           observaciones,
           clientes!cliente_id(nombre, telefono, direccion),
           pagos!payment_id(type, status, total_pago),
-          ordenes_platos(plato_id, platos(id, name, pricing)),
-          ordenes_bebidas(bebidas_id, bebidas(id, name, pricing))
+          ordenes_platos(plato_id, precio_unitario, platos(id, name, pricing)),
+          ordenes_bebidas(bebidas_id, precio_unitario, bebidas(id, name, pricing)),
+          ordenes_toppings(topping_id, precio_unitario, toppings(id, name, pricing))
         `)
         .ilike('clientes.telefono', `%${normalizedPhone}%`)
         .order('created_at', { ascending: false })
@@ -107,9 +117,10 @@ class SedeOrdersService {
       }
 
       // Procesar los datos
-      const customerName = ordersData[0].clientes?.nombre || 'Cliente';
-      const customerPhone = ordersData[0].clientes?.telefono || telefono;
-      const recentAddress = ordersData[0].clientes?.direccion;
+      const firstCustomer = this.getRelationOne<any>(ordersData[0].clientes);
+      const customerName = firstCustomer?.nombre || 'Cliente';
+      const customerPhone = firstCustomer?.telefono || telefono;
+      const recentAddress = firstCustomer?.direccion;
 
       // Convertir órdenes al formato esperado
       const historialPedidos: SedeOrder[] = ordersData.map(order => {
@@ -120,7 +131,10 @@ class SedeOrdersService {
         
         // Procesar platos
         (order.ordenes_platos || []).forEach((item: any) => {
-          const platoId = item.platos.id;
+          const plato = this.getRelationOne<any>(item.platos);
+          const platoId = plato?.id ?? item.plato_id;
+          if (!platoId) return;
+          const precioUnitario = this.getItemUnitPrice({ ...item, platos: plato });
           const existing = platosMap.get(platoId);
           if (existing) {
             existing.cantidad += 1;
@@ -129,17 +143,20 @@ class SedeOrdersService {
               id: platoId,
               producto_tipo: 'plato' as const,
               producto_id: platoId,
-              producto_nombre: item.platos.name,
+              producto_nombre: plato?.name || `Producto ID ${platoId}`,
               cantidad: 1,
-              precio_unitario: item.platos.pricing,
-              precio_total: item.platos.pricing
+              precio_unitario: precioUnitario,
+              precio_total: precioUnitario
             });
           }
         });
         
         // Procesar bebidas
         (order.ordenes_bebidas || []).forEach((item: any) => {
-          const bebidaId = item.bebidas.id;
+          const bebida = this.getRelationOne<any>(item.bebidas);
+          const bebidaId = bebida?.id ?? item.bebidas_id;
+          if (!bebidaId) return;
+          const precioUnitario = this.getItemUnitPrice({ ...item, bebidas: bebida });
           const existing = bebidasMap.get(bebidaId);
           if (existing) {
             existing.cantidad += 1;
@@ -148,17 +165,20 @@ class SedeOrdersService {
               id: bebidaId,
               producto_tipo: 'bebida' as const,
               producto_id: bebidaId,
-              producto_nombre: item.bebidas.name,
+              producto_nombre: bebida?.name || `Producto ID ${bebidaId}`,
               cantidad: 1,
-              precio_unitario: item.bebidas.pricing,
-              precio_total: item.bebidas.pricing
+              precio_unitario: precioUnitario,
+              precio_total: precioUnitario
             });
           }
         });
         
         // Procesar toppings
         (order.ordenes_toppings || []).forEach((item: any) => {
-          const toppingId = item.toppings.id;
+          const topping = this.getRelationOne<any>(item.toppings);
+          const toppingId = topping?.id ?? item.topping_id;
+          if (!toppingId) return;
+          const precioUnitario = this.getItemUnitPrice({ ...item, toppings: topping });
           const existing = toppingsMap.get(toppingId);
           if (existing) {
             existing.cantidad += 1;
@@ -167,10 +187,10 @@ class SedeOrdersService {
               id: toppingId,
               producto_tipo: 'topping' as const,
               producto_id: toppingId,
-              producto_nombre: item.toppings.name,
+              producto_nombre: topping?.name || `Producto ID ${toppingId}`,
               cantidad: 1,
-              precio_unitario: item.toppings.pricing,
-              precio_total: item.toppings.pricing
+              precio_unitario: precioUnitario,
+              precio_total: precioUnitario
             });
           }
         });
@@ -192,15 +212,18 @@ class SedeOrdersService {
           ...Array.from(toppingsMap.values())
         ];
 
+        const customer = this.getRelationOne<any>(order.clientes);
+        const payment = this.getRelationOne<any>(order.pagos);
+
         return {
           id: order.id,
           cliente_nombre: customerName,
           cliente_telefono: customerPhone,
-          direccion: order.clientes?.direccion || '',
-          total: order.pagos?.total_pago || 0,
+          direccion: customer?.direccion || '',
+          total: payment?.total_pago || 0,
           estado: order.status || 'unknown',
-          pago_tipo: order.pagos?.type || 'efectivo',
-          pago_estado: order.pagos?.status || 'pending',
+          pago_tipo: payment?.type || 'efectivo',
+          pago_estado: payment?.status || 'pending',
           tipo_entrega: 'delivery', // Por defecto delivery
           instrucciones: order.observaciones,
           created_at: order.created_at,
@@ -246,7 +269,10 @@ class SedeOrdersService {
           created_at,
           observaciones,
           clientes!cliente_id(nombre, telefono, direccion),
-          pagos!payment_id(type, status, total_pago)
+          pagos!payment_id(type, status, total_pago),
+          ordenes_platos(plato_id, precio_unitario, platos(id, name, pricing)),
+          ordenes_bebidas(bebidas_id, precio_unitario, bebidas(id, name, pricing)),
+          ordenes_toppings(topping_id, precio_unitario, toppings(id, name, pricing))
         `)
         .eq('sede_id', sedeId)
         .gte('created_at', startOfDay.toISOString())
@@ -282,7 +308,10 @@ class SedeOrdersService {
           created_at,
           observaciones,
           clientes!cliente_id(nombre, telefono, direccion),
-          pagos!payment_id(type, status, total_pago)
+          pagos!payment_id(type, status, total_pago),
+          ordenes_platos(plato_id, precio_unitario, platos(id, name, pricing)),
+          ordenes_bebidas(bebidas_id, precio_unitario, bebidas(id, name, pricing)),
+          ordenes_toppings(topping_id, precio_unitario, toppings(id, name, pricing))
         `)
         .eq('sede_id', sedeId)
         .order('created_at', { ascending: false })
@@ -311,7 +340,10 @@ class SedeOrdersService {
         
         // Procesar platos
         (order.ordenes_platos || []).forEach((item: any) => {
-          const platoId = item.platos.id;
+          const plato = this.getRelationOne<any>(item.platos);
+          const platoId = plato?.id ?? item.plato_id;
+          if (!platoId) return;
+          const precioUnitario = this.getItemUnitPrice({ ...item, platos: plato });
           const existing = platosMap.get(platoId);
           if (existing) {
             existing.cantidad += 1;
@@ -320,17 +352,20 @@ class SedeOrdersService {
               id: platoId,
               producto_tipo: 'plato' as const,
               producto_id: platoId,
-              producto_nombre: item.platos.name,
+              producto_nombre: plato?.name || `Producto ID ${platoId}`,
               cantidad: 1,
-              precio_unitario: item.platos.pricing,
-              precio_total: item.platos.pricing
+              precio_unitario: precioUnitario,
+              precio_total: precioUnitario
             });
           }
         });
         
         // Procesar bebidas
         (order.ordenes_bebidas || []).forEach((item: any) => {
-          const bebidaId = item.bebidas.id;
+          const bebida = this.getRelationOne<any>(item.bebidas);
+          const bebidaId = bebida?.id ?? item.bebidas_id;
+          if (!bebidaId) return;
+          const precioUnitario = this.getItemUnitPrice({ ...item, bebidas: bebida });
           const existing = bebidasMap.get(bebidaId);
           if (existing) {
             existing.cantidad += 1;
@@ -339,17 +374,20 @@ class SedeOrdersService {
               id: bebidaId,
               producto_tipo: 'bebida' as const,
               producto_id: bebidaId,
-              producto_nombre: item.bebidas.name,
+              producto_nombre: bebida?.name || `Producto ID ${bebidaId}`,
               cantidad: 1,
-              precio_unitario: item.bebidas.pricing,
-              precio_total: item.bebidas.pricing
+              precio_unitario: precioUnitario,
+              precio_total: precioUnitario
             });
           }
         });
         
         // Procesar toppings
         (order.ordenes_toppings || []).forEach((item: any) => {
-          const toppingId = item.toppings.id;
+          const topping = this.getRelationOne<any>(item.toppings);
+          const toppingId = topping?.id ?? item.topping_id;
+          if (!toppingId) return;
+          const precioUnitario = this.getItemUnitPrice({ ...item, toppings: topping });
           const existing = toppingsMap.get(toppingId);
           if (existing) {
             existing.cantidad += 1;
@@ -358,10 +396,10 @@ class SedeOrdersService {
               id: toppingId,
               producto_tipo: 'topping' as const,
               producto_id: toppingId,
-              producto_nombre: item.toppings.name,
+              producto_nombre: topping?.name || `Producto ID ${toppingId}`,
               cantidad: 1,
-              precio_unitario: item.toppings.pricing,
-              precio_total: item.toppings.pricing
+              precio_unitario: precioUnitario,
+              precio_total: precioUnitario
             });
           }
         });
@@ -383,15 +421,18 @@ class SedeOrdersService {
           ...Array.from(toppingsMap.values())
         ];
 
+        const customer = this.getRelationOne<any>(order.clientes);
+        const payment = this.getRelationOne<any>(order.pagos);
+
         return {
           id: order.id,
-          cliente_nombre: order.clientes?.nombre || 'Cliente',
-          cliente_telefono: order.clientes?.telefono || '',
-          direccion: order.clientes?.direccion || '',
-          total: order.pagos?.total_pago || 0,
+          cliente_nombre: customer?.nombre || 'Cliente',
+          cliente_telefono: customer?.telefono || '',
+          direccion: customer?.direccion || '',
+          total: payment?.total_pago || 0,
           estado: order.status || 'Recibidos',
-          pago_tipo: order.pagos?.type || 'efectivo',
-          pago_estado: order.pagos?.status || 'pending',
+          pago_tipo: payment?.type || 'efectivo',
+          pago_estado: payment?.status || 'pending',
           tipo_entrega: 'delivery', // Por defecto
           instrucciones: order.observaciones,
           created_at: order.created_at,
@@ -614,7 +655,7 @@ class SedeOrdersService {
       console.log('✅ Orden creada:', orden.id);
 
       // Paso 5: Agregar items a la orden
-      await this.addItemsToOrder(orden.id, orderData.items);
+      await this.addItemsToOrder(orden.id, orderData.items, orderData.sede_id);
 
       // Paso 6: Obtener la orden completa y retornarla
       const sedeOrders = await this.getSedeOrders(orderData.sede_id, 1);
@@ -640,86 +681,8 @@ class SedeOrdersService {
     console.log('💰 Calculando total de orden con precios de sede:', sedeId);
 
     for (const item of items) {
-      let precio = 0;
-
-      if (item.producto_tipo === 'plato') {
-        // Intentar obtener precio de sede primero
-        const { data: sedePlato, error: sedeError } = await supabase
-          .from('sede_platos')
-          .select('price_override')
-          .eq('sede_id', sedeId)
-          .eq('plato_id', item.producto_id)
-          .maybeSingle();
-
-        if (!sedeError && sedePlato && sedePlato.price_override !== null) {
-          precio = sedePlato.price_override;
-          console.log(`✅ Usando precio de sede para plato ${item.producto_id}: $${precio}`);
-        } else {
-          // Fallback a precio base solo si no existe precio de sede
-          const { data: platoBase } = await supabase
-            .from('platos')
-            .select('pricing')
-            .eq('id', item.producto_id)
-            .single();
-
-          precio = platoBase?.pricing || 0;
-          console.log(`⚠️ Usando precio base para plato ${item.producto_id}: $${precio}`);
-        }
-
-        total += precio * item.cantidad;
-
-      } else if (item.producto_tipo === 'bebida') {
-        // Intentar obtener precio de sede primero
-        const { data: sedeBebida, error: sedeError } = await supabase
-          .from('sede_bebidas')
-          .select('price_override')
-          .eq('sede_id', sedeId)
-          .eq('bebida_id', item.producto_id)
-          .maybeSingle();
-
-        if (!sedeError && sedeBebida && sedeBebida.price_override !== null) {
-          precio = sedeBebida.price_override;
-          console.log(`✅ Usando precio de sede para bebida ${item.producto_id}: $${precio}`);
-        } else {
-          // Fallback a precio base solo si no existe precio de sede
-          const { data: bebidaBase } = await supabase
-            .from('bebidas')
-            .select('pricing')
-            .eq('id', item.producto_id)
-            .single();
-
-          precio = bebidaBase?.pricing || 0;
-          console.log(`⚠️ Usando precio base para bebida ${item.producto_id}: $${precio}`);
-        }
-
-        total += precio * item.cantidad;
-
-      } else if (item.producto_tipo === 'topping') {
-        // Intentar obtener precio de sede primero
-        const { data: sedeTopping, error: sedeError } = await supabase
-          .from('sede_toppings')
-          .select('price_override')
-          .eq('sede_id', sedeId)
-          .eq('topping_id', item.producto_id)
-          .maybeSingle();
-
-        if (!sedeError && sedeTopping && sedeTopping.price_override !== null) {
-          precio = sedeTopping.price_override;
-          console.log(`✅ Usando precio de sede para topping ${item.producto_id}: $${precio}`);
-        } else {
-          // Fallback a precio base solo si no existe precio de sede
-          const { data: toppingBase } = await supabase
-            .from('toppings')
-            .select('pricing')
-            .eq('id', item.producto_id)
-            .single();
-
-          precio = toppingBase?.pricing || 0;
-          console.log(`⚠️ Usando precio base para topping ${item.producto_id}: $${precio}`);
-        }
-
-        total += precio * item.cantidad;
-      }
+      const precio = await this.getEffectiveUnitPrice(item.producto_tipo, item.producto_id, sedeId);
+      total += precio * item.cantidad;
     }
 
     // Add custom delivery fee or default 6000 for delivery orders
@@ -733,16 +696,86 @@ class SedeOrdersService {
     return total;
   }
 
+  private async getEffectiveUnitPrice(
+    productType: 'plato' | 'bebida' | 'topping',
+    productId: number,
+    sedeId?: string
+  ): Promise<number> {
+    if (productType === 'plato') {
+      const { data: sedePlato, error: sedeError } = await supabase
+        .from('sede_platos')
+        .select('price_override')
+        .eq('sede_id', sedeId)
+        .eq('plato_id', productId)
+        .maybeSingle();
+
+      if (sedeError) {
+        throw new Error(`Error obteniendo precio de sede para plato ${productId}: ${sedeError.message}`);
+      }
+
+      if (sedePlato && sedePlato.price_override !== null) {
+        console.log(`✅ Usando precio de sede para plato ${productId}: $${sedePlato.price_override}`);
+        return sedePlato.price_override;
+      }
+      throw new Error(`No existe price_override para plato ${productId} en sede ${sedeId}`);
+    }
+
+    if (productType === 'bebida') {
+      const { data: sedeBebida, error: sedeError } = await supabase
+        .from('sede_bebidas')
+        .select('price_override')
+        .eq('sede_id', sedeId)
+        .eq('bebida_id', productId)
+        .maybeSingle();
+
+      if (sedeError) {
+        throw new Error(`Error obteniendo precio de sede para bebida ${productId}: ${sedeError.message}`);
+      }
+
+      if (sedeBebida && sedeBebida.price_override !== null) {
+        console.log(`✅ Usando precio de sede para bebida ${productId}: $${sedeBebida.price_override}`);
+        return sedeBebida.price_override;
+      }
+      throw new Error(`No existe price_override para bebida ${productId} en sede ${sedeId}`);
+    }
+
+    const { data: sedeTopping, error: sedeError } = await supabase
+      .from('sede_toppings')
+      .select('price_override')
+      .eq('sede_id', sedeId)
+      .eq('topping_id', productId)
+      .maybeSingle();
+
+    if (sedeError) {
+      throw new Error(`Error obteniendo precio de sede para topping ${productId}: ${sedeError.message}`);
+    }
+
+    if (sedeTopping && sedeTopping.price_override !== null) {
+      console.log(`✅ Usando precio de sede para topping ${productId}: $${sedeTopping.price_override}`);
+      return sedeTopping.price_override;
+    }
+    throw new Error(`No existe price_override para topping ${productId} en sede ${sedeId}`);
+  }
+
   // Función auxiliar para agregar items a la orden
-  private async addItemsToOrder(ordenId: number, items: CreateOrderData['items']): Promise<void> {
+  private isMissingPriceColumnsError(error: any): boolean {
+    const message = `${error?.message || ''} ${error?.details || ''}`;
+    return message.includes('precio_unitario') || message.includes('precio_total');
+  }
+
+  private async addItemsToOrder(ordenId: number, items: CreateOrderData['items'], sedeId?: string): Promise<void> {
     for (const item of items) {
+      const unitPrice = await this.getEffectiveUnitPrice(item.producto_tipo, item.producto_id, sedeId);
+
       // Insertar múltiples veces según la cantidad solicitada
       for (let i = 0; i < item.cantidad; i++) {
         if (item.producto_tipo === 'plato') {
-          // Solo insertar orden_id y plato_id (según esquema real)
+          // Guardar snapshot histórico de precio por item
           const insertData = {
             orden_id: ordenId,
-            plato_id: item.producto_id
+            plato_id: item.producto_id,
+            precio_unitario: unitPrice,
+            precio_total: unitPrice
           };
 
           console.log('🔍 Insertando plato:', insertData);
@@ -752,17 +785,31 @@ class SedeOrdersService {
             .insert(insertData);
 
           if (insertError) {
-            console.error('❌ Error insertando plato:', insertError);
-            throw insertError;
+            if (this.isMissingPriceColumnsError(insertError)) {
+              console.warn('⚠️ Columnas de precio no existen en ordenes_platos, usando inserción legacy');
+              const { error: fallbackError } = await supabase
+                .from('ordenes_platos')
+                .insert({ orden_id: ordenId, plato_id: item.producto_id });
+
+              if (fallbackError) {
+                console.error('❌ Error insertando plato (fallback):', fallbackError);
+                throw fallbackError;
+              }
+            } else {
+              console.error('❌ Error insertando plato:', insertError);
+              throw insertError;
+            }
           } else {
             console.log('✅ Plato insertado exitosamente');
           }
 
         } else if (item.producto_tipo === 'bebida') {
-          // Solo insertar orden_id y bebidas_id (según esquema real)
+          // Guardar snapshot histórico de precio por item
           const insertData = {
             orden_id: ordenId,
-            bebidas_id: item.producto_id
+            bebidas_id: item.producto_id,
+            precio_unitario: unitPrice,
+            precio_total: unitPrice
           };
 
           console.log('🔍 Insertando bebida:', insertData);
@@ -772,16 +819,30 @@ class SedeOrdersService {
             .insert(insertData);
 
           if (insertError) {
-            console.error('❌ Error insertando bebida:', insertError);
-            throw insertError;
+            if (this.isMissingPriceColumnsError(insertError)) {
+              console.warn('⚠️ Columnas de precio no existen en ordenes_bebidas, usando inserción legacy');
+              const { error: fallbackError } = await supabase
+                .from('ordenes_bebidas')
+                .insert({ orden_id: ordenId, bebidas_id: item.producto_id });
+
+              if (fallbackError) {
+                console.error('❌ Error insertando bebida (fallback):', fallbackError);
+                throw fallbackError;
+              }
+            } else {
+              console.error('❌ Error insertando bebida:', insertError);
+              throw insertError;
+            }
           } else {
             console.log('✅ Bebida insertada exitosamente');
           }
         } else if (item.producto_tipo === 'topping') {
-          // Insertar orden_id y topping_id en ordenes_toppings
+          // Guardar snapshot histórico de precio por item
           const insertData = {
             orden_id: ordenId,
-            topping_id: item.producto_id
+            topping_id: item.producto_id,
+            precio_unitario: unitPrice,
+            precio_total: unitPrice
           };
 
           console.log('🔍 Insertando topping:', insertData);
@@ -794,6 +855,16 @@ class SedeOrdersService {
             if (insertError.code === 'PGRST200' && insertError.message.includes('ordenes_toppings')) {
               console.warn('⚠️ Tabla ordenes_toppings no existe - saltando inserción de topping');
               // No lanzar error, solo advertencia
+            } else if (this.isMissingPriceColumnsError(insertError)) {
+              console.warn('⚠️ Columnas de precio no existen en ordenes_toppings, usando inserción legacy');
+              const { error: fallbackError } = await supabase
+                .from('ordenes_toppings')
+                .insert({ orden_id: ordenId, topping_id: item.producto_id });
+
+              if (fallbackError) {
+                console.error('❌ Error insertando topping (fallback):', fallbackError);
+                throw fallbackError;
+              }
             } else {
               console.error('❌ Error insertando topping:', insertError);
               throw insertError;

@@ -401,7 +401,7 @@ export class MetricsService {
         while (attempt < maxAttemptsPerPage && pageData === null) {
           let query = supabase
             .from('ordenes')
-            .select("id,status,created_at,sede_id,ordenes_platos(plato_id,platos(id,name)),ordenes_bebidas(bebidas_id,bebidas(id,name)),ordenes_toppings(topping_id,toppings(id,name,pricing))")
+            .select("id,status,created_at,sede_id,ordenes_platos(plato_id,platos(id,name,pricing)),ordenes_bebidas(bebidas_id,bebidas(id,name,pricing)),ordenes_toppings(topping_id,toppings(id,name,pricing))")
             .gte('created_at', startQuery)
             .lte('created_at', endQuery)
             .eq('status', 'Entregados')
@@ -517,7 +517,7 @@ export class MetricsService {
       const productosMap = new Map<string, { cantidad: number; ingresos: number; nombre: string }>();
 
       const normalizeProductName = (name: string): string => {
-        return name.toLowerCase().trim().replace(/s+/g, ' ');
+        return name.toLowerCase().trim().replace(/\s+/g, ' ');
       };
 
       const isGlobalView = !filters.sede_id;
@@ -532,8 +532,7 @@ export class MetricsService {
           if (producto) {
             const key = isGlobalView ? 'plato-' + normalizeProductName(producto.name || '') : 'plato-' + producto.id;
             const precioSede = sedePlatosMap.get(sedeId + '-' + item.plato_id);
-            const basePrice = producto.pricing || 0;
-            const precio = precioSede !== undefined ? precioSede : basePrice;
+            const precio = precioSede ?? 0;
 
             const displayName = producto.name || 'Producto';
             const existing = productosMap.get(key);
@@ -552,8 +551,7 @@ export class MetricsService {
           if (bebida) {
             const key = isGlobalView ? 'bebida-' + normalizeProductName(bebida.name || '') : 'bebida-' + bebida.id;
             const precioSede = sedeBebidasMap.get(sedeId + '-' + item.bebidas_id);
-            const basePrice = bebida.pricing || 0;
-            const precio = precioSede !== undefined ? precioSede : basePrice;
+            const precio = precioSede ?? 0;
 
             const displayName = bebida.name || 'Bebida';
             const existing = productosMap.get(key);
@@ -572,8 +570,7 @@ export class MetricsService {
           if (topping) {
             const key = isGlobalView ? 'topping-' + normalizeProductName(topping.name || '') : 'topping-' + topping.id;
             const precioSede = sedeToppingsMap.get(sedeId + '-' + item.topping_id);
-            const basePrice = topping.pricing || 0;
-            const precio = precioSede !== undefined ? precioSede : basePrice;
+            const precio = precioSede ?? 0;
 
             const displayName = topping.name || 'Topping';
             const existing = productosMap.get(key);

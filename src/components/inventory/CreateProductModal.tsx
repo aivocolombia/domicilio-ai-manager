@@ -179,9 +179,6 @@ export const CreateProductModal: React.FC<CreateProductModalProps> = ({
           }
         }
 
-        // Crear registro en sede_platos (habilitado por defecto)
-        await menuService.createSedePlatoRecord(effectiveSedeId, productId, Number(price), true);
-
       } else if (productType === 'bebida') {
         // Crear bebida
         const bebidaData = {
@@ -192,9 +189,6 @@ export const CreateProductModal: React.FC<CreateProductModalProps> = ({
         const newBebida = await menuService.createBebida(bebidaData);
         productId = newBebida.id;
 
-        // Crear registro en sede_bebidas (habilitado por defecto)
-        await menuService.createSedeBebidaRecord(effectiveSedeId, productId, Number(price), true);
-        
       } else {
         // Crear topping
         const toppingData = {
@@ -212,8 +206,6 @@ export const CreateProductModal: React.FC<CreateProductModalProps> = ({
           }
         }
 
-        // Crear registro en sede_toppings (habilitado por defecto)
-        await menuService.createSedeToppingRecord(effectiveSedeId, productId, Number(price), true);
       }
 
       toast({
@@ -542,7 +534,7 @@ export const CreateProductModal: React.FC<CreateProductModalProps> = ({
                                 {plato.name}
                               </label>
                               <div className="text-xs text-muted-foreground">
-                                {formatCurrency(plato.sede_price || plato.pricing || 0)}
+                                {formatCurrency(plato.sede_price ?? 0)}
                               </div>
                             </div>
                           </div>

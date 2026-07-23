@@ -21,6 +21,13 @@ export class SedeService {
   private static instance: SedeService;
   private cache = new Map<string, { data: any; timestamp: number; ttl: number }>();
 
+  private requireOverridePrice(value: number | null | undefined, context: string): number {
+    if (value === null || value === undefined) {
+      throw new Error(`Falta price_override obligatorio en ${context}`);
+    }
+    return value;
+  }
+
   static getInstance(): SedeService {
     if (!SedeService.instance) {
       SedeService.instance = new SedeService();
@@ -205,7 +212,10 @@ export class SedeService {
 
       const products: SedeProduct[] = (data || []).map(item => {
         const product = item[productTable];
-        const finalPrice = item.price_override || product.pricing;
+        const finalPrice = this.requireOverridePrice(
+          item.price_override,
+          `sede_${type} / sede=${sedeId} / producto=${product.id}`
+        );
         
         return {
           id: product.id,
