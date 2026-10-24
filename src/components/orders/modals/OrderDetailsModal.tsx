@@ -93,6 +93,7 @@ export const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({
           address,
           delivery_instructions,
           payment_id_2,
+          sede_id,
           clientes!cliente_id(nombre, telefono),
           pagos!payment_id(total_pago),
           pagos2:pagos!payment_id_2(total_pago)
@@ -109,89 +110,80 @@ export const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({
         throw new Error('Orden no encontrada');
       }
 
-      // Obtener items de platos
-      const { data: platosData, error: platosError } = await supabase
-        .from('ordenes_platos')
-        .select(`
-          id,
-          plato_id,
-          platos!plato_id(id, name, pricing)
-        `)
-        .eq('orden_id', id);
+      const fetchOrderItems = async (table: string, selectWithPrice: string, legacySelect: string) => {
+        const result = await supabase.from(table).select(selectWithPrice).eq('orden_id', id);
+        if (!result.error) return result;
+
+        // Compatibilidad mientras la migración de precios históricos está pendiente.
+        return supabase.from(table).select(legacySelect).eq('orden_id', id);
+      };
+
+      const [platosResult, bebidasResult, toppingsResult] = await Promise.all([
+        fetchOrderItems(
+          'ordenes_platos',
+          'id, plato_id, precio_unitario, precio_total, platos!plato_id(id, name, pricing)',
+          'id, plato_id, platos!plato_id(id, name, pricing)'
+        ),
+        fetchOrderItems(
+          'ordenes_bebidas',
+          'id, bebidas_id, precio_unitario, precio_total, bebidas!bebidas_id(id, name, pricing)',
+          'id, bebidas_id, bebidas!bebidas_id(id, name, pricing)'
+        ),
+        fetchOrderItems(
+          'ordenes_toppings',
+          'id, topping_id, precio_unitario, precio_total, toppings!topping_id(id, name, pricing)',
+          'id, topping_id, toppings!topping_id(id, name, pricing)'
+        )
+      ]);
+
+      const { data: platosData, error: platosError } = platosResult;
+      const { data: bebidasData, error: bebidasError } = bebidasResult;
+      const { data: toppingsData, error: toppingsError } = toppingsResult;
 
       if (platosError) {
         console.error('❌ Error obteniendo platos:', platosError);
       }
 
-      // Obtener items de bebidas
-      const { data: bebidasData, error: bebidasError } = await supabase
-        .from('ordenes_bebidas')
-        .select(`
-          id,
-          bebidas_id,
-          bebidas!bebidas_id(id, name, pricing)
-        `)
-        .eq('orden_id', id);
-
       if (bebidasError) {
         console.error('❌ Error obteniendo bebidas:', bebidasError);
       }
-
-      // Obtener toppings de la orden
-      const { data: toppingsData, error: toppingsError } = await supabase
-        .from('ordenes_toppings')
-        .select(`
-          id,
-          topping_id,
-          toppings!topping_id(id, name, pricing)
-        `)
-        .eq('orden_id', id);
 
       if (toppingsError) {
         console.error('❌ Error obteniendo toppings:', toppingsError);
       }
 
-      // NUEVO: Mantener items individuales sin agrupar
+      const platoIds = [...new Set((platosData || []).map((item: any) => item.plato_id))];
+      const bebidaIds = [...new Set((bebidasData || []).map((item: any) => item.bebidas_id))];
+      const toppingIds = [...new Set((toppingsData || []).map((item: any) => item.topping_id))];
+      const [sedePlatosResult, sedeBebidasResult, sedeToppingsResult] = await Promise.all([
+        platoIds.length > 0 ? supabase.from('sede_platos').select('plato_id, price_override').eq('sede_id', orderData.sede_id).in('plato_id', platoIds) : Promise.resolve({ data: [] }),
+        bebidaIds.length > 0 ? supabase.from('sede_bebidas').select('bebida_id, price_override').eq('sede_id', orderData.sede_id).in('bebida_id', bebidaIds) : Promise.resolve({ data: [] }),
+        toppingIds.length > 0 ? supabase.from('sede_toppings').select('topping_id, price_override').eq('sede_id', orderData.sede_id).in('topping_id', toppingIds) : Promise.resolve({ data: [] })
+      ]);
+      const sedePlatosPrices = new Map((sedePlatosResult.data || []).map((item: any) => [item.plato_id, item.price_override]));
+      const sedeBebidasPrices = new Map((sedeBebidasResult.data || []).map((item: any) => [item.bebida_id, item.price_override]));
+      const sedeToppingsPrices = new Map((sedeToppingsResult.data || []).map((item: any) => [item.topping_id, item.price_override]));
+
+      // Mantener items individuales y resolver precio histórico/sede antes del global.
       const items: OrderItem[] = [
         // Procesar platos individualmente
-        ...(platosData || []).map(item => ({
-          id: item.platos.id,
-          orden_item_id: item.id, // ID único del item en ordenes_platos
-          quantity: 1, // Siempre 1 para items individuales
-          unit_price: item.platos?.pricing || 0,
-          producto: {
-            id: item.platos.id,
-            name: item.platos.name,
-            pricing: item.platos?.pricing || 0
-          },
-          tipo: 'plato' as const
-        })),
+        ...(platosData || []).map((item: any) => {
+          const product = Array.isArray(item.platos) ? item.platos[0] : item.platos;
+          const price = item.precio_unitario ?? sedePlatosPrices.get(item.plato_id) ?? product?.pricing ?? 0;
+          return { id: product.id, orden_item_id: item.id, quantity: 1, unit_price: price, producto: { id: product.id, name: product.name, pricing: price }, tipo: 'plato' as const };
+        }),
         // Procesar bebidas individualmente
-        ...(bebidasData || []).map(item => ({
-          id: item.bebidas.id,
-          orden_item_id: item.id, // ID único del item en ordenes_bebidas
-          quantity: 1, // Siempre 1 para items individuales
-          unit_price: item.bebidas?.pricing || 0,
-          producto: {
-            id: item.bebidas.id,
-            name: item.bebidas.name,
-            pricing: item.bebidas?.pricing || 0
-          },
-          tipo: 'bebida' as const
-        })),
+        ...(bebidasData || []).map((item: any) => {
+          const product = Array.isArray(item.bebidas) ? item.bebidas[0] : item.bebidas;
+          const price = item.precio_unitario ?? sedeBebidasPrices.get(item.bebidas_id) ?? product?.pricing ?? 0;
+          return { id: product.id, orden_item_id: item.id, quantity: 1, unit_price: price, producto: { id: product.id, name: product.name, pricing: price }, tipo: 'bebida' as const };
+        }),
         // Procesar toppings individualmente
-        ...(toppingsData || []).map(item => ({
-          id: item.toppings.id,
-          orden_item_id: item.id, // ID único del item en ordenes_toppings
-          quantity: 1, // Siempre 1 para items individuales
-          unit_price: item.toppings?.pricing || 0,
-          producto: {
-            id: item.toppings.id,
-            name: item.toppings.name,
-            pricing: item.toppings?.pricing || 0
-          },
-          tipo: 'topping' as const
-        }))
+        ...(toppingsData || []).map((item: any) => {
+          const product = Array.isArray(item.toppings) ? item.toppings[0] : item.toppings;
+          const price = item.precio_unitario ?? sedeToppingsPrices.get(item.topping_id) ?? product?.pricing ?? 0;
+          return { id: product.id, orden_item_id: item.id, quantity: 1, unit_price: price, producto: { id: product.id, name: product.name, pricing: price }, tipo: 'topping' as const };
+        })
       ];
 
       const details: OrderDetails = {
