@@ -445,70 +445,42 @@ export const EditOrderModal: React.FC<EditOrderModalProps> = ({
         }
         
         // Cargar platos de la orden
-        let { data: platosData, error: platosError } = await supabase
+        const { data: platosData, error: platosError } = await supabase
           .from('ordenes_platos')
           .select(`
             id,
             plato_id,
-            precio_unitario,
-            precio_total,
             platos!plato_id(id, name, pricing)
           `)
           .eq('orden_id', orderId);
-
-        // Compatibilidad temporal mientras la migración de precios históricos está pendiente.
-        if (platosError) {
-          ({ data: platosData, error: platosError } = await supabase
-            .from('ordenes_platos')
-            .select('id, plato_id, platos!plato_id(id, name, pricing)')
-            .eq('orden_id', orderId));
-        }
 
         if (platosError) {
           console.error('❌ Error obteniendo platos:', platosError);
         }
 
         // Cargar bebidas de la orden
-        let { data: bebidasData, error: bebidasError } = await supabase
+        const { data: bebidasData, error: bebidasError } = await supabase
           .from('ordenes_bebidas')
           .select(`
             id,
             bebidas_id,
-            precio_unitario,
-            precio_total,
             bebidas!bebidas_id(id, name, pricing)
           `)
           .eq('orden_id', orderId);
-
-        if (bebidasError) {
-          ({ data: bebidasData, error: bebidasError } = await supabase
-            .from('ordenes_bebidas')
-            .select('id, bebidas_id, bebidas!bebidas_id(id, name, pricing)')
-            .eq('orden_id', orderId));
-        }
 
         if (bebidasError) {
           console.error('❌ Error obteniendo bebidas:', bebidasError);
         }
         
         // Cargar toppings de la orden
-        let { data: toppingsData, error: toppingsError } = await supabase
+        const { data: toppingsData, error: toppingsError } = await supabase
           .from('ordenes_toppings')
           .select(`
             id,
             topping_id,
-            precio_unitario,
-            precio_total,
             toppings!topping_id(id, name, pricing)
           `)
           .eq('orden_id', orderId);
-
-        if (toppingsError) {
-          ({ data: toppingsData, error: toppingsError } = await supabase
-            .from('ordenes_toppings')
-            .select('id, topping_id, toppings!topping_id(id, name, pricing)')
-            .eq('orden_id', orderId));
-        }
 
         if (toppingsError) {
           console.error('❌ Error obteniendo toppings:', toppingsError);
@@ -538,8 +510,8 @@ export const EditOrderModal: React.FC<EditOrderModalProps> = ({
               tipo: 'plato',
               nombre: item.platos.name,
               cantidad: 1, // Siempre 1 para items individuales
-              precio_unitario: item.precio_unitario ?? sedePlatosPrices.get(item.plato_id) ?? item.platos.pricing ?? 0,
-              precio_total: item.precio_total ?? item.precio_unitario ?? sedePlatosPrices.get(item.plato_id) ?? item.platos.pricing ?? 0,
+              precio_unitario: sedePlatosPrices.get(item.plato_id) ?? item.platos.pricing ?? 0,
+              precio_total: sedePlatosPrices.get(item.plato_id) ?? item.platos.pricing ?? 0,
               producto_id: item.platos.id,
               orden_item_id: item.id // ID específico del item en ordenes_platos
             });
@@ -554,8 +526,8 @@ export const EditOrderModal: React.FC<EditOrderModalProps> = ({
               tipo: 'bebida',
               nombre: item.bebidas.name,
               cantidad: 1, // Siempre 1 para items individuales
-              precio_unitario: item.precio_unitario ?? sedeBebidasPrices.get(item.bebidas_id) ?? item.bebidas.pricing ?? 0,
-              precio_total: item.precio_total ?? item.precio_unitario ?? sedeBebidasPrices.get(item.bebidas_id) ?? item.bebidas.pricing ?? 0,
+              precio_unitario: sedeBebidasPrices.get(item.bebidas_id) ?? item.bebidas.pricing ?? 0,
+              precio_total: sedeBebidasPrices.get(item.bebidas_id) ?? item.bebidas.pricing ?? 0,
               producto_id: item.bebidas.id,
               orden_item_id: item.id // ID específico del item en ordenes_bebidas
             });
@@ -570,8 +542,8 @@ export const EditOrderModal: React.FC<EditOrderModalProps> = ({
               tipo: 'topping',
               nombre: item.toppings.name,
               cantidad: 1, // Siempre 1 para items individuales
-              precio_unitario: item.precio_unitario ?? sedeToppingsPrices.get(item.topping_id) ?? item.toppings.pricing ?? 0,
-              precio_total: item.precio_total ?? item.precio_unitario ?? sedeToppingsPrices.get(item.topping_id) ?? item.toppings.pricing ?? 0,
+              precio_unitario: sedeToppingsPrices.get(item.topping_id) ?? item.toppings.pricing ?? 0,
+              precio_total: sedeToppingsPrices.get(item.topping_id) ?? item.toppings.pricing ?? 0,
               producto_id: item.toppings.id,
               orden_item_id: item.id // ID específico del item en ordenes_toppings
             });
@@ -639,18 +611,6 @@ export const EditOrderModal: React.FC<EditOrderModalProps> = ({
       setError(null);
       const itemsChanged = getItemsSignature(items) !== originalItemsSignature.current;
       const deliveryChanged = deliveryCost !== originalDeliveryCost.current;
-
-      if (itemsChanged) {
-        const priceSnapshotChecks = await Promise.all([
-          supabase.from('ordenes_platos').select('precio_unitario').limit(1),
-          supabase.from('ordenes_bebidas').select('precio_unitario').limit(1),
-          supabase.from('ordenes_toppings').select('precio_unitario').limit(1)
-        ]);
-
-        if (priceSnapshotChecks.some(result => result.error)) {
-          throw new Error('La edición de productos requiere aplicar primero la migración pendiente de precios históricos. No se realizó ningún cambio.');
-        }
-      }
 
       // 1. Actualizar dirección del cliente y de la orden si cambió
       if (newAddress.trim() && newAddress !== order.address) {
@@ -805,27 +765,30 @@ export const EditOrderModal: React.FC<EditOrderModalProps> = ({
         // Insertar platos
         for (const plato of platos) {
           for (let i = 0; i < plato.cantidad; i++) {
-            await supabase
+            const { error: insertError } = await supabase
               .from('ordenes_platos')
-              .insert({ orden_id: orderId, plato_id: plato.producto_id, precio_unitario: plato.precio_unitario, precio_total: plato.precio_unitario });
+              .insert({ orden_id: orderId, plato_id: plato.producto_id });
+            if (insertError) throw insertError;
           }
         }
 
         // Insertar bebidas
         for (const bebida of bebidas) {
           for (let i = 0; i < bebida.cantidad; i++) {
-            await supabase
+            const { error: insertError } = await supabase
               .from('ordenes_bebidas')
-              .insert({ orden_id: orderId, bebidas_id: bebida.producto_id, precio_unitario: bebida.precio_unitario, precio_total: bebida.precio_unitario });
+              .insert({ orden_id: orderId, bebidas_id: bebida.producto_id });
+            if (insertError) throw insertError;
           }
         }
 
         // Insertar toppings
         for (const topping of toppings) {
           for (let i = 0; i < topping.cantidad; i++) {
-            await supabase
+            const { error: insertError } = await supabase
               .from('ordenes_toppings')
-              .insert({ orden_id: orderId, topping_id: topping.producto_id, precio_unitario: topping.precio_unitario, precio_total: topping.precio_unitario });
+              .insert({ orden_id: orderId, topping_id: topping.producto_id });
+            if (insertError) throw insertError;
           }
         }
       } else {
