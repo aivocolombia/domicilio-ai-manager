@@ -204,6 +204,14 @@ export class MinutaService {
         setTimeout(() => reject(new Error('Timeout al cargar datos de minuta')), 10000);
       });
 
+      const fetchItemsWithHistoricalPrice = async (table: string, selectWithPrice: string, legacySelect: string) => {
+        const result = await supabase.from(table).select(selectWithPrice).eq('orden_id', orderId);
+        if (!result.error) return result;
+
+        // La lectura antigua se conserva hasta que se aplique la migración pendiente.
+        return supabase.from(table).select(legacySelect).eq('orden_id', orderId);
+      };
+
       // Usar Promise.all para hacer las 4 consultas en paralelo (más rápido)
       const queryPromise = Promise.all([
         // Consulta principal de la orden
@@ -231,34 +239,25 @@ export class MinutaService {
           .single(),
         
         // Consulta de platos en paralelo
-        supabase
-          .from('ordenes_platos')
-          .select(`
-            id,
-            plato_id,
-            platos!inner(name, pricing)
-          `)
-          .eq('orden_id', orderId),
+        fetchItemsWithHistoricalPrice(
+          'ordenes_platos',
+          'id, plato_id, precio_unitario, precio_total, platos!inner(name, pricing)',
+          'id, plato_id, platos!inner(name, pricing)'
+        ),
 
         // Consulta de bebidas en paralelo
-        supabase
-          .from('ordenes_bebidas')
-          .select(`
-            id,
-            bebidas_id,
-            bebidas!inner(name, pricing)
-          `)
-          .eq('orden_id', orderId),
+        fetchItemsWithHistoricalPrice(
+          'ordenes_bebidas',
+          'id, bebidas_id, precio_unitario, precio_total, bebidas!inner(name, pricing)',
+          'id, bebidas_id, bebidas!inner(name, pricing)'
+        ),
 
         // Consulta de toppings en paralelo
-        supabase
-          .from('ordenes_toppings')
-          .select(`
-            id,
-            topping_id,
-            toppings!inner(name, pricing)
-          `)
-          .eq('orden_id', orderId)
+        fetchItemsWithHistoricalPrice(
+          'ordenes_toppings',
+          'id, topping_id, precio_unitario, precio_total, toppings!inner(name, pricing)',
+          'id, topping_id, toppings!inner(name, pricing)'
+        )
       ]);
 
       const [orderResult, platosResult, bebidasResult, toppingsResult] = await Promise.race([
@@ -377,13 +376,13 @@ export class MinutaService {
         const precioSede = sedePlatosMap.get(item.plato_id);
         const basePrice = item.platos?.pricing ?? 0;
 
-        const precio = precioSede ?? basePrice;
+        const precio = item.precio_unitario ?? precioSede ?? basePrice;
 
         return {
           plato_nombre: item.platos?.name || 'Producto sin nombre',
           cantidad: 1, // Cada item individual
           precio_unitario: precio,
-          precio_total: precio,
+          precio_total: item.precio_total ?? precio,
           orden_item_id: item.id // ID único del item en ordenes_platos
         };
       });
@@ -433,13 +432,13 @@ export class MinutaService {
         const precioSede = sedeBebidasMap.get(item.bebidas_id);
         const basePrice = item.bebidas?.pricing ?? 0;
 
-        const precio = precioSede ?? basePrice;
+        const precio = item.precio_unitario ?? precioSede ?? basePrice;
 
         return {
           bebida_nombre: item.bebidas?.name || 'Bebida sin nombre',
           cantidad: 1, // Cada item individual
           precio_unitario: precio,
-          precio_total: precio,
+          precio_total: item.precio_total ?? precio,
           orden_item_id: item.id // Mantener ID único del item en la orden
         };
       });
@@ -455,13 +454,13 @@ export class MinutaService {
         const precioSede = sedeToppingsMap.get(item.topping_id);
         const basePrice = item.toppings?.pricing ?? 0;
 
-        const precio = precioSede ?? basePrice;
+        const precio = item.precio_unitario ?? precioSede ?? basePrice;
 
         return {
           topping_nombre: item.toppings?.name || 'Topping sin nombre',
           cantidad: 1, // Cada item individual
           precio_unitario: precio,
-          precio_total: precio,
+          precio_total: item.precio_total ?? precio,
           orden_item_id: item.id // Mantener ID único del item en la orden
         };
       });
