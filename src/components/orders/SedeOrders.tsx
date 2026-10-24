@@ -144,10 +144,33 @@ export const SedeOrders: React.FC<SedeOrdersProps> = ({
     }
   }, [effectiveSedeId]);
 
+  const getSedeProduct = (productType: 'plato' | 'bebida' | 'topping', productId: string) => {
+    const products = productType === 'plato'
+      ? sedeProducts.platos
+      : productType === 'bebida'
+        ? sedeProducts.bebidas
+        : sedeProducts.toppings;
+
+    return products.find(product => product.id.toString() === productId);
+  };
+
+  const getAvailableProducts = (productType: 'plato' | 'bebida' | 'topping') => {
+    const products = productType === 'plato'
+      ? sedeProducts.platos
+      : productType === 'bebida'
+        ? sedeProducts.bebidas
+        : sedeProducts.toppings;
+
+    return products.map(product => ({
+      ...product,
+      id: `${productType}_${product.id}`
+    }));
+  };
+
   const [newOrder, setNewOrder] = useState({
     address: '',
     deliveryInstructions: '',
-    items: [] as { productId: string; quantity: number; toppings: string[] }[],
+    items: [] as { productId: string; quantity: number; toppings: string[]; productType: 'plato' | 'bebida' | 'topping' }[],
     paymentMethod: 'cash' as PaymentMethod,
     hasMultiplePayments: false,
     paymentMethod2: 'cash' as PaymentMethod,
@@ -403,8 +426,13 @@ export const SedeOrders: React.FC<SedeOrdersProps> = ({
     // Resetear completamente el formulario
     setNewOrder({
       address: '',
+      deliveryInstructions: '',
       items: [],
       paymentMethod: 'cash',
+      hasMultiplePayments: false,
+      paymentMethod2: 'cash',
+      paymentAmount1: 0,
+      paymentAmount2: 0,
       specialInstructions: '',
       deliveryType: 'delivery',
       pickupSede: '', // Se auto-asignará
@@ -484,6 +512,38 @@ export const SedeOrders: React.FC<SedeOrdersProps> = ({
     }, 0);
   };
 
+  const addNewItem = () => {
+    setNewOrder(prev => ({
+      ...prev,
+      items: [...prev.items, {
+        productId: '',
+        quantity: 1,
+        toppings: [],
+        productType: 'plato'
+      }]
+    }));
+  };
+
+  const updateItem = (index: number, field: 'productType' | 'productId' | 'quantity', value: string | number) => {
+    setNewOrder(prev => ({
+      ...prev,
+      items: prev.items.map((item, itemIndex) => {
+        if (itemIndex !== index) return item;
+        if (field === 'productType') {
+          return { ...item, productType: value as 'plato' | 'bebida', productId: '' };
+        }
+        return { ...item, [field]: value };
+      })
+    }));
+  };
+
+  const removeItem = (index: number) => {
+    setNewOrder(prev => ({
+      ...prev,
+      items: prev.items.filter((_, itemIndex) => itemIndex !== index)
+    }));
+  };
+
   const removeItemFromOrder = (productId: string) => {
     console.log('🔍 DEBUG: Removiendo item:', productId);
     setNewOrder({
@@ -518,7 +578,7 @@ export const SedeOrders: React.FC<SedeOrdersProps> = ({
           productId: uniqueToppingId, 
           quantity: 1, 
           toppings: [],
-          productType: 'topping'
+          productType: 'topping' as const
         }]
       });
     }
@@ -529,18 +589,9 @@ export const SedeOrders: React.FC<SedeOrdersProps> = ({
       // Extraer el ID real y tipo del productId único
       const [productType, realProductId] = item.productId.split('_');
       
-      let product = null;
-      // Buscar en productos específicos de sede primero, luego en menú general
-      if (productType === 'plato') {
-        product = sedeProducts.platos.find(p => p.id.toString() === realProductId) ||
-                 platos.find(p => p.id.toString() === realProductId);
-      } else if (productType === 'bebida') {
-        product = sedeProducts.bebidas.find(b => b.id.toString() === realProductId) ||
-                 bebidas.find(b => b.id.toString() === realProductId);
-      } else if (productType === 'topping') {
-        product = sedeProducts.toppings.find(t => t.id.toString() === realProductId) ||
-                 toppings.find(t => t.id.toString() === realProductId);
-      }
+      const product = productType === 'plato' || productType === 'bebida' || productType === 'topping'
+        ? getSedeProduct(productType, realProductId)
+        : null;
       
       // Debug solo si no se encuentra el producto o el precio es 0
       if (!product || product.pricing === 0) {
@@ -621,17 +672,17 @@ export const SedeOrders: React.FC<SedeOrdersProps> = ({
         const [productType, realProductId] = item.productId.split('_');
         
         if (productType === 'plato') {
-          const product = platos.find(p => p.id.toString() === realProductId);
+          const product = getSedeProduct('plato', realProductId);
           if (!product) {
             throw new Error(`Plato con ID ${realProductId} no encontrado en el inventario`);
           }
         } else if (productType === 'bebida') {
-          const bebida = bebidas.find(b => b.id.toString() === realProductId);
+          const bebida = getSedeProduct('bebida', realProductId);
           if (!bebida) {
             throw new Error(`Bebida con ID ${realProductId} no encontrada en el inventario`);
           }
         } else if (productType === 'topping') {
-          const topping = toppings.find(t => t.id.toString() === realProductId);
+          const topping = getSedeProduct('topping', realProductId);
           if (!topping) {
             throw new Error(`Topping con ID ${realProductId} no encontrado en el inventario`);
           }
@@ -692,7 +743,7 @@ export const SedeOrders: React.FC<SedeOrdersProps> = ({
           });
           
           if (productType === 'plato') {
-            const product = platos.find(p => p.id.toString() === realProductId);
+            const product = getSedeProduct('plato', realProductId);
             if (product) {
               return {
                 producto_tipo: 'plato' as const,
@@ -701,7 +752,7 @@ export const SedeOrders: React.FC<SedeOrdersProps> = ({
               };
             }
           } else if (productType === 'bebida') {
-            const bebida = bebidas.find(b => b.id.toString() === realProductId);
+            const bebida = getSedeProduct('bebida', realProductId);
             if (bebida) {
               return {
                 producto_tipo: 'bebida' as const,
@@ -710,7 +761,7 @@ export const SedeOrders: React.FC<SedeOrdersProps> = ({
               };
             }
           } else if (productType === 'topping') {
-            const topping = toppings.find(t => t.id.toString() === realProductId);
+            const topping = getSedeProduct('topping', realProductId);
             if (topping) {
               return {
                 producto_tipo: 'topping' as const,

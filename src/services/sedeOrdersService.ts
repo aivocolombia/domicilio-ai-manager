@@ -614,7 +614,7 @@ class SedeOrdersService {
       console.log('✅ Orden creada:', orden.id);
 
       // Paso 5: Agregar items a la orden
-      await this.addItemsToOrder(orden.id, orderData.items);
+      await this.addItemsToOrder(orden.id, orderData.items, orderData.sede_id);
 
       // Paso 6: Obtener la orden completa y retornarla
       const sedeOrders = await this.getSedeOrders(orderData.sede_id, 1);
@@ -734,15 +734,63 @@ class SedeOrdersService {
   }
 
   // Función auxiliar para agregar items a la orden
-  private async addItemsToOrder(ordenId: number, items: CreateOrderData['items']): Promise<void> {
+  private async getEffectiveUnitPrice(item: CreateOrderData['items'][number], sedeId: string): Promise<number> {
+    const config = item.producto_tipo === 'plato'
+      ? { sedeTable: 'sede_platos', productTable: 'platos', foreignKey: 'plato_id' }
+      : item.producto_tipo === 'bebida'
+        ? { sedeTable: 'sede_bebidas', productTable: 'bebidas', foreignKey: 'bebida_id' }
+        : { sedeTable: 'sede_toppings', productTable: 'toppings', foreignKey: 'topping_id' };
+
+    const { data: sedeProduct, error: sedeError } = await supabase
+      .from(config.sedeTable)
+      .select('price_override')
+      .eq('sede_id', sedeId)
+      .eq(config.foreignKey, item.producto_id)
+      .maybeSingle();
+
+    if (!sedeError && sedeProduct?.price_override !== null && sedeProduct?.price_override !== undefined) {
+      return Number(sedeProduct.price_override);
+    }
+
+    const { data: baseProduct, error: baseError } = await supabase
+      .from(config.productTable)
+      .select('pricing')
+      .eq('id', item.producto_id)
+      .single();
+
+    if (baseError || !baseProduct) {
+      throw baseError || new Error(`No se encontró el precio de ${item.producto_tipo} ${item.producto_id}`);
+    }
+
+    return Number(baseProduct.pricing || 0);
+  }
+
+  private async addItemsToOrder(ordenId: number, items: CreateOrderData['items'], sedeId: string): Promise<void> {
+    const snapshotSupport = new Map<CreateOrderData['items'][number]['producto_tipo'], boolean>();
+    const tableByType = {
+      plato: 'ordenes_platos',
+      bebida: 'ordenes_bebidas',
+      topping: 'ordenes_toppings'
+    } as const;
+
+    await Promise.all([...new Set(items.map(item => item.producto_tipo))].map(async type => {
+      const { error } = await supabase.from(tableByType[type]).select('precio_unitario').limit(1);
+      snapshotSupport.set(type, !error);
+    }));
+
     for (const item of items) {
+      const unitPrice = await this.getEffectiveUnitPrice(item, sedeId);
+      const priceSnapshot = snapshotSupport.get(item.producto_tipo)
+        ? { precio_unitario: unitPrice, precio_total: unitPrice }
+        : {};
       // Insertar múltiples veces según la cantidad solicitada
       for (let i = 0; i < item.cantidad; i++) {
         if (item.producto_tipo === 'plato') {
           // Solo insertar orden_id y plato_id (según esquema real)
           const insertData = {
             orden_id: ordenId,
-            plato_id: item.producto_id
+            plato_id: item.producto_id,
+            ...priceSnapshot
           };
 
           console.log('🔍 Insertando plato:', insertData);
@@ -762,7 +810,8 @@ class SedeOrdersService {
           // Solo insertar orden_id y bebidas_id (según esquema real)
           const insertData = {
             orden_id: ordenId,
-            bebidas_id: item.producto_id
+            bebidas_id: item.producto_id,
+            ...priceSnapshot
           };
 
           console.log('🔍 Insertando bebida:', insertData);
@@ -781,7 +830,8 @@ class SedeOrdersService {
           // Insertar orden_id y topping_id en ordenes_toppings
           const insertData = {
             orden_id: ordenId,
-            topping_id: item.producto_id
+            topping_id: item.producto_id,
+            ...priceSnapshot
           };
 
           console.log('🔍 Insertando topping:', insertData);
