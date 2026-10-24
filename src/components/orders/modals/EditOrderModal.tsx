@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -36,6 +36,16 @@ interface EditOrderModalProps {
   onOrderUpdated: () => void;
 }
 
+const getItemsSignature = (orderItems: OrderItem[]) => JSON.stringify(
+  orderItems
+    .flatMap(item => Array.from({ length: item.cantidad }, () => ({
+      tipo: item.tipo,
+      producto_id: item.producto_id,
+      precio_unitario: item.precio_unitario
+    })))
+    .sort((a, b) => `${a.tipo}:${a.producto_id}:${a.precio_unitario}`.localeCompare(`${b.tipo}:${b.producto_id}:${b.precio_unitario}`))
+);
+
 export const EditOrderModal: React.FC<EditOrderModalProps> = ({
   isOpen,
   onClose,
@@ -54,6 +64,9 @@ export const EditOrderModal: React.FC<EditOrderModalProps> = ({
   const [sedeId, setSedeId] = useState<string>('');
   const [cutleryCount, setCutleryCount] = useState<number>(0);
   const [observations, setObservations] = useState<string>('');
+  const originalItemsSignature = useRef('');
+  const originalDeliveryCost = useRef(0);
+  const addressWasEdited = useRef(false);
 
   // Estado para el diálogo de sustituciones
   const [substitutionDialogOpen, setSubstitutionDialogOpen] = useState(false);
@@ -318,7 +331,7 @@ export const EditOrderModal: React.FC<EditOrderModalProps> = ({
 
   // Efecto para buscar precio cuando cambia la dirección (con debounce)
   useEffect(() => {
-    if (newAddress) {
+    if (newAddress && addressWasEdited.current) {
       const timeout = setTimeout(() => {
         searchDeliveryPrice(newAddress);
       }, 800);
@@ -405,6 +418,7 @@ export const EditOrderModal: React.FC<EditOrderModalProps> = ({
           setObservations('');
           setItems([]);
           setNewAddress('');
+          addressWasEdited.current = false;
           setDeliveryCost(0);
           setCutleryCount(0);
         }
@@ -418,57 +432,100 @@ export const EditOrderModal: React.FC<EditOrderModalProps> = ({
         // Cargar campos adicionales de orden (cubiertos, address, precio_envio, observaciones)
         const { data: baseOrder, error: baseOrderErr } = await supabase
           .from('ordenes')
-          .select('cubiertos, address, precio_envio, observaciones')
+          .select('cubiertos, address, precio_envio, observaciones, sede_id')
           .eq('id', orderId)
           .single();
         if (!baseOrderErr && baseOrder) {
           setCutleryCount(typeof baseOrder.cubiertos === 'number' ? baseOrder.cubiertos : (baseOrder.cubiertos ? Number(baseOrder.cubiertos) : 0));
           setNewAddress(baseOrder.address || order.address || '');
+          addressWasEdited.current = false;
           setDeliveryCost(typeof baseOrder.precio_envio === 'number' ? baseOrder.precio_envio : (baseOrder.precio_envio ? Number(baseOrder.precio_envio) : 0));
+          originalDeliveryCost.current = typeof baseOrder.precio_envio === 'number' ? baseOrder.precio_envio : (baseOrder.precio_envio ? Number(baseOrder.precio_envio) : 0);
           setObservations(baseOrder.observaciones || '');
         }
         
         // Cargar platos de la orden
-        const { data: platosData, error: platosError } = await supabase
+        let { data: platosData, error: platosError } = await supabase
           .from('ordenes_platos')
           .select(`
             id,
             plato_id,
+            precio_unitario,
+            precio_total,
             platos!plato_id(id, name, pricing)
           `)
           .eq('orden_id', orderId);
+
+        // Compatibilidad temporal mientras la migración de precios históricos está pendiente.
+        if (platosError) {
+          ({ data: platosData, error: platosError } = await supabase
+            .from('ordenes_platos')
+            .select('id, plato_id, platos!plato_id(id, name, pricing)')
+            .eq('orden_id', orderId));
+        }
 
         if (platosError) {
           console.error('❌ Error obteniendo platos:', platosError);
         }
 
         // Cargar bebidas de la orden
-        const { data: bebidasData, error: bebidasError } = await supabase
+        let { data: bebidasData, error: bebidasError } = await supabase
           .from('ordenes_bebidas')
           .select(`
             id,
             bebidas_id,
+            precio_unitario,
+            precio_total,
             bebidas!bebidas_id(id, name, pricing)
           `)
           .eq('orden_id', orderId);
+
+        if (bebidasError) {
+          ({ data: bebidasData, error: bebidasError } = await supabase
+            .from('ordenes_bebidas')
+            .select('id, bebidas_id, bebidas!bebidas_id(id, name, pricing)')
+            .eq('orden_id', orderId));
+        }
 
         if (bebidasError) {
           console.error('❌ Error obteniendo bebidas:', bebidasError);
         }
         
         // Cargar toppings de la orden
-        const { data: toppingsData, error: toppingsError } = await supabase
+        let { data: toppingsData, error: toppingsError } = await supabase
           .from('ordenes_toppings')
           .select(`
             id,
             topping_id,
+            precio_unitario,
+            precio_total,
             toppings!topping_id(id, name, pricing)
           `)
           .eq('orden_id', orderId);
 
         if (toppingsError) {
+          ({ data: toppingsData, error: toppingsError } = await supabase
+            .from('ordenes_toppings')
+            .select('id, topping_id, toppings!topping_id(id, name, pricing)')
+            .eq('orden_id', orderId));
+        }
+
+        if (toppingsError) {
           console.error('❌ Error obteniendo toppings:', toppingsError);
         }
+
+        const currentSedeId = baseOrder?.sede_id || order.sede_id;
+        const platoIds = [...new Set((platosData || []).map(item => item.plato_id))];
+        const bebidaIds = [...new Set((bebidasData || []).map(item => item.bebidas_id))];
+        const toppingIds = [...new Set((toppingsData || []).map(item => item.topping_id))];
+        const [sedePlatosResult, sedeBebidasResult, sedeToppingsResult] = await Promise.all([
+          platoIds.length > 0 ? supabase.from('sede_platos').select('plato_id, price_override').eq('sede_id', currentSedeId).in('plato_id', platoIds) : Promise.resolve({ data: [] }),
+          bebidaIds.length > 0 ? supabase.from('sede_bebidas').select('bebida_id, price_override').eq('sede_id', currentSedeId).in('bebida_id', bebidaIds) : Promise.resolve({ data: [] }),
+          toppingIds.length > 0 ? supabase.from('sede_toppings').select('topping_id, price_override').eq('sede_id', currentSedeId).in('topping_id', toppingIds) : Promise.resolve({ data: [] })
+        ]);
+        const sedePlatosPrices = new Map((sedePlatosResult.data || []).map(item => [item.plato_id, item.price_override]));
+        const sedeBebidasPrices = new Map((sedeBebidasResult.data || []).map(item => [item.bebida_id, item.price_override]));
+        const sedeToppingsPrices = new Map((sedeToppingsResult.data || []).map(item => [item.topping_id, item.price_override]));
         
         // NUEVO: Mantener items individuales sin agrupar (para sustituciones específicas)
         const finalItems: OrderItem[] = [];
@@ -481,8 +538,8 @@ export const EditOrderModal: React.FC<EditOrderModalProps> = ({
               tipo: 'plato',
               nombre: item.platos.name,
               cantidad: 1, // Siempre 1 para items individuales
-              precio_unitario: item.platos.pricing || 0,
-              precio_total: item.platos.pricing || 0,
+              precio_unitario: item.precio_unitario ?? sedePlatosPrices.get(item.plato_id) ?? item.platos.pricing ?? 0,
+              precio_total: item.precio_total ?? item.precio_unitario ?? sedePlatosPrices.get(item.plato_id) ?? item.platos.pricing ?? 0,
               producto_id: item.platos.id,
               orden_item_id: item.id // ID específico del item en ordenes_platos
             });
@@ -497,8 +554,8 @@ export const EditOrderModal: React.FC<EditOrderModalProps> = ({
               tipo: 'bebida',
               nombre: item.bebidas.name,
               cantidad: 1, // Siempre 1 para items individuales
-              precio_unitario: item.bebidas.pricing || 0,
-              precio_total: item.bebidas.pricing || 0,
+              precio_unitario: item.precio_unitario ?? sedeBebidasPrices.get(item.bebidas_id) ?? item.bebidas.pricing ?? 0,
+              precio_total: item.precio_total ?? item.precio_unitario ?? sedeBebidasPrices.get(item.bebidas_id) ?? item.bebidas.pricing ?? 0,
               producto_id: item.bebidas.id,
               orden_item_id: item.id // ID específico del item en ordenes_bebidas
             });
@@ -513,8 +570,8 @@ export const EditOrderModal: React.FC<EditOrderModalProps> = ({
               tipo: 'topping',
               nombre: item.toppings.name,
               cantidad: 1, // Siempre 1 para items individuales
-              precio_unitario: item.toppings.pricing || 0,
-              precio_total: item.toppings.pricing || 0,
+              precio_unitario: item.precio_unitario ?? sedeToppingsPrices.get(item.topping_id) ?? item.toppings.pricing ?? 0,
+              precio_total: item.precio_total ?? item.precio_unitario ?? sedeToppingsPrices.get(item.topping_id) ?? item.toppings.pricing ?? 0,
               producto_id: item.toppings.id,
               orden_item_id: item.id // ID específico del item en ordenes_toppings
             });
@@ -547,6 +604,7 @@ export const EditOrderModal: React.FC<EditOrderModalProps> = ({
         }
 
         setItems(finalItems);
+        originalItemsSignature.current = getItemsSignature(finalItems);
         if (!baseOrder) {
           setNewAddress(order.address || '');
           setDeliveryCost(order.precio_envio || 0);
@@ -579,6 +637,20 @@ export const EditOrderModal: React.FC<EditOrderModalProps> = ({
     try {
       setLoading(true);
       setError(null);
+      const itemsChanged = getItemsSignature(items) !== originalItemsSignature.current;
+      const deliveryChanged = deliveryCost !== originalDeliveryCost.current;
+
+      if (itemsChanged) {
+        const priceSnapshotChecks = await Promise.all([
+          supabase.from('ordenes_platos').select('precio_unitario').limit(1),
+          supabase.from('ordenes_bebidas').select('precio_unitario').limit(1),
+          supabase.from('ordenes_toppings').select('precio_unitario').limit(1)
+        ]);
+
+        if (priceSnapshotChecks.some(result => result.error)) {
+          throw new Error('La edición de productos requiere aplicar primero la migración pendiente de precios históricos. No se realizó ningún cambio.');
+        }
+      }
 
       // 1. Actualizar dirección del cliente y de la orden si cambió
       if (newAddress.trim() && newAddress !== order.address) {
@@ -625,7 +697,7 @@ export const EditOrderModal: React.FC<EditOrderModalProps> = ({
         }
       }
 
-      // 3. Obtener payment_id de la orden y actualizar total de pago
+      // 3. Mantener el total histórico cuando no cambian productos.
       const { data: ordenData, error: ordenDataError } = await supabase
         .from('ordenes')
         .select('payment_id')
@@ -637,14 +709,34 @@ export const EditOrderModal: React.FC<EditOrderModalProps> = ({
         throw new Error('Error obteniendo información de pago');
       }
 
-      const { error: paymentError } = await supabase
-        .from('pagos')
-        .update({ total_pago: totalAmount })
-        .eq('id', ordenData.payment_id);
-      
-      if (paymentError) {
-        console.error('Error actualizando total:', paymentError);
-        throw new Error('Error actualizando total de pago');
+      if (itemsChanged || deliveryChanged) {
+        let updatedTotal = totalAmount;
+
+        if (!itemsChanged && deliveryChanged) {
+          const { data: currentPayment, error: currentPaymentError } = await supabase
+            .from('pagos')
+            .select('total_pago')
+            .eq('id', ordenData.payment_id)
+            .single();
+
+          if (currentPaymentError || !currentPayment) {
+            throw new Error('Error obteniendo el total histórico del pago');
+          }
+
+          updatedTotal = Number(currentPayment.total_pago || 0) + deliveryCost - originalDeliveryCost.current;
+        }
+
+        const { data: updatedPayment, error: paymentError } = await supabase
+          .from('pagos')
+          .update({ total_pago: updatedTotal })
+          .eq('id', ordenData.payment_id)
+          .select('id')
+          .single();
+
+        if (paymentError || !updatedPayment) {
+          console.error('Error actualizando total:', paymentError);
+          throw new Error('Error actualizando total de pago');
+        }
       }
 
       // 4. Guardar historial de sustituciones ANTES de modificar items
@@ -692,7 +784,7 @@ export const EditOrderModal: React.FC<EditOrderModalProps> = ({
       const hasProductSubstitutions = substitutionHistory.some(sub => sub.type === 'product_substitution');
       const hasOnlyToppingSubstitutions = substitutionHistory.length > 0 && !hasProductSubstitutions;
 
-      if (hasOnlyToppingSubstitutions) {
+      if (!itemsChanged || hasOnlyToppingSubstitutions) {
         console.log('🔧 SOLUCIÓN TEMPORAL: Solo hay sustituciones de toppings, preservando IDs originales');
         console.log('ℹ️ Saltando eliminación/recreación de items para preservar orden_item_id');
       } else {
@@ -705,7 +797,7 @@ export const EditOrderModal: React.FC<EditOrderModalProps> = ({
       }
 
       // 6. Insertar los nuevos items (solo si se eliminaron los anteriores)
-      if (!hasOnlyToppingSubstitutions) {
+      if (itemsChanged && !hasOnlyToppingSubstitutions) {
         const platos = items.filter(item => item.tipo === 'plato');
         const bebidas = items.filter(item => item.tipo === 'bebida');
         const toppings = items.filter(item => item.tipo === 'topping');
@@ -715,7 +807,7 @@ export const EditOrderModal: React.FC<EditOrderModalProps> = ({
           for (let i = 0; i < plato.cantidad; i++) {
             await supabase
               .from('ordenes_platos')
-              .insert({ orden_id: orderId, plato_id: plato.producto_id });
+              .insert({ orden_id: orderId, plato_id: plato.producto_id, precio_unitario: plato.precio_unitario, precio_total: plato.precio_unitario });
           }
         }
 
@@ -724,7 +816,7 @@ export const EditOrderModal: React.FC<EditOrderModalProps> = ({
           for (let i = 0; i < bebida.cantidad; i++) {
             await supabase
               .from('ordenes_bebidas')
-              .insert({ orden_id: orderId, bebidas_id: bebida.producto_id });
+              .insert({ orden_id: orderId, bebidas_id: bebida.producto_id, precio_unitario: bebida.precio_unitario, precio_total: bebida.precio_unitario });
           }
         }
 
@@ -733,7 +825,7 @@ export const EditOrderModal: React.FC<EditOrderModalProps> = ({
           for (let i = 0; i < topping.cantidad; i++) {
             await supabase
               .from('ordenes_toppings')
-              .insert({ orden_id: orderId, topping_id: topping.producto_id });
+              .insert({ orden_id: orderId, topping_id: topping.producto_id, precio_unitario: topping.precio_unitario, precio_total: topping.precio_unitario });
           }
         }
       } else {
@@ -793,7 +885,10 @@ export const EditOrderModal: React.FC<EditOrderModalProps> = ({
                 <div className="flex gap-2">
                   <Input
                     value={newAddress}
-                    onChange={(e) => setNewAddress(e.target.value)}
+                    onChange={(e) => {
+                      addressWasEdited.current = true;
+                      setNewAddress(e.target.value);
+                    }}
                     placeholder="Ingresa la nueva dirección"
                     className="flex-1"
                   />
