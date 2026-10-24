@@ -110,30 +110,10 @@ export const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({
         throw new Error('Orden no encontrada');
       }
 
-      const fetchOrderItems = async (table: string, selectWithPrice: string, legacySelect: string) => {
-        const result = await supabase.from(table).select(selectWithPrice).eq('orden_id', id);
-        if (!result.error) return result;
-
-        // Compatibilidad mientras la migración de precios históricos está pendiente.
-        return supabase.from(table).select(legacySelect).eq('orden_id', id);
-      };
-
       const [platosResult, bebidasResult, toppingsResult] = await Promise.all([
-        fetchOrderItems(
-          'ordenes_platos',
-          'id, plato_id, precio_unitario, precio_total, platos!plato_id(id, name, pricing)',
-          'id, plato_id, platos!plato_id(id, name, pricing)'
-        ),
-        fetchOrderItems(
-          'ordenes_bebidas',
-          'id, bebidas_id, precio_unitario, precio_total, bebidas!bebidas_id(id, name, pricing)',
-          'id, bebidas_id, bebidas!bebidas_id(id, name, pricing)'
-        ),
-        fetchOrderItems(
-          'ordenes_toppings',
-          'id, topping_id, precio_unitario, precio_total, toppings!topping_id(id, name, pricing)',
-          'id, topping_id, toppings!topping_id(id, name, pricing)'
-        )
+        supabase.from('ordenes_platos').select('id, plato_id, platos!plato_id(id, name, pricing)').eq('orden_id', id),
+        supabase.from('ordenes_bebidas').select('id, bebidas_id, bebidas!bebidas_id(id, name, pricing)').eq('orden_id', id),
+        supabase.from('ordenes_toppings').select('id, topping_id, toppings!topping_id(id, name, pricing)').eq('orden_id', id)
       ]);
 
       const { data: platosData, error: platosError } = platosResult;
@@ -164,24 +144,24 @@ export const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({
       const sedeBebidasPrices = new Map((sedeBebidasResult.data || []).map((item: any) => [item.bebida_id, item.price_override]));
       const sedeToppingsPrices = new Map((sedeToppingsResult.data || []).map((item: any) => [item.topping_id, item.price_override]));
 
-      // Mantener items individuales y resolver precio histórico/sede antes del global.
+      // Mantener items individuales y resolver el precio de la sede antes del global.
       const items: OrderItem[] = [
         // Procesar platos individualmente
         ...(platosData || []).map((item: any) => {
           const product = Array.isArray(item.platos) ? item.platos[0] : item.platos;
-          const price = item.precio_unitario ?? sedePlatosPrices.get(item.plato_id) ?? product?.pricing ?? 0;
+          const price = sedePlatosPrices.get(item.plato_id) ?? product?.pricing ?? 0;
           return { id: product.id, orden_item_id: item.id, quantity: 1, unit_price: price, producto: { id: product.id, name: product.name, pricing: price }, tipo: 'plato' as const };
         }),
         // Procesar bebidas individualmente
         ...(bebidasData || []).map((item: any) => {
           const product = Array.isArray(item.bebidas) ? item.bebidas[0] : item.bebidas;
-          const price = item.precio_unitario ?? sedeBebidasPrices.get(item.bebidas_id) ?? product?.pricing ?? 0;
+          const price = sedeBebidasPrices.get(item.bebidas_id) ?? product?.pricing ?? 0;
           return { id: product.id, orden_item_id: item.id, quantity: 1, unit_price: price, producto: { id: product.id, name: product.name, pricing: price }, tipo: 'bebida' as const };
         }),
         // Procesar toppings individualmente
         ...(toppingsData || []).map((item: any) => {
           const product = Array.isArray(item.toppings) ? item.toppings[0] : item.toppings;
-          const price = item.precio_unitario ?? sedeToppingsPrices.get(item.topping_id) ?? product?.pricing ?? 0;
+          const price = sedeToppingsPrices.get(item.topping_id) ?? product?.pricing ?? 0;
           return { id: product.id, orden_item_id: item.id, quantity: 1, unit_price: price, producto: { id: product.id, name: product.name, pricing: price }, tipo: 'topping' as const };
         })
       ];
